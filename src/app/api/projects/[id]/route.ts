@@ -126,18 +126,47 @@ export async function PUT(
     }
 
     const body = await request.json()
+    const { financialData, targetDate, ...data } = body
+
+    // financialData: 前端可能发送对象或字符串，统一转为字符串存储
+    if (financialData && typeof financialData === 'object') {
+      data.financialData = JSON.stringify(financialData)
+    } else if (financialData !== undefined && financialData !== null) {
+      data.financialData = financialData
+    }
+
+    // targetDate: 确保是完整的 ISO-8601 DateTime
+    if (targetDate) {
+      const d = new Date(targetDate)
+      if (isNaN(d.getTime())) {
+        return NextResponse.json(
+          { error: '目标日期格式无效', detail: `targetDate: ${targetDate}` },
+          { status: 400 }
+        )
+      }
+      data.targetDate = d.toISOString()
+    } else if (targetDate === null || targetDate === '') {
+      // 不允许清空 targetDate（必填字段），保留原值
+    }
+
+    // 移除不应由前端直接更新的字段
+    delete data.id
+    delete data.createdAt
+    delete data.updatedAt
+    delete data.createdById
 
     const updatedProject = await prisma.project.update({
       where: { id: params.id },
-      data: body,
+      data,
     })
 
     return NextResponse.json(
       { project: { ...updatedProject, totalAmount: Number(updatedProject.totalAmount), raisedAmount: Number(updatedProject.raisedAmount) } }
     )
   } catch (error) {
+    console.error('Update project error:', error)
     return NextResponse.json(
-      { error: '更新项目失败' },
+      { error: '更新项目失败', detail: error instanceof Error ? error.message : '未知错误' },
       { status: 500 }
     )
   }

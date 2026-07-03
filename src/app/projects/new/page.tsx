@@ -34,20 +34,7 @@ const labelClass = "block text-sm font-medium text-gray-700 mb-2"
 
 export default function NewProjectPage() {
   const router = useRouter()
-  const { data: session, status } = useSession()
-
-  if (status === 'loading') {
-    return (
-      <div className="min-h-screen bg-gradient-primary flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
-      </div>
-    )
-  }
-
-  if (!session) {
-    router.push('/auth/login?callbackUrl=/projects/new')
-    return null
-  }
+  const { status } = useSession()
 
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -75,34 +62,207 @@ export default function NewProjectPage() {
     setFormData(prev => ({ ...prev, targetDate: today }))
   }, [])
 
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      window.location.href = '/auth/login?callbackUrl=/projects/new'
+    }
+  }, [status])
+
+  if (status === 'loading' || status === 'unauthenticated') {
+    return (
+      <DashboardLayout title="新建项目">
+        <div className="flex items-center justify-center py-16">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
   const parseWeeklyReport = () => {
     if (!weeklyReport) return
 
     const parsedData: Partial<FormData> = {}
+    const trimmed = weeklyReport.trim()
 
-    const nameMatch = weeklyReport.match(/项目名称[：:]\s*(.+)/)
+    // ========== 1. 标签格式解析（优先匹配）==========
+
+    const nameMatch = trimmed.match(/项目名称[：:]\s*(.+)/)
     if (nameMatch) parsedData.name = nameMatch[1].trim()
 
-    const companyMatch = weeklyReport.match(/公司全称[：:]\s*(.+)/)
+    const companyMatch = trimmed.match(/公司全称[：:]\s*(.+)/)
     if (companyMatch) parsedData.companyFullName = companyMatch[1].trim()
 
-    const industryMatch = weeklyReport.match(/行业[：:]\s*(.+)/)
+    const industryMatch = trimmed.match(/行业[：:]\s*(.+)/)
     if (industryMatch) parsedData.industry = industryMatch[1].trim()
 
-    const positionMatch = weeklyReport.match(/定位[：:]\s*(.+)/)
+    const positionMatch = trimmed.match(/定位[：:]\s*(.+)/)
     if (positionMatch) parsedData.companyPosition = positionMatch[1].trim()
 
-    const productMatch = weeklyReport.match(/产品[：:]\s*(.+)/)
+    const productMatch = trimmed.match(/(?:主要)?产品[：:]\s*(.+)/)
     if (productMatch) parsedData.mainProducts = productMatch[1].trim()
 
-    const financeMatch = weeklyReport.match(/财务[：:]\s*([\s\S]*?)(?=\n|$)/)
+    const financeMatch = trimmed.match(/财务[：:]\s*([\s\S]*?)(?=\n|$)/)
     if (financeMatch) parsedData.financialData = financeMatch[1].trim()
 
-    const orderMatch = weeklyReport.match(/订单[：:]\s*(.+)/)
+    const orderMatch = trimmed.match(/订单[：:]\s*(.+)/)
     if (orderMatch) parsedData.orderProgress = orderMatch[1].trim()
 
-    const planMatch = weeklyReport.match(/融资[：:]\s*(.+)/)
+    const planMatch = trimmed.match(/融资(?:计划)?[：:]\s*(.+)/)
     if (planMatch) parsedData.financingPlan = planMatch[1].trim()
+
+    // ========== 2. 自然语言格式解析（当标签格式未匹配时）==========
+
+    // 项目名称（自然语言）
+    if (!parsedData.name) {
+      // 模式1: "公司名=定位描述"（用等号分隔，常见于周报简写）
+      const equalMatch = trimmed.match(/^([^=，,。：:\n]+)=([^，,。]+)/)
+      if (equalMatch) {
+        parsedData.name = equalMatch[1].trim()
+        if (!parsedData.companyPosition) {
+          parsedData.companyPosition = equalMatch[2].trim()
+        }
+      }
+
+      // 模式2: "XXX是一家..." / "XXX主营..." - 提取主语作为公司名
+      if (!parsedData.name) {
+        const subjMatch = trimmed.match(/^([^\s，,。：:=\n]+?)(?:是|主营|专注|致力|打造|推出)/)
+        if (subjMatch) {
+          parsedData.name = subjMatch[1].trim()
+        }
+      }
+
+      // 模式3: 以"XXX公司"/"XXX科技"/"XXX智能"等后缀结尾的名称
+      if (!parsedData.name) {
+        const suffixMatch = trimmed.match(/^([^\s，,。：:=\n]+?(?:公司|科技|集团|实验室|研究院|智能|技术|网络|生物|医疗|能源|半导体|机器人))(?:[，,。是]|$)/)
+        if (suffixMatch) {
+          parsedData.name = suffixMatch[1].trim()
+        }
+      }
+    }
+
+    // 公司定位（自然语言）
+    if (!parsedData.companyPosition) {
+      // "专注于XXX" / "专注XXX"
+      const focusMatch = trimmed.match(/专注(?:于)?([^，,。]+)/)
+      if (focusMatch) {
+        parsedData.companyPosition = focusMatch[1].trim()
+      }
+
+      // "是一家XXX" / "是XXX"
+      if (!parsedData.companyPosition) {
+        const isMatch = trimmed.match(/(?:^|[，,。])\s*(?:是|主打|提供)\s*(?:一家|一个)?([^，,。]{4,})/)
+        if (isMatch) {
+          parsedData.companyPosition = isMatch[1].trim()
+        }
+      }
+    }
+
+    // 主要产品（自然语言）
+    if (!parsedData.mainProducts) {
+      // "打造的XXX机/系统/平台/模型/火箭" 等
+      const productMatch2 = trimmed.match(/打造(?:的)?([^，,。]+?(?:机|系统|平台|模型|软件|硬件|产品|工具|应用|引擎|终端|设备|芯片|火箭|汽车|机器人|解决方案|服务))/)
+      if (productMatch2) {
+        parsedData.mainProducts = productMatch2[1].trim()
+      }
+
+      // "推出XXX"
+      if (!parsedData.mainProducts) {
+        const launchMatch = trimmed.match(/推出(?:了)?([^，,。]+?(?:机|系统|平台|模型|软件|硬件|产品|工具|应用|引擎|终端|设备|芯片|火箭|汽车|机器人|解决方案|服务))/)
+        if (launchMatch) {
+          parsedData.mainProducts = launchMatch[1].trim()
+        }
+      }
+    }
+
+    // 融资计划（自然语言）
+    if (!parsedData.financingPlan) {
+      const financeMatch2 = trimmed.match(/((?:本轮融资|本轮|融资|拟融资|计划融资|希望融资|寻求融资)[^，,。\n]*?(?:万|亿)[^，,。\n]*)/)
+      if (financeMatch2) {
+        parsedData.financingPlan = financeMatch2[1].trim()
+      }
+    }
+
+    // 目标金额（优先从融资计划中提取，避免"订单XXX万"被误匹配）
+    if (!parsedData.totalAmount) {
+      const planSource = parsedData.financingPlan || ''
+      if (planSource) {
+        const wanMatch = planSource.match(/(\d+(?:\.\d+)?)\s*万/)
+        if (wanMatch) {
+          parsedData.totalAmount = wanMatch[1]
+        }
+        if (!parsedData.totalAmount) {
+          const yiMatch = planSource.match(/(\d+(?:\.\d+)?)\s*亿/)
+          if (yiMatch) {
+            parsedData.totalAmount = (parseFloat(yiMatch[1]) * 10000).toString()
+          }
+        }
+      }
+
+      // 融资计划里没有，再从全文匹配（排除"订单"、"销售"等上下文）
+      if (!parsedData.totalAmount) {
+        const wanMatch = trimmed.match(/(?:融资|融|金额|投资|拟融|计划融|希望融|寻求融)?(\d+(?:\.\d+)?)\s*万/)
+        if (wanMatch) {
+          const matchIndex = trimmed.indexOf(wanMatch[0])
+          const prefix = trimmed.substring(Math.max(0, matchIndex - 4), matchIndex)
+          if (!/订单|销售|收入|营收/.test(prefix)) {
+            parsedData.totalAmount = wanMatch[1]
+          }
+        }
+
+        if (!parsedData.totalAmount) {
+          const yiMatch = trimmed.match(/(?:融资|融|金额|投资|估值|拟融|计划融|希望融|寻求融)?(\d+(?:\.\d+)?)\s*亿/)
+          if (yiMatch) {
+            parsedData.totalAmount = (parseFloat(yiMatch[1]) * 10000).toString()
+          }
+        }
+      }
+    }
+
+    // 财务数据（估值信息）
+    if (!parsedData.financialData) {
+      const valueMatch = trimmed.match(/估值(\d+(?:\.\d+)?)\s*([亿万])/)
+      if (valueMatch) {
+        parsedData.financialData = `估值${valueMatch[1]}${valueMatch[2]}`
+      }
+
+      // 创始人信息
+      const founderMatch = trimmed.match(/创始人[^，,。]*/)
+      if (founderMatch) {
+        parsedData.financialData = (parsedData.financialData ? parsedData.financialData + '；' : '') + founderMatch[0].trim()
+      }
+    }
+
+    // 行业（从关键词推断）
+    if (!parsedData.industry) {
+      const industryKeywords: Array<[string, string]> = [
+        ['Agent', 'AI/Agent'],
+        ['大模型', 'AI/大模型'],
+        ['人工智能', 'AI/人工智能'],
+        ['AI', 'AI/人工智能'],
+        ['半导体', '半导体'],
+        ['芯片', '半导体/芯片'],
+        ['医疗', '医疗健康'],
+        ['新能源', '新能源'],
+        ['SaaS', '企业服务/SaaS'],
+        ['金融科技', '金融科技'],
+        ['教育', '教育'],
+        ['机器人', '机器人'],
+        ['记忆体', 'AI/Agent'],
+      ]
+      for (const [keyword, industry] of industryKeywords) {
+        if (trimmed.includes(keyword)) {
+          parsedData.industry = industry
+          break
+        }
+      }
+    }
+
+    // 描述（整段文本作为描述）
+    if (!parsedData.description) {
+      if (trimmed.length > 50) {
+        parsedData.description = trimmed
+      }
+    }
 
     setFormData(prev => ({ ...prev, ...parsedData }))
     setWeeklyReport('')
@@ -156,10 +316,20 @@ export default function NewProjectPage() {
     setLoading(true)
 
     try {
+      let parsedFinancialData = null
+      if (formData.financialData?.trim()) {
+        try {
+          parsedFinancialData = JSON.parse(formData.financialData)
+        } catch {
+          parsedFinancialData = formData.financialData
+        }
+      }
+
       const data = {
         ...formData,
         totalAmount: parseFloat(formData.totalAmount),
-        financialData: formData.financialData ? JSON.parse(formData.financialData) : null,
+        financialData: parsedFinancialData,
+        targetDate: formData.targetDate ? new Date(formData.targetDate).toISOString() : undefined,
       }
 
       const response = await fetch('/api/projects', {
@@ -175,7 +345,7 @@ export default function NewProjectPage() {
           setConfirmedDuplicate(false)
           setError('检测到重复项目')
         } else {
-          setError(result.error || '创建项目失败')
+          setError(result.detail || result.error || '创建项目失败')
         }
         setLoading(false)
         return
@@ -184,7 +354,8 @@ export default function NewProjectPage() {
       const result = await response.json()
       router.push(`/projects/${result.project.id}`)
     } catch (error) {
-      setError('创建项目失败')
+      console.error('Create project error:', error)
+      setError(error instanceof Error ? error.message : '创建项目失败，请检查网络连接')
       setLoading(false)
     }
   }

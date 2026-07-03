@@ -60,8 +60,55 @@ export async function POST(request: Request) {
       )
     }
 
+    if (!session.user.id) {
+      return NextResponse.json(
+        { error: '登录已过期，请退出后重新登录', detail: 'session.user.id is missing' },
+        { status: 401 }
+      )
+    }
+
     const body = await request.json()
-    const { name, checkDuplicate, ...data } = body
+    const { name, checkDuplicate, financialData, ...data } = body
+
+    // financialData: 前端可能发送对象或字符串，统一转为字符串存储
+    if (financialData && typeof financialData === 'object') {
+      data.financialData = JSON.stringify(financialData)
+    } else if (financialData) {
+      data.financialData = financialData
+    }
+
+    // targetDate: 确保是完整的 ISO-8601 DateTime
+    if (data.targetDate) {
+      const d = new Date(data.targetDate)
+      if (isNaN(d.getTime())) {
+        return NextResponse.json(
+          { error: '目标日期格式无效', detail: `targetDate: ${data.targetDate}` },
+          { status: 400 }
+        )
+      }
+      data.targetDate = d.toISOString()
+    } else {
+      // targetDate 是必填字段，给一个默认值
+      data.targetDate = new Date().toISOString()
+    }
+
+    // totalAmount: 确保是数字
+    if (data.totalAmount !== undefined) {
+      const n = Number(data.totalAmount)
+      if (isNaN(n)) {
+        return NextResponse.json(
+          { error: '目标金额格式无效', detail: `totalAmount: ${data.totalAmount}` },
+          { status: 400 }
+        )
+      }
+      data.totalAmount = n
+    }
+
+    // 移除不应由前端直接设置的字段
+    delete data.id
+    delete data.createdAt
+    delete data.updatedAt
+    delete data.createdById
 
     if (!name) {
       return NextResponse.json(
@@ -125,8 +172,9 @@ export async function POST(request: Request) {
       { status: 201 }
     )
   } catch (error) {
+    console.error('Create project error:', error)
     return NextResponse.json(
-      { error: '创建项目失败' },
+      { error: '创建项目失败', detail: error instanceof Error ? error.message : '未知错误' },
       { status: 500 }
     )
   }

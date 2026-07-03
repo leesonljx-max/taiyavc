@@ -13,6 +13,7 @@ function LoginContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const errorParam = searchParams.get('error')
+  const callbackUrl = searchParams.get('callbackUrl') || '/'
 
   useEffect(() => {
     if (errorParam === 'CredentialsSignin') {
@@ -40,7 +41,7 @@ function LoginContent() {
     if (result?.error) {
       setError('邮箱或密码错误')
     } else {
-      router.push('/')
+      router.push(callbackUrl)
     }
 
     setLoading(false)

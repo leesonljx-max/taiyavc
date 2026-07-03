@@ -120,11 +120,21 @@ export default function EditProjectPage() {
     setIsSubmitting(true)
 
     try {
+      let parsedFinancialData = null
+      if (formData.financialData?.trim()) {
+        try {
+          parsedFinancialData = JSON.parse(formData.financialData)
+        } catch {
+          parsedFinancialData = formData.financialData
+        }
+      }
+
       const data = {
         ...formData,
         totalAmount: parseFloat(formData.totalAmount),
         raisedAmount: parseFloat(formData.raisedAmount) || 0,
-        financialData: formData.financialData ? JSON.parse(formData.financialData) : null,
+        financialData: parsedFinancialData,
+        targetDate: formData.targetDate ? new Date(formData.targetDate).toISOString() : undefined,
       }
 
       const response = await fetch(`/api/projects/${params.id}`, {

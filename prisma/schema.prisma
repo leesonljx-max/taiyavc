@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 model Project {
@@ -20,8 +20,8 @@ model Project {
   followStage      String    @default("INITIAL_TALK")
   description      String?
   status           String    @default("PENDING")
-  totalAmount      Decimal
-  raisedAmount     Decimal   @default(0)
+  totalAmount      Float
+  raisedAmount     Float     @default(0)
   targetDate       DateTime
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -37,7 +37,7 @@ model Project {
 
 model Investment {
   id          String    @id @default(cuid())
-  amount      Decimal
+  amount      Float
   date        DateTime @default(now())
   investorId  String
   projectId   String
