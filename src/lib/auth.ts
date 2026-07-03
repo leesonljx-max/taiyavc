@@ -44,6 +44,17 @@ export const authOptions: NextAuthOptions = {
           return null
         }
 
+        // 检查用户状态：PENDING 用户需管理员审批后才能登录
+        if (user.status === 'PENDING') {
+          throw new Error('您的账号正在等待管理员审批，审批通过后方可登录')
+        }
+        if (user.status === 'REJECTED') {
+          throw new Error('您的注册申请已被拒绝，请联系管理员')
+        }
+        if (user.status === 'DISABLED') {
+          throw new Error('您的账号已被禁用，请联系管理员')
+        }
+
         return {
           id: user.id,
           email: user.email,

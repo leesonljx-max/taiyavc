@@ -2,15 +2,20 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import prisma from '@/lib/prisma'
 import { authOptions, type UserRole } from '@/lib/auth'
-import { canViewProject, type PermissionUser } from '@/lib/permissions'
+import { canViewProject, isMaintainedByUser, type PermissionUser } from '@/lib/permissions'
+import { isHighlyOverlapping, similarity } from '@/lib/lead-match'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions)
-    
-    const currentUser: PermissionUser | null = session?.user 
+
+    const currentUser: PermissionUser | null = session?.user
       ? { id: session.user.id, role: session.user.role as UserRole }
       : null
+
+    // scope=all: 项目库（所有可见项目）；scope=mine: 我的项目（仅自己维护的）
+    const { searchParams } = new URL(request.url)
+    const scope = searchParams.get('scope') === 'mine' ? 'mine' : 'all'
 
     const projects = await prisma.project.findMany({
       orderBy: { createdAt: 'desc' },
@@ -24,11 +29,22 @@ export async function GET() {
 
     const filteredProjects = projects.filter(project => {
       const memberIds = project.members.map(m => m.userId)
-      return canViewProject(currentUser, {
+      const permProject = {
         followStage: project.followStage,
         createdById: project.createdById,
         memberIds,
-      })
+      }
+
+      // 1. 必须能查看该项目
+      if (!canViewProject(currentUser, permProject)) return false
+
+      // 2. scope=mine 时仅返回自己维护的项目
+      if (scope === 'mine') {
+        if (!currentUser) return false
+        if (!isMaintainedByUser(currentUser, permProject)) return false
+      }
+
+      return true
     })
 
     const result = filteredProjects.map(p => ({
@@ -40,7 +56,7 @@ export async function GET() {
       memberIds: p.members.map(m => m.userId),
     }))
 
-    return NextResponse.json({ projects: result })
+    return NextResponse.json({ projects: result, scope })
   } catch (error) {
     return NextResponse.json(
       { error: '获取项目列表失败' },
@@ -146,8 +162,8 @@ export async function POST(request: Request) {
 
     if (existingProject) {
       return NextResponse.json(
-        { 
-          error: '可能存在重复项目', 
+        {
+          error: '可能存在重复项目',
           warning: '数据库中已存在同名项目',
           existingProject: {
             id: existingProject.id,
@@ -159,6 +175,47 @@ export async function POST(request: Request) {
       )
     }
 
+    // ── 项目线索重合检测与合并 ──
+    // 查询当前用户可见的全部项目线索
+    const leadWhere: any = {}
+    if (session.user.role !== 'ADMIN' && session.user.role !== 'INVESTMENT_PARTNER' && session.user.role !== 'INVESTMENT_MANAGER') {
+      leadWhere.createdById = session.user.id
+    }
+    const allLeads = await prisma.projectLead.findMany({ where: leadWhere })
+
+    // 找出与新建项目名称"高度重合"的线索（取相似度最高的一条）
+    const overlappingLeads = allLeads
+      .map(lead => ({
+        lead,
+        similarity: similarity(name, lead.name),
+        isHighlyOverlapping: isHighlyOverlapping(name, lead.name),
+      }))
+      .filter(m => m.isHighlyOverlapping)
+      .sort((a, b) => b.similarity - a.similarity)
+
+    let mergedLead: { id: string; name: string } | null = null
+
+    if (overlappingLeads.length > 0) {
+      const best = overlappingLeads[0].lead
+
+      // 合并线索信息到新建项目（仅填充用户未提供的字段，不覆盖用户输入）
+      // 字段映射：线索 → 项目
+      const fillIfEmpty = (target: any, key: string, value: string | null | undefined) => {
+        if (value && (target[key] === undefined || target[key] === null || target[key] === '')) {
+          target[key] = value
+        }
+      }
+      fillIfEmpty(data, 'industry', best.industry)
+      fillIfEmpty(data, 'companyPosition', best.companyPosition)
+      fillIfEmpty(data, 'mainProducts', best.mainProducts)
+      // 融资经历 → 财务数据 / 融资规划（优先 financialData，其次 financingPlan）
+      fillIfEmpty(data, 'financialData', best.financingHistory)
+      fillIfEmpty(data, 'financingPlan', best.financingHistory)
+      fillIfEmpty(data, 'description', best.description)
+
+      mergedLead = { id: best.id, name: best.name }
+    }
+
     const project = await prisma.project.create({
       data: {
         name,
@@ -167,8 +224,20 @@ export async function POST(request: Request) {
       },
     })
 
+    // 创建成功后删除被合并的项目线索
+    if (mergedLead) {
+      try {
+        await prisma.projectLead.delete({ where: { id: mergedLead.id } })
+      } catch {
+        // 线索可能已被删除，忽略错误
+      }
+    }
+
     return NextResponse.json(
-      { project: { ...project, totalAmount: Number(project.totalAmount), raisedAmount: Number(project.raisedAmount) } },
+      {
+        project: { ...project, totalAmount: Number(project.totalAmount), raisedAmount: Number(project.raisedAmount) },
+        mergedLead,
+      },
       { status: 201 }
     )
   } catch (error) {

@@ -20,6 +20,24 @@ interface WeeklyProject {
   followStage: FollowStage
   createdAt: string
   aiCard: AICardData | null
+  maintainerName: string
+}
+
+interface MaintainerProject {
+  id: string
+  name: string
+  companyPosition: string | null
+  industry: string | null
+  financingRound: string | null
+  totalAmount: number
+  followStage: string
+}
+
+interface MaintainerStat {
+  userId: string
+  userName: string
+  stageCounts: Record<string, number>
+  projects: MaintainerProject[]
 }
 
 interface DashboardData {
@@ -31,19 +49,24 @@ interface DashboardData {
   }
   weekStart: string
   weeklyProjects: WeeklyProject[]
+  years: number[]
+  selectedYear: number
+  maintainerStats: MaintainerStat[]
 }
 
 export default function HomePage() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
 
   useEffect(() => {
-    fetchDashboard()
-  }, [])
+    fetchDashboard(selectedYear)
+  }, [selectedYear])
 
-  const fetchDashboard = async () => {
+  const fetchDashboard = async (year: number) => {
+    setLoading(true)
     try {
-      const response = await fetch('/api/dashboard')
+      const response = await fetch(`/api/dashboard?year=${year}`)
       const result = await response.json()
       if (result.stats) {
         setData(result)
@@ -96,6 +119,32 @@ export default function HomePage() {
 
   return (
     <DashboardLayout title="首页" subtitle="投资组合总览与本周动态">
+      {/* 年份筛选器 */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-2">
+          <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span className="text-sm font-medium text-gray-700">年份筛选</span>
+          <div className="flex items-center gap-1 bg-gradient-card rounded-xl p-1 border border-primary-100">
+            {data?.years.map(y => (
+              <button
+                key={y}
+                onClick={() => setSelectedYear(y)}
+                className={`px-3 py-1 rounded-lg text-sm font-medium transition-all-smooth ${
+                  selectedYear === y
+                    ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md shadow-primary-500/30'
+                    : 'text-gray-600 hover:bg-primary-50 hover:text-primary-700'
+                }`}
+              >
+                {y}
+              </button>
+            ))}
+          </div>
+        </div>
+        <span className="text-xs text-gray-400">当前显示 {selectedYear} 年数据</span>
+      </div>
+
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {stats.map((stat) => (
@@ -118,14 +167,15 @@ export default function HomePage() {
         ))}
       </div>
 
-      {/* Weekly New Projects with AI Cards */}
+      {/* 本周新增项目（按维护人分组） */}
       <div className="bg-gradient-card rounded-2xl shadow-sm border border-primary-100 p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-lg font-bold text-gray-900">本周新增项目</h2>
             {data && (
               <p className="text-sm text-gray-500 mt-0.5">
-                统计周期：自 {formatDate(data.weekStart)} 起每周一 12:00 更新
+                {selectedYear} 年 · 共 {data.maintainerStats?.length || 0} 位维护人
+                {data.weeklyProjects.length > 0 && ` · 本周新增 ${data.weeklyProjects.length} 个`}
               </p>
             )}
           </div>
@@ -144,98 +194,104 @@ export default function HomePage() {
           <div className="flex items-center justify-center py-16">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
           </div>
-        ) : !data || data.weeklyProjects.length === 0 ? (
+        ) : !data || !data.maintainerStats || data.maintainerStats.length === 0 ? (
           <div className="text-center py-16">
             <div className="text-gray-300 text-5xl mb-3">📋</div>
-            <p className="text-gray-500">本周暂无新增项目</p>
+            <p className="text-gray-500">{selectedYear} 年暂无项目数据</p>
           </div>
         ) : (
-          <div className="space-y-6">
-            {data.weeklyProjects.map((project) => (
+          <div className="space-y-4">
+            {data.maintainerStats.map((m) => (
               <div
-                key={project.id}
+                key={m.userId}
                 className="bg-white rounded-2xl border border-primary-100 overflow-hidden hover:shadow-md transition-all-smooth"
               >
-                {/* Project Header */}
-                <div className="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-primary-50 to-transparent border-b border-primary-50">
-                  <div className="flex items-center gap-3">
-                    <Link
-                      href={`/projects/${project.id}`}
-                      className="font-bold text-gray-900 hover:text-primary-600 transition-colors"
-                    >
-                      {project.name}
-                    </Link>
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${followStageColors[project.followStage]}`}>
-                      {followStageLabels[project.followStage]}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-gray-500">
-                    <span>{project.companyFullName || '未填写公司名'}</span>
-                    <span>{project.industry || '未填写行业'}</span>
-                    <span>{formatDate(project.createdAt)}</span>
-                  </div>
-                </div>
-
-                {/* AI Card Content */}
-                {project.aiCard ? (
-                  <div className="p-5">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {/* Highlights */}
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 mb-3">
-                          <div className="w-2 h-2 bg-success-500 rounded-full"></div>
-                          <span className="text-sm font-semibold text-success-700">投资亮点</span>
-                        </div>
-                        {project.aiCard.highlights?.map((item, i) => (
-                          <div key={i} className="flex items-start gap-2 text-sm text-gray-600">
-                            <span className="text-success-400 mt-0.5 flex-shrink-0">•</span>
-                            <span>{item}</span>
-                          </div>
-                        ))}
+                <div className="flex flex-col lg:flex-row">
+                  {/* 左侧：姓名 + 各阶段项目数量 */}
+                  <div className="lg:w-64 lg:flex-shrink-0 p-5 border-b lg:border-b-0 lg:border-r border-primary-100 bg-gradient-to-br from-primary-50/50 to-transparent">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-md shadow-primary-500/30">
+                        <span className="text-white font-bold text-sm">
+                          {m.userName.charAt(0).toUpperCase()}
+                        </span>
                       </div>
-
-                      {/* Barriers */}
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 mb-3">
-                          <div className="w-2 h-2 bg-primary-500 rounded-full"></div>
-                          <span className="text-sm font-semibold text-primary-700">核心壁垒</span>
-                        </div>
-                        {project.aiCard.barriers?.map((item, i) => (
-                          <div key={i} className="flex items-start gap-2 text-sm text-gray-600">
-                            <span className="text-primary-400 mt-0.5 flex-shrink-0">•</span>
-                            <span>{item}</span>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Risks */}
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 mb-3">
-                          <div className="w-2 h-2 bg-warning-500 rounded-full"></div>
-                          <span className="text-sm font-semibold text-warning-700">风险提示</span>
-                        </div>
-                        {project.aiCard.risks?.map((item, i) => (
-                          <div key={i} className="flex items-start gap-2 text-sm text-gray-600">
-                            <span className="text-warning-400 mt-0.5 flex-shrink-0">•</span>
-                            <span>{item}</span>
-                          </div>
-                        ))}
+                      <div>
+                        <div className="font-semibold text-gray-900 text-sm">{m.userName}</div>
+                        <div className="text-xs text-gray-500">共 {m.projects.length} 个项目</div>
                       </div>
                     </div>
+
+                    {/* 各阶段项目数量 */}
+                    <div className="space-y-2">
+                      {[
+                        { key: 'INITIAL_TALK', label: '初聊', color: 'bg-gray-100 text-gray-700' },
+                        { key: 'PRE_DD', label: 'PreDD', color: 'bg-blue-100 text-blue-700' },
+                        { key: 'PROJECT_INITIATION', label: '立项', color: 'bg-purple-100 text-purple-700' },
+                        { key: 'DUE_DILIGENCE', label: '尽调', color: 'bg-amber-100 text-amber-700' },
+                        { key: 'CLOSING', label: '交割', color: 'bg-emerald-100 text-emerald-700' },
+                      ].map(stage => (
+                        <div key={stage.key} className="flex items-center justify-between">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${stage.color}`}>
+                            {stage.label}
+                          </span>
+                          <span className="text-sm font-semibold text-gray-900">
+                            {m.stageCounts[stage.key] || 0}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ) : (
-                  <div className="p-5">
-                    <Link
-                      href={`/projects/${project.id}`}
-                      className="flex items-center justify-center gap-2 text-sm text-gray-400 hover:text-primary-600 transition-colors py-4"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      前往项目详情页生成 AI 画板
-                    </Link>
+
+                  {/* 右侧：项目简要信息小卡片 */}
+                  <div className="flex-1 p-5">
+                    {m.projects.length === 0 ? (
+                      <div className="text-center py-8 text-sm text-gray-400">暂无项目</div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                        {m.projects.map(project => (
+                          <Link
+                            key={project.id}
+                            href={`/projects/${project.id}`}
+                            className="block bg-white rounded-xl p-3 border border-primary-50 hover:border-primary-200 hover:shadow-md transition-all-smooth"
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className="font-semibold text-gray-900 text-sm truncate hover:text-primary-700 transition-colors">
+                                {project.name}
+                              </h4>
+                              <span className={`px-1.5 py-0.5 rounded text-xs font-medium whitespace-nowrap flex-shrink-0 ml-2 ${followStageColors[project.followStage as FollowStage] || 'bg-gray-100 text-gray-700'}`}>
+                                {followStageLabels[project.followStage as FollowStage] || project.followStage}
+                              </span>
+                            </div>
+                            <div className="space-y-1 text-xs text-gray-500">
+                              {project.companyPosition && (
+                                <div className="truncate">
+                                  <span className="text-gray-400">定位：</span>
+                                  {project.companyPosition}
+                                </div>
+                              )}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {project.industry && (
+                                  <span className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600">
+                                    {project.industry}
+                                  </span>
+                                )}
+                                {project.financingRound && (
+                                  <span className="text-gray-600">{project.financingRound}</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1 text-primary-700 font-medium">
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                {project.totalAmount > 0 ? `${project.totalAmount}万` : '未填写'}
+                              </div>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             ))}
           </div>

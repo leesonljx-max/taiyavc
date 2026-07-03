@@ -17,7 +17,12 @@ model Project {
   financialData    String?
   orderProgress    String?
   financingPlan    String?
+  financingRound   String?
   followStage      String    @default("INITIAL_TALK")
+  coreAdvantage    String?
+  coreTeam         String?
+  competitors      String?
+  competitorAnalysisJson String?
   description      String?
   status           String    @default("PENDING")
   totalAmount      Float
@@ -32,6 +37,9 @@ model Project {
   investors        Investor[] @relation("InvestorProjects")
   members          ProjectMember[]
   news             ProjectNews[]
+  partnerReviews   PartnerReview[]
+  followUpNotes    FollowUpNote[]
+  stageApprovals   StageApproval[]
   createdBy        User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
 }
 
@@ -64,11 +72,36 @@ model User {
   passwordHash  String
   name          String?
   role          String          @default("TEMP_VISITOR")
+  status        String          @default("ACTIVE")  // ACTIVE / PENDING / REJECTED / DISABLED
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   sessions      Session[]
   projects      Project[]
   projectMembers ProjectMember[]
+  partnerReviews   PartnerReview[]
+  followUpNotes    FollowUpNote[]
+  stageApprovals   StageApproval[]
+  projectLeads     ProjectLead[]
+}
+
+// 项目线索（用于在新建项目时进行重合检测和合并）
+model ProjectLead {
+  id               String   @id @default(cuid())
+  name             String
+  industry         String?  // 行业/赛道
+  companyPosition  String?  // 公司定位
+  mainProducts     String?  // 主要产品
+  financingHistory String?  // 融资经历
+  contactInfo      String?  // 联系方式
+  description      String?  // 备注
+  status           String   @default("PENDING") // PENDING / CONVERTED / ARCHIVED
+  createdById      String
+  createdBy        User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([name])
+  @@index([createdById])
 }
 
 model ProjectMember {
@@ -113,4 +146,43 @@ model VerificationToken {
   expires    DateTime
 
   @@id([identifier, token])
+}
+
+model PartnerReview {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  userName  String
+  content   String
+  createdAt DateTime @default(now())
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model FollowUpNote {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  userName  String
+  content   String
+  createdAt DateTime @default(now())
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model StageApproval {
+  id          String   @id @default(cuid())
+  projectId   String
+  userId      String
+  userName    String
+  status      String   // APPROVED / REJECTED
+  comment     String?
+  createdAt   DateTime @default(now())
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
 }

@@ -19,12 +19,21 @@ export async function GET(
       where: { id: params.id },
       include: {
         investors: { select: { id: true, name: true, email: true, phone: true } },
-        investments: { 
+        investments: {
           select: { id: true, amount: true, date: true, investorId: true },
           orderBy: { date: 'desc' },
         },
         members: { select: { userId: true } },
         createdBy: { select: { id: true, name: true } },
+        partnerReviews: {
+          orderBy: { createdAt: 'desc' },
+        },
+        followUpNotes: {
+          orderBy: { createdAt: 'desc' },
+        },
+        stageApprovals: {
+          orderBy: { createdAt: 'desc' },
+        },
       },
     })
 
@@ -127,6 +136,35 @@ export async function PUT(
 
     const body = await request.json()
     const { financialData, targetDate, ...data } = body
+
+    // 立项阶段审批检查：从其他阶段切换到 PROJECT_INITIATION 时，需要多数合伙人通过
+    if (data.followStage === 'PROJECT_INITIATION' && project.followStage !== 'PROJECT_INITIATION') {
+      const totalPartners = await prisma.user.count({
+        where: { role: 'INVESTMENT_PARTNER', status: 'ACTIVE' },
+      })
+      const approvals = await prisma.stageApproval.findMany({
+        where: { projectId: params.id },
+      })
+      const approvedCount = approvals.filter(a => a.status === 'APPROVED').length
+      const rejectedCount = approvals.filter(a => a.status === 'REJECTED').length
+      const majorityThreshold = Math.floor(totalPartners / 2) + 1
+
+      if (rejectedCount > 0) {
+        return NextResponse.json(
+          { error: '存在合伙人拒绝立项，无法进入立项阶段', detail: `已拒绝: ${rejectedCount}` },
+          { status: 400 }
+        )
+      }
+      if (approvedCount < majorityThreshold) {
+        return NextResponse.json(
+          {
+            error: '尚未达到立项所需的合伙人多数通过',
+            detail: `需要 ${majorityThreshold} 票通过（共 ${totalPartners} 位合伙人），当前已通过 ${approvedCount} 票`,
+          },
+          { status: 400 }
+        )
+      }
+    }
 
     // financialData: 前端可能发送对象或字符串，统一转为字符串存储
     if (financialData && typeof financialData === 'object') {

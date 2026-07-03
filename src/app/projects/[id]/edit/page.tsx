@@ -12,9 +12,13 @@ interface FormData {
   industry: string
   companyPosition: string
   mainProducts: string
+  coreAdvantage: string
+  coreTeam: string
+  competitors: string
   financialData: string
   orderProgress: string
   financingPlan: string
+  financingRound: string
   followStage: FollowStage
   status: string
   description: string
@@ -30,9 +34,13 @@ interface Project {
   industry: string | null
   companyPosition: string | null
   mainProducts: string | null
+  coreAdvantage: string | null
+  coreTeam: string | null
+  competitors: string | null
   financialData: Record<string, any> | null | string
   orderProgress: string | null
   financingPlan: string | null
+  financingRound: string | null
   followStage: FollowStage
   status: string
   description: string | null
@@ -54,9 +62,13 @@ export default function EditProjectPage() {
     industry: '',
     companyPosition: '',
     mainProducts: '',
+    coreAdvantage: '',
+    coreTeam: '',
+    competitors: '',
     financialData: '',
     orderProgress: '',
     financingPlan: '',
+    financingRound: '',
     followStage: 'INITIAL_TALK',
     status: 'PENDING',
     description: '',
@@ -91,9 +103,13 @@ export default function EditProjectPage() {
           industry: projectData.industry || '',
           companyPosition: projectData.companyPosition || '',
           mainProducts: projectData.mainProducts || '',
+          coreAdvantage: projectData.coreAdvantage || '',
+          coreTeam: projectData.coreTeam || '',
+          competitors: projectData.competitors || '',
           financialData: projectData.financialData ? JSON.stringify(projectData.financialData, null, 2) : '',
           orderProgress: projectData.orderProgress || '',
           financingPlan: projectData.financingPlan || '',
+          financingRound: projectData.financingRound || '',
           followStage: projectData.followStage,
           status: projectData.status,
           description: projectData.description || '',
@@ -113,7 +129,7 @@ export default function EditProjectPage() {
     setError('')
 
     if (!formData.name || !formData.totalAmount) {
-      setError('项目名称和目标金额是必填项')
+      setError('项目名称和融资金额是必填项')
       return
     }
 
@@ -285,8 +301,33 @@ export default function EditProjectPage() {
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
+                <label htmlFor="financingRound" className={labelClass}>
+                  融资轮次
+                </label>
+                <select
+                  id="financingRound"
+                  value={formData.financingRound}
+                  onChange={(e) => setFormData(prev => ({ ...prev, financingRound: e.target.value }))}
+                  className={inputClass}
+                >
+                  <option value="">请选择融资轮次</option>
+                  <option value="天使轮">天使轮</option>
+                  <option value="Pre-A轮">Pre-A轮</option>
+                  <option value="A轮">A轮</option>
+                  <option value="A+轮">A+轮</option>
+                  <option value="B轮">B轮</option>
+                  <option value="C轮">C轮</option>
+                  <option value="D轮">D轮</option>
+                  <option value="E轮">E轮</option>
+                  <option value="Pre-IPO">Pre-IPO</option>
+                  <option value="战略融资">战略融资</option>
+                  <option value="其他">其他</option>
+                </select>
+              </div>
+
+              <div>
                 <label htmlFor="totalAmount" className={labelClass}>
-                  目标金额（万元） <span className="text-danger-500">*</span>
+                  融资金额（万元） <span className="text-danger-500">*</span>
                 </label>
                 <input
                   id="totalAmount"
@@ -294,13 +335,13 @@ export default function EditProjectPage() {
                   value={formData.totalAmount}
                   onChange={(e) => setFormData(prev => ({ ...prev, totalAmount: e.target.value }))}
                   className={inputClass}
-                  placeholder="请输入目标金额"
+                  placeholder="本轮融资金额"
                 />
               </div>
 
               <div>
                 <label htmlFor="raisedAmount" className={labelClass}>
-                  已筹金额（万元）
+                  历史累计融资金额（万元）
                 </label>
                 <input
                   id="raisedAmount"
@@ -308,7 +349,7 @@ export default function EditProjectPage() {
                   value={formData.raisedAmount}
                   onChange={(e) => setFormData(prev => ({ ...prev, raisedAmount: e.target.value }))}
                   className={inputClass}
-                  placeholder="请输入已筹金额"
+                  placeholder="历史累计融资金额"
                 />
               </div>
 
@@ -381,6 +422,20 @@ export default function EditProjectPage() {
               </div>
 
               <div>
+                <label htmlFor="coreAdvantage" className={labelClass}>
+                  核心优势
+                </label>
+                <textarea
+                  id="coreAdvantage"
+                  value={formData.coreAdvantage}
+                  onChange={(e) => setFormData(prev => ({ ...prev, coreAdvantage: e.target.value }))}
+                  className={`${inputClass} resize-none`}
+                  rows={3}
+                  placeholder="请输入核心优势（技术壁垒、团队背景、资源优势等）"
+                />
+              </div>
+
+              <div>
                 <label htmlFor="financialData" className={labelClass}>
                   财务数据（JSON格式）
                 </label>
@@ -405,6 +460,34 @@ export default function EditProjectPage() {
                   className={`${inputClass} resize-none`}
                   rows={3}
                   placeholder="请输入订单进展"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="coreTeam" className={labelClass}>
+                  核心团队
+                </label>
+                <textarea
+                  id="coreTeam"
+                  value={formData.coreTeam}
+                  onChange={(e) => setFormData(prev => ({ ...prev, coreTeam: e.target.value }))}
+                  className={`${inputClass} resize-none`}
+                  rows={3}
+                  placeholder="请输入核心团队成员介绍（创始人、高管等背景信息）"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="competitors" className={labelClass}>
+                  竞争对手
+                </label>
+                <textarea
+                  id="competitors"
+                  value={formData.competitors}
+                  onChange={(e) => setFormData(prev => ({ ...prev, competitors: e.target.value }))}
+                  className={`${inputClass} resize-none`}
+                  rows={3}
+                  placeholder="请输入主要竞争对手（可一行一个，便于 AI 检索分析）"
                 />
               </div>
 

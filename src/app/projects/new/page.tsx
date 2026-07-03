@@ -13,13 +13,18 @@ interface FormData {
   industry: string
   companyPosition: string
   mainProducts: string
+  coreAdvantage: string
+  coreTeam: string
+  competitors: string
   financialData: string
   orderProgress: string
   financingPlan: string
+  financingRound: string
   followStage: FollowStage
   status: string
   description: string
   totalAmount: string
+  raisedAmount: string
   targetDate: string
 }
 
@@ -27,6 +32,17 @@ interface DuplicateWarning {
   id: string
   name: string
   companyFullName: string | null
+}
+
+interface LeadMatch {
+  id: string
+  name: string
+  industry: string | null
+  companyPosition: string | null
+  mainProducts: string | null
+  financingHistory: string | null
+  description: string | null
+  similarity: number
 }
 
 const inputClass = "w-full px-4 py-2.5 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth placeholder-gray-400"
@@ -42,13 +58,18 @@ export default function NewProjectPage() {
     industry: '',
     companyPosition: '',
     mainProducts: '',
+    coreAdvantage: '',
+    coreTeam: '',
+    competitors: '',
     financialData: '',
     orderProgress: '',
     financingPlan: '',
+    financingRound: '',
     followStage: 'INITIAL_TALK',
     status: 'PENDING',
     description: '',
     totalAmount: '',
+    raisedAmount: '',
     targetDate: '',
   })
   const [weeklyReport, setWeeklyReport] = useState('')
@@ -56,6 +77,7 @@ export default function NewProjectPage() {
   const [error, setError] = useState('')
   const [duplicateWarning, setDuplicateWarning] = useState<DuplicateWarning | null>(null)
   const [confirmedDuplicate, setConfirmedDuplicate] = useState(false)
+  const [leadMatch, setLeadMatch] = useState<LeadMatch | null>(null)
 
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0]
@@ -182,6 +204,17 @@ export default function NewProjectPage() {
       }
     }
 
+    // 融资轮次（自然语言）
+    if (!parsedData.financingRound) {
+      const roundMatch = trimmed.match(/(天使轮|Pre-A轮|Pre-A|A\+轮|A轮|A1轮|B轮|C轮|D轮|E轮|Pre-IPO|战略融资)/)
+      if (roundMatch) {
+        let round = roundMatch[1]
+        // 规范化格式
+        if (round === 'Pre-A') round = 'Pre-A轮'
+        parsedData.financingRound = round
+      }
+    }
+
     // 目标金额（优先从融资计划中提取，避免"订单XXX万"被误匹配）
     if (!parsedData.totalAmount) {
       const planSource = parsedData.financingPlan || ''
@@ -290,12 +323,45 @@ export default function NewProjectPage() {
     }
   }
 
+  const checkLeadMatch = async (name: string) => {
+    if (!name.trim()) {
+      setLeadMatch(null)
+      return
+    }
+    try {
+      const response = await fetch(`/api/project-leads/match?name=${encodeURIComponent(name)}`)
+      const data = await response.json()
+      if (data.matches && data.matches.length > 0) {
+        const best = data.matches[0]
+        setLeadMatch({
+          id: best.lead.id,
+          name: best.lead.name,
+          industry: best.lead.industry,
+          companyPosition: best.lead.companyPosition,
+          mainProducts: best.lead.mainProducts,
+          financingHistory: best.lead.financingHistory,
+          description: best.lead.description,
+          similarity: best.similarity,
+        })
+      } else {
+        setLeadMatch(null)
+      }
+    } catch (error) {
+      console.error('Failed to check lead match:', error)
+      setLeadMatch(null)
+    }
+  }
+
   useEffect(() => {
     if (formData.name) {
-      const timer = setTimeout(checkDuplicate, 500)
+      const timer = setTimeout(() => {
+        checkDuplicate()
+        checkLeadMatch(formData.name)
+      }, 500)
       return () => clearTimeout(timer)
     } else {
       setDuplicateWarning(null)
+      setLeadMatch(null)
     }
   }, [formData.name])
 
@@ -304,7 +370,7 @@ export default function NewProjectPage() {
     setError('')
 
     if (!formData.name || !formData.totalAmount) {
-      setError('项目名称和目标金额是必填项')
+      setError('项目名称和融资金额是必填项')
       return
     }
 
@@ -328,6 +394,7 @@ export default function NewProjectPage() {
       const data = {
         ...formData,
         totalAmount: parseFloat(formData.totalAmount),
+        raisedAmount: parseFloat(formData.raisedAmount) || 0,
         financialData: parsedFinancialData,
         targetDate: formData.targetDate ? new Date(formData.targetDate).toISOString() : undefined,
       }
@@ -352,6 +419,9 @@ export default function NewProjectPage() {
       }
 
       const result = await response.json()
+      if (result.mergedLead) {
+        alert(`已自动合并项目线索「${result.mergedLead.name}」的信息，该线索已删除。`)
+      }
       router.push(`/projects/${result.project.id}`)
     } catch (error) {
       console.error('Create project error:', error)
@@ -442,6 +512,54 @@ export default function NewProjectPage() {
           </div>
         )}
 
+        {/* 项目线索重合提示 */}
+        {leadMatch && !duplicateWarning && (
+          <div className="rounded-2xl p-5 border bg-primary-50 border-primary-200">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-primary-100">
+                <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="font-medium text-gray-900">匹配到项目线索</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  项目名称与线索「<span className="font-medium text-primary-700">{leadMatch.name}</span>」高度重合（相似度 {Math.round(leadMatch.similarity * 100)}%）。提交后将自动合并线索信息到本项目，并删除该线索。
+                </p>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                  {leadMatch.industry && (
+                    <div className="bg-white/60 rounded-lg px-3 py-1.5">
+                      <span className="text-gray-400 text-xs">行业：</span>
+                      <span className="text-gray-900">{leadMatch.industry}</span>
+                    </div>
+                  )}
+                  {leadMatch.companyPosition && (
+                    <div className="bg-white/60 rounded-lg px-3 py-1.5">
+                      <span className="text-gray-400 text-xs">定位：</span>
+                      <span className="text-gray-900">{leadMatch.companyPosition}</span>
+                    </div>
+                  )}
+                  {leadMatch.mainProducts && (
+                    <div className="bg-white/60 rounded-lg px-3 py-1.5">
+                      <span className="text-gray-400 text-xs">主要产品：</span>
+                      <span className="text-gray-900 truncate">{leadMatch.mainProducts}</span>
+                    </div>
+                  )}
+                  {leadMatch.financingHistory && (
+                    <div className="bg-white/60 rounded-lg px-3 py-1.5">
+                      <span className="text-gray-400 text-xs">融资经历：</span>
+                      <span className="text-gray-900 truncate">{leadMatch.financingHistory}</span>
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mt-3">
+                  提示：仅合并你未填写的字段，已填写内容不会被覆盖。
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 表单 */}
         <form onSubmit={handleSubmit} className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100 space-y-6">
           {error && (
@@ -524,8 +642,33 @@ export default function NewProjectPage() {
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
+                <label htmlFor="financingRound" className={labelClass}>
+                  融资轮次
+                </label>
+                <select
+                  id="financingRound"
+                  value={formData.financingRound}
+                  onChange={(e) => setFormData(prev => ({ ...prev, financingRound: e.target.value }))}
+                  className={inputClass}
+                >
+                  <option value="">请选择融资轮次</option>
+                  <option value="天使轮">天使轮</option>
+                  <option value="Pre-A轮">Pre-A轮</option>
+                  <option value="A轮">A轮</option>
+                  <option value="A+轮">A+轮</option>
+                  <option value="B轮">B轮</option>
+                  <option value="C轮">C轮</option>
+                  <option value="D轮">D轮</option>
+                  <option value="E轮">E轮</option>
+                  <option value="Pre-IPO">Pre-IPO</option>
+                  <option value="战略融资">战略融资</option>
+                  <option value="其他">其他</option>
+                </select>
+              </div>
+
+              <div>
                 <label htmlFor="totalAmount" className={labelClass}>
-                  目标金额（万元） <span className="text-danger-500">*</span>
+                  融资金额（万元） <span className="text-danger-500">*</span>
                 </label>
                 <input
                   id="totalAmount"
@@ -533,7 +676,21 @@ export default function NewProjectPage() {
                   value={formData.totalAmount}
                   onChange={(e) => setFormData(prev => ({ ...prev, totalAmount: e.target.value }))}
                   className={inputClass}
-                  placeholder="请输入目标金额"
+                  placeholder="本轮融资金额"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="raisedAmount" className={labelClass}>
+                  历史累计融资金额（万元）
+                </label>
+                <input
+                  id="raisedAmount"
+                  type="number"
+                  value={formData.raisedAmount}
+                  onChange={(e) => setFormData(prev => ({ ...prev, raisedAmount: e.target.value }))}
+                  className={inputClass}
+                  placeholder="历史累计融资金额"
                 />
               </div>
 
@@ -606,6 +763,20 @@ export default function NewProjectPage() {
               </div>
 
               <div>
+                <label htmlFor="coreAdvantage" className={labelClass}>
+                  核心优势
+                </label>
+                <textarea
+                  id="coreAdvantage"
+                  value={formData.coreAdvantage}
+                  onChange={(e) => setFormData(prev => ({ ...prev, coreAdvantage: e.target.value }))}
+                  className={`${inputClass} resize-none`}
+                  rows={3}
+                  placeholder="请输入核心优势（技术壁垒、团队背景、资源优势等）"
+                />
+              </div>
+
+              <div>
                 <label htmlFor="financialData" className={labelClass}>
                   财务数据（JSON格式）
                 </label>
@@ -630,6 +801,34 @@ export default function NewProjectPage() {
                   className={`${inputClass} resize-none`}
                   rows={3}
                   placeholder="请输入订单进展"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="coreTeam" className={labelClass}>
+                  核心团队
+                </label>
+                <textarea
+                  id="coreTeam"
+                  value={formData.coreTeam}
+                  onChange={(e) => setFormData(prev => ({ ...prev, coreTeam: e.target.value }))}
+                  className={`${inputClass} resize-none`}
+                  rows={3}
+                  placeholder="请输入核心团队成员介绍（创始人、高管等背景信息）"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="competitors" className={labelClass}>
+                  竞争对手
+                </label>
+                <textarea
+                  id="competitors"
+                  value={formData.competitors}
+                  onChange={(e) => setFormData(prev => ({ ...prev, competitors: e.target.value }))}
+                  className={`${inputClass} resize-none`}
+                  rows={3}
+                  placeholder="请输入主要竞争对手（可一行一个，便于 AI 检索分析）"
                 />
               </div>
 
