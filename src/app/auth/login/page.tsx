@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, Suspense } from 'react'
+import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 
@@ -17,7 +18,7 @@ function LoginContent() {
 
   useEffect(() => {
     if (errorParam === 'CredentialsSignin') {
-      setError('邮箱或密码错误，请重试')
+      setError('账户名或密码错误，请重试')
     }
   }, [errorParam])
 
@@ -27,7 +28,7 @@ function LoginContent() {
     setLoading(true)
 
     if (!email || !password) {
-      setError('请填写邮箱和密码')
+      setError('请填写账户名/邮箱和密码')
       setLoading(false)
       return
     }
@@ -39,7 +40,7 @@ function LoginContent() {
     })
 
     if (result?.error) {
-      setError('邮箱或密码错误')
+      setError('账户名/邮箱或密码错误')
     } else {
       router.push(callbackUrl)
     }
@@ -70,21 +71,21 @@ function LoginContent() {
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                邮箱地址
+                账户名或邮箱
               </label>
               <div className="relative">
                 <svg className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
                 <input
                   id="email"
                   name="email"
-                  type="email"
-                  autoComplete="email"
+                  type="text"
+                  autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth placeholder-gray-400"
-                  placeholder="请输入邮箱地址"
+                  placeholder="请输入账户名或邮箱"
                 />
               </div>
             </div>
@@ -147,9 +148,9 @@ function LoginContent() {
         <div className="text-center mt-6">
           <p className="text-sm text-gray-500">
             还没有账号？{' '}
-            <a href="#" className="font-medium text-primary-600 hover:text-primary-700 transition-colors">
-              联系管理员注册
-            </a>
+            <Link href="/auth/register" className="font-medium text-primary-600 hover:text-primary-700 transition-colors">
+              立即注册
+            </Link>
           </p>
         </div>
       </div>

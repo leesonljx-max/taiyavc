@@ -9,6 +9,7 @@ import { roleLabels, type UserRole } from '@/lib/auth'
 interface User {
   id: string
   email: string
+  username: string | null
   name: string | null
   role: string
   status: string
@@ -206,6 +207,7 @@ export default function AdminUsersPage() {
               <thead>
                 <tr className="bg-primary-50/50 border-b border-primary-100">
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-600 uppercase">用户</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-600 uppercase">账户名</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-600 uppercase">邮箱</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-600 uppercase">角色</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-600 uppercase">状态</th>
@@ -224,6 +226,7 @@ export default function AdminUsersPage() {
                         <span className="font-medium text-gray-900 text-sm">{user.name || '-'}</span>
                       </div>
                     </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{user.username || '-'}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{user.email}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${roleColors[user.role] || 'bg-gray-100 text-gray-700'}`}>
@@ -309,7 +312,7 @@ export default function AdminUsersPage() {
                 ))}
                 {filteredUsers.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-gray-400 text-sm">
+                    <td colSpan={7} className="px-4 py-8 text-center text-gray-400 text-sm">
                       暂无用户
                     </td>
                   </tr>

@@ -43,7 +43,7 @@ export async function POST(
 订单进展：${project.orderProgress || '未填写'}
 融资规划：${project.financingPlan || '未填写'}
 项目描述：${project.description || '未填写'}
-目标金额：¥${project.totalAmount}万元
+目标金额：${project.totalAmount}
 已筹金额：¥${project.raisedAmount}万元
 跟进阶段：${project.followStage}
 

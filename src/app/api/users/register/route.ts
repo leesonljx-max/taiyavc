@@ -1,37 +1,64 @@
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
-import type { UserRole } from '@/lib/auth'
 
-// 自助注册允许的角色（限制为投资经理、投资合伙人、投后专员、临时访客；管理员不可自助注册）
-const selfRegisterRoles: UserRole[] = ['INVESTMENT_MANAGER', 'INVESTMENT_PARTNER', 'POST_INVESTMENT_OFFICER', 'TEMP_VISITOR']
-
+/**
+ * POST /api/users/register
+ * 用户自助注册（提交后由管理员审批）
+ * 必填：姓名、账户名、邮箱、密码、确认密码
+ */
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { email, password, name, role = 'INVESTMENT_MANAGER' } = body
+    const { name, username, email, password, confirmPassword } = body
 
-    if (!email || !password) {
+    // 校验必填字段
+    if (!name || !username || !email || !password) {
       return NextResponse.json(
-        { error: '邮箱和密码是必填项' },
+        { error: '姓名、账户名、邮箱、密码均为必填项' },
         { status: 400 }
       )
     }
 
-    if (!selfRegisterRoles.includes(role as UserRole)) {
+    // 校验确认密码
+    if (password !== confirmPassword) {
       return NextResponse.json(
-        { error: '无效的角色类型' },
+        { error: '两次输入的密码不一致' },
         { status: 400 }
       )
     }
 
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    })
+    // 校验密码长度
+    if (password.length < 6) {
+      return NextResponse.json(
+        { error: '密码长度至少 6 位' },
+        { status: 400 }
+      )
+    }
 
-    if (existingUser) {
+    // 校验邮箱格式
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      return NextResponse.json(
+        { error: '邮箱格式不正确' },
+        { status: 400 }
+      )
+    }
+
+    // 检查邮箱是否已存在
+    const existingEmail = await prisma.user.findUnique({ where: { email } })
+    if (existingEmail) {
       return NextResponse.json(
         { error: '该邮箱已被注册' },
+        { status: 409 }
+      )
+    }
+
+    // 检查账户名是否已存在
+    const existingUsername = await prisma.user.findUnique({ where: { username } })
+    if (existingUsername) {
+      return NextResponse.json(
+        { error: '该账户名已被使用' },
         { status: 409 }
       )
     }
@@ -42,14 +69,16 @@ export async function POST(request: Request) {
     const user = await prisma.user.create({
       data: {
         email,
+        username,
         passwordHash,
         name,
-        role,
+        role: 'TEMP_VISITOR', // 注册时默认临时访客，管理员审批时分配权限
         status: 'PENDING',
       },
       select: {
         id: true,
         email: true,
+        username: true,
         name: true,
         role: true,
         status: true,

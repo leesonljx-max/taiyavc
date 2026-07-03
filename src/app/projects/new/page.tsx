@@ -21,10 +21,10 @@ interface FormData {
   financingPlan: string
   financingRound: string
   followStage: FollowStage
-  status: string
   description: string
   totalAmount: string
   raisedAmount: string
+  investmentValuation: string
   targetDate: string
 }
 
@@ -32,6 +32,11 @@ interface DuplicateWarning {
   id: string
   name: string
   companyFullName: string | null
+  createdById: string
+  createdByName: string
+  createdAt: string
+  protectionExpiresAt: string | null
+  isProtected: boolean // true = 3个月保护期内，需审批；false = 已过期，可直接接手
 }
 
 interface LeadMatch {
@@ -66,10 +71,10 @@ export default function NewProjectPage() {
     financingPlan: '',
     financingRound: '',
     followStage: 'INITIAL_TALK',
-    status: 'PENDING',
     description: '',
     totalAmount: '',
     raisedAmount: '',
+    investmentValuation: '',
     targetDate: '',
   })
   const [weeklyReport, setWeeklyReport] = useState('')
@@ -78,6 +83,10 @@ export default function NewProjectPage() {
   const [duplicateWarning, setDuplicateWarning] = useState<DuplicateWarning | null>(null)
   const [confirmedDuplicate, setConfirmedDuplicate] = useState(false)
   const [leadMatch, setLeadMatch] = useState<LeadMatch | null>(null)
+  // 接手相关状态
+  const [takeoverLoading, setTakeoverLoading] = useState(false)
+  const [takeoverComment, setTakeoverComment] = useState('')
+  const [takeoverResult, setTakeoverResult] = useState<{ success: boolean; message: string } | null>(null)
 
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0]
@@ -89,16 +98,6 @@ export default function NewProjectPage() {
       window.location.href = '/auth/login?callbackUrl=/projects/new'
     }
   }, [status])
-
-  if (status === 'loading' || status === 'unauthenticated') {
-    return (
-      <DashboardLayout title="新建项目">
-        <div className="flex items-center justify-center py-16">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-        </div>
-      </DashboardLayout>
-    )
-  }
 
   const parseWeeklyReport = () => {
     if (!weeklyReport) return
@@ -216,17 +215,18 @@ export default function NewProjectPage() {
     }
 
     // 目标金额（优先从融资计划中提取，避免"订单XXX万"被误匹配）
+    // 保留用户原始单位（万/亿），不做转换
     if (!parsedData.totalAmount) {
       const planSource = parsedData.financingPlan || ''
       if (planSource) {
         const wanMatch = planSource.match(/(\d+(?:\.\d+)?)\s*万/)
         if (wanMatch) {
-          parsedData.totalAmount = wanMatch[1]
+          parsedData.totalAmount = `${wanMatch[1]}万`
         }
         if (!parsedData.totalAmount) {
           const yiMatch = planSource.match(/(\d+(?:\.\d+)?)\s*亿/)
           if (yiMatch) {
-            parsedData.totalAmount = (parseFloat(yiMatch[1]) * 10000).toString()
+            parsedData.totalAmount = `${yiMatch[1]}亿`
           }
         }
       }
@@ -238,14 +238,14 @@ export default function NewProjectPage() {
           const matchIndex = trimmed.indexOf(wanMatch[0])
           const prefix = trimmed.substring(Math.max(0, matchIndex - 4), matchIndex)
           if (!/订单|销售|收入|营收/.test(prefix)) {
-            parsedData.totalAmount = wanMatch[1]
+            parsedData.totalAmount = `${wanMatch[1]}万`
           }
         }
 
         if (!parsedData.totalAmount) {
           const yiMatch = trimmed.match(/(?:融资|融|金额|投资|估值|拟融|计划融|希望融|寻求融)?(\d+(?:\.\d+)?)\s*亿/)
           if (yiMatch) {
-            parsedData.totalAmount = (parseFloat(yiMatch[1]) * 10000).toString()
+            parsedData.totalAmount = `${yiMatch[1]}亿`
           }
         }
       }
@@ -365,6 +365,16 @@ export default function NewProjectPage() {
     }
   }, [formData.name])
 
+  if (status === 'loading' || status === 'unauthenticated') {
+    return (
+      <DashboardLayout title="新建项目">
+        <div className="flex items-center justify-center py-16">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -374,8 +384,9 @@ export default function NewProjectPage() {
       return
     }
 
-    if (duplicateWarning && !confirmedDuplicate) {
-      setError('检测到可能重复的项目，请确认后再提交')
+    // 如果检测到同名项目，禁止创建（必须接手或改名）
+    if (duplicateWarning) {
+      setError('项目名称已存在，不允许重复创建。请修改名称，或点击下方"接手项目"按钮申请接手。')
       return
     }
 
@@ -393,8 +404,9 @@ export default function NewProjectPage() {
 
       const data = {
         ...formData,
-        totalAmount: parseFloat(formData.totalAmount),
+        totalAmount: formData.totalAmount.trim(),
         raisedAmount: parseFloat(formData.raisedAmount) || 0,
+        investmentValuation: formData.investmentValuation ? parseFloat(formData.investmentValuation) : null,
         financialData: parsedFinancialData,
         targetDate: formData.targetDate ? new Date(formData.targetDate).toISOString() : undefined,
       }
@@ -410,7 +422,7 @@ export default function NewProjectPage() {
         if (response.status === 409) {
           setDuplicateWarning(result.existingProject)
           setConfirmedDuplicate(false)
-          setError('检测到重复项目')
+          setError('项目名称已存在，不允许重复创建。请修改名称，或点击下方"接手项目"按钮申请接手。')
         } else {
           setError(result.detail || result.error || '创建项目失败')
         }
@@ -428,6 +440,37 @@ export default function NewProjectPage() {
       setError(error instanceof Error ? error.message : '创建项目失败，请检查网络连接')
       setLoading(false)
     }
+  }
+
+  // 处理接手项目
+  const handleTakeover = async () => {
+    if (!duplicateWarning) return
+    setTakeoverLoading(true)
+    setTakeoverResult(null)
+    try {
+      const response = await fetch(`/api/projects/${duplicateWarning.id}/takeover`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ comment: takeoverComment }),
+      })
+      const result = await response.json()
+      if (!response.ok) {
+        setTakeoverResult({ success: false, message: result.error || '接手失败' })
+      } else {
+        setTakeoverResult({ success: true, message: result.message })
+        // 接手成功后跳转到项目详情页
+        if (result.needApproval === false) {
+          // 保护期外，直接接手成功，跳转到项目详情
+          setTimeout(() => router.push(`/projects/${duplicateWarning.id}`), 1500)
+        }
+      }
+    } catch (error) {
+      setTakeoverResult({
+        success: false,
+        message: error instanceof Error ? error.message : '接手失败，请检查网络连接',
+      })
+    }
+    setTakeoverLoading(false)
   }
 
   return (
@@ -474,31 +517,99 @@ export default function NewProjectPage() {
           </button>
         </div>
 
-        {/* 重复检测提示 */}
+        {/* 重复检测提示 + 接手项目 */}
         {duplicateWarning && (
-          <div className={`rounded-2xl p-5 border ${confirmedDuplicate ? 'bg-success-50 border-success-200' : 'bg-warning-50 border-warning-200'}`}>
+          <div className="rounded-2xl p-5 border bg-warning-50 border-warning-200">
             <div className="flex items-start gap-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${confirmedDuplicate ? 'bg-success-100' : 'bg-warning-100'}`}>
-                <svg className={`w-5 h-5 ${confirmedDuplicate ? 'text-success-600' : 'text-warning-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-warning-100">
+                <svg className="w-5 h-5 text-warning-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
               <div className="flex-1">
-                <h3 className="font-medium text-gray-900">检测到可能重复的项目</h3>
+                <h3 className="font-medium text-gray-900">项目名称已存在，不允许重复创建</h3>
                 <p className="text-sm text-gray-600 mt-1">
                   数据库中已存在名为「{duplicateWarning.name}」的项目
                   {duplicateWarning.companyFullName && `（${duplicateWarning.companyFullName}）`}
                 </p>
+
+                {/* 已有项目信息 */}
+                <div className="mt-3 p-3 bg-white/60 rounded-lg border border-warning-200">
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className="text-gray-500">当前维护人：</span>
+                      <span className="font-medium text-gray-900">{duplicateWarning.createdByName}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">创建时间：</span>
+                      <span className="font-medium text-gray-900">
+                        {new Date(duplicateWarning.createdAt).toLocaleDateString('zh-CN')}
+                      </span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-gray-500">保护期状态：</span>
+                      {duplicateWarning.isProtected ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-warning-100 text-warning-700 text-xs font-medium">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          </svg>
+                          保护期内（需原维护人审批）
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-success-100 text-success-700 text-xs font-medium">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          保护期已过期（可直接接手）
+                        </span>
+                      )}
+                      {duplicateWarning.protectionExpiresAt && (
+                        <span className="text-gray-500 text-xs ml-2">
+                          到期时间：{new Date(duplicateWarning.protectionExpiresAt).toLocaleDateString('zh-CN')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 接手留言输入 */}
+                <div className="mt-3">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    {duplicateWarning.isProtected ? '接手申请留言（可选）' : '接手说明（可选）'}
+                  </label>
+                  <textarea
+                    value={takeoverComment}
+                    onChange={e => setTakeoverComment(e.target.value)}
+                    placeholder={duplicateWarning.isProtected ? '请简要说明您希望接手该项目的原因...' : '请简要说明接手原因...'}
+                    className="w-full px-3 py-2 bg-white/80 border border-warning-200 rounded-lg text-sm focus:ring-2 focus:ring-warning-400 focus:border-warning-400 transition-all-smooth"
+                    rows={2}
+                    disabled={takeoverLoading || !!takeoverResult?.success}
+                  />
+                </div>
+
+                {/* 操作按钮 */}
                 <div className="flex items-center gap-3 mt-3">
                   <button
-                    onClick={() => setConfirmedDuplicate(!confirmedDuplicate)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all-smooth ${
-                      confirmedDuplicate
-                        ? 'bg-success-600 text-white'
-                        : 'bg-warning-600 text-white hover:bg-warning-700'
-                    }`}
+                    onClick={handleTakeover}
+                    disabled={takeoverLoading || !!takeoverResult?.success}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-lg text-sm font-medium hover:from-primary-600 hover:to-primary-700 transition-all-smooth shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    {confirmedDuplicate ? '已确认创建重复项目' : '确认创建重复项目'}
+                    {takeoverLoading ? (
+                      <>
+                        <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        处理中...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                        </svg>
+                        {duplicateWarning.isProtected ? '申请接手项目' : '直接接手项目'}
+                      </>
+                    )}
                   </button>
                   <Link
                     href={`/projects/${duplicateWarning.id}`}
@@ -507,6 +618,35 @@ export default function NewProjectPage() {
                     查看已有项目
                   </Link>
                 </div>
+
+                {/* 接手结果提示 */}
+                {takeoverResult && (
+                  <div className={`mt-3 p-3 rounded-lg text-sm ${
+                    takeoverResult.success
+                      ? 'bg-success-50 text-success-700 border border-success-200'
+                      : 'bg-red-50 text-red-700 border border-red-200'
+                  }`}>
+                    <div className="flex items-start gap-2">
+                      {takeoverResult.success ? (
+                        <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                      )}
+                      <span>{takeoverResult.message}</span>
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-xs text-gray-500 mt-3">
+                  说明：项目名称相同的项目不允许重复创建。您可以选择修改项目名称，或通过"接手项目"功能成为该项目的新维护人。
+                  {duplicateWarning.isProtected
+                    ? '当前项目处于3个月保护期内，接手需经原维护人审批同意。'
+                    : '当前项目已过保护期，可直接接手，无需审批。'}
+                </p>
               </div>
             </div>
           </div>
@@ -668,15 +808,29 @@ export default function NewProjectPage() {
 
               <div>
                 <label htmlFor="totalAmount" className={labelClass}>
-                  融资金额（万元） <span className="text-danger-500">*</span>
+                  融资金额 <span className="text-danger-500">*</span>
                 </label>
                 <input
                   id="totalAmount"
-                  type="number"
+                  type="text"
                   value={formData.totalAmount}
                   onChange={(e) => setFormData(prev => ({ ...prev, totalAmount: e.target.value }))}
                   className={inputClass}
-                  placeholder="本轮融资金额"
+                  placeholder="如 500万 / 2亿"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="investmentValuation" className={labelClass}>
+                  投资估值（亿元）
+                </label>
+                <input
+                  id="investmentValuation"
+                  type="number"
+                  value={formData.investmentValuation}
+                  onChange={(e) => setFormData(prev => ({ ...prev, investmentValuation: e.target.value }))}
+                  className={inputClass}
+                  placeholder="投资估值"
                 />
               </div>
 
@@ -720,23 +874,6 @@ export default function NewProjectPage() {
                   {Object.entries(followStageLabels).map(([value, label]) => (
                     <option key={value} value={value}>{label}</option>
                   ))}
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="status" className={labelClass}>
-                  状态
-                </label>
-                <select
-                  id="status"
-                  value={formData.status}
-                  onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
-                  className={inputClass}
-                >
-                  <option value="PENDING">待审核</option>
-                  <option value="ACTIVE">进行中</option>
-                  <option value="COMPLETED">已完成</option>
-                  <option value="CANCELLED">已取消</option>
                 </select>
               </div>
             </div>
@@ -871,8 +1008,9 @@ export default function NewProjectPage() {
             </Link>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !!duplicateWarning}
               className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl hover:from-primary-600 hover:to-primary-700 transition-all-smooth disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-primary-500/30 text-sm font-medium"
+              title={duplicateWarning ? '项目名称已存在，请修改名称或接手已有项目' : ''}
             >
               {loading ? (
                 <>
@@ -881,6 +1019,13 @@ export default function NewProjectPage() {
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
                   创建中...
+                </>
+              ) : duplicateWarning ? (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                  </svg>
+                  名称已存在，无法创建
                 </>
               ) : (
                 <>

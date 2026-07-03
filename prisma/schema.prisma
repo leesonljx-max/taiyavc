@@ -25,14 +25,22 @@ model Project {
   competitorAnalysisJson String?
   description      String?
   status           String    @default("PENDING")
-  totalAmount      Float
+  totalAmount      String   // 融资金额（用户自填单位，如"500万"、"2亿"）
   raisedAmount     Float     @default(0)
+  investmentValuation Float?  // 投资估值（万元）
   targetDate       DateTime
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   createdById      String
   aiCardJson       String?
   keywords         String?
+  // 维护人保护期到期时间：创建时 = createdAt + 3个月；接手后重置
+  protectionExpiresAt DateTime?
+  // 项目经过的所有阶段（JSON 数组字符串，如 ["INITIAL_TALK","PRE_DD"]）
+  // 用于累计统计：进入某阶段即+1，变更到后续阶段时补齐中间阶段，不回退
+  passedStages String?
+  // 最近一次阶段变更时间（用于本周新增项目：本周变更阶段的项目也显示）
+  stageChangedAt DateTime?
   investments      Investment[]
   investors        Investor[] @relation("InvestorProjects")
   members          ProjectMember[]
@@ -40,7 +48,11 @@ model Project {
   partnerReviews   PartnerReview[]
   followUpNotes    FollowUpNote[]
   stageApprovals   StageApproval[]
+  takeoverRequests TakeoverRequest[]
+  stageChangeRequests StageChangeRequest[]
   createdBy        User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([name])
 }
 
 model Investment {
@@ -69,6 +81,7 @@ model Investor {
 model User {
   id            String          @id @default(cuid())
   email         String          @unique
+  username      String?         @unique  // 账户名（可用于登录）
   passwordHash  String
   name          String?
   role          String          @default("TEMP_VISITOR")
@@ -82,6 +95,14 @@ model User {
   followUpNotes    FollowUpNote[]
   stageApprovals   StageApproval[]
   projectLeads     ProjectLead[]
+  // 接手申请：作为请求者
+  takeoverRequestsInitiated TakeoverRequest[] @relation("TakeoverRequestRequester")
+  // 接手申请：作为当前维护人（被请求者）
+  takeoverRequestsReceived  TakeoverRequest[] @relation("TakeoverRequestOwner")
+  // 阶段变更请求：作为发起者
+  stageChangeRequestsInitiated StageChangeRequest[] @relation("StageChangeRequestRequester")
+  // 阶段变更请求：作为审批者
+  stageChangeRequestsReviewed  StageChangeRequest[] @relation("StageChangeRequestReviewer")
 }
 
 // 项目线索（用于在新建项目时进行重合检测和合并）
@@ -185,4 +206,55 @@ model StageApproval {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, userId])
+}
+
+// 项目接手申请
+// - 3个月保护期内：status=PENDING 等待原维护人审批
+// - 3个月保护期外：status=AUTO_COMPLETED 直接变更维护人
+model TakeoverRequest {
+  id              String   @id @default(cuid())
+  projectId       String
+  requesterId     String   // 发起接手的用户
+  currentOwnerId  String   // 当前维护人
+  status          String   @default("PENDING") // PENDING / APPROVED / REJECTED / AUTO_COMPLETED
+  comment         String?  // 请求者留言
+  reviewerComment String?  // 审批人留言
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  reviewedAt      DateTime? // 审批时间
+
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requester       User     @relation("TakeoverRequestRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  currentOwner    User     @relation("TakeoverRequestOwner", fields: [currentOwnerId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([requesterId])
+  @@index([currentOwnerId])
+  @@index([status])
+}
+
+// 阶段变更请求（需投资合伙人审批）
+// 仅以下两种变更需审批：
+// 1. 从 INITIAL_TALK 或 PRE_DD → PROJECT_INITIATION（立项）
+// 2. 从 DUE_DILIGENCE → CLOSING（交割）
+model StageChangeRequest {
+  id          String   @id @default(cuid())
+  projectId   String
+  requesterId String   // 发起阶段变更的维护人
+  reviewerId  String?  // 审批的投资合伙人
+  fromStage   String   // 变更前阶段
+  toStage     String   // 变更后阶段
+  status      String   @default("PENDING") // PENDING / APPROVED / REJECTED
+  comment     String?  // 发起者留言
+  reviewerComment String? // 审批者留言
+  createdAt   DateTime @default(now())
+  reviewedAt  DateTime?
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requester   User     @relation("StageChangeRequestRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  reviewer    User?    @relation("StageChangeRequestReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([status])
+  @@index([requesterId])
 }

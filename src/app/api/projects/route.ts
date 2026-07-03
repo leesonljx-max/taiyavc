@@ -49,7 +49,7 @@ export async function GET(request: Request) {
 
     const result = filteredProjects.map(p => ({
       ...p,
-      totalAmount: Number(p.totalAmount),
+      totalAmount: p.totalAmount,
       raisedAmount: Number(p.raisedAmount),
       investmentCount: p.investments.length,
       investorCount: p.investors.length,
@@ -108,16 +108,30 @@ export async function POST(request: Request) {
       data.targetDate = new Date().toISOString()
     }
 
-    // totalAmount: 确保是数字
-    if (data.totalAmount !== undefined) {
-      const n = Number(data.totalAmount)
-      if (isNaN(n)) {
+    // totalAmount: 字符串类型（用户自填单位，如"500万"、"2亿"）
+    if (data.totalAmount !== undefined && data.totalAmount !== null) {
+      data.totalAmount = String(data.totalAmount).trim()
+      if (!data.totalAmount) {
         return NextResponse.json(
-          { error: '目标金额格式无效', detail: `totalAmount: ${data.totalAmount}` },
+          { error: '融资金额不能为空' },
           { status: 400 }
         )
       }
-      data.totalAmount = n
+    }
+
+    // investmentValuation: 投资估值（亿元），可选字段，确保是数字或 null
+    if (data.investmentValuation !== undefined && data.investmentValuation !== null && data.investmentValuation !== '') {
+      const v = Number(data.investmentValuation)
+      if (isNaN(v)) {
+        return NextResponse.json(
+          { error: '投资估值格式无效', detail: `investmentValuation: ${data.investmentValuation}` },
+          { status: 400 }
+        )
+      }
+      data.investmentValuation = v
+    } else {
+      // 空字符串或未提供时存 null
+      data.investmentValuation = null
     }
 
     // 移除不应由前端直接设置的字段
@@ -136,17 +150,30 @@ export async function POST(request: Request) {
     if (checkDuplicate) {
       const existingProject = await prisma.project.findFirst({
         where: { name },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+        },
       })
 
       if (existingProject) {
+        // 计算保护期状态：protectionExpiresAt > now = 保护中；否则已过期
+        const now = new Date()
+        const protectionExpiresAt = existingProject.protectionExpiresAt
+        const isProtected = protectionExpiresAt ? protectionExpiresAt > now : false
+
         return NextResponse.json(
-          { 
-            error: '可能存在重复项目', 
-            warning: '数据库中已存在同名项目',
+          {
+            error: '项目名称已存在，不允许重复创建',
+            warning: '数据库中已存在同名项目，您可以申请接手',
             existingProject: {
               id: existingProject.id,
               name: existingProject.name,
               companyFullName: existingProject.companyFullName,
+              createdById: existingProject.createdById,
+              createdByName: existingProject.createdBy?.name || existingProject.createdBy?.email || '未知',
+              createdAt: existingProject.createdAt,
+              protectionExpiresAt: protectionExpiresAt,
+              isProtected, // true = 3个月保护期内，需审批；false = 已过期，可直接接手
             }
           },
           { status: 409 }
@@ -156,19 +183,32 @@ export async function POST(request: Request) {
       return NextResponse.json({ exists: false })
     }
 
+    // 实际创建前再次检查同名（防止并发）
     const existingProject = await prisma.project.findFirst({
       where: { name },
+      include: {
+        createdBy: { select: { id: true, name: true, email: true } },
+      },
     })
 
     if (existingProject) {
+      const now = new Date()
+      const protectionExpiresAt = existingProject.protectionExpiresAt
+      const isProtected = protectionExpiresAt ? protectionExpiresAt > now : false
+
       return NextResponse.json(
         {
-          error: '可能存在重复项目',
-          warning: '数据库中已存在同名项目',
+          error: '项目名称已存在，不允许重复创建',
+          warning: '数据库中已存在同名项目，您可以申请接手',
           existingProject: {
             id: existingProject.id,
             name: existingProject.name,
             companyFullName: existingProject.companyFullName,
+            createdById: existingProject.createdById,
+            createdByName: existingProject.createdBy?.name || existingProject.createdBy?.email || '未知',
+            createdAt: existingProject.createdAt,
+            protectionExpiresAt: protectionExpiresAt,
+            isProtected,
           }
         },
         { status: 409 }
@@ -216,10 +256,22 @@ export async function POST(request: Request) {
       mergedLead = { id: best.id, name: best.name }
     }
 
+    // 设置保护期：创建时间 + 3个月（90天）
+    const THREE_MONTHS_MS = 90 * 24 * 60 * 60 * 1000
+    const protectionExpiresAt = new Date(Date.now() + THREE_MONTHS_MS)
+
+    // 设置 passedStages：新建项目默认经过 INITIAL_TALK
+    // 如果用户指定了其他阶段，补齐中间阶段
+    const initialStage = (data.followStage as string) || 'INITIAL_TALK'
+    const { computePassedStages } = await import('@/lib/stage-utils')
+    const passedStages = computePassedStages([], initialStage as any)
+
     const project = await prisma.project.create({
       data: {
         name,
         createdById: session.user.id,
+        protectionExpiresAt,
+        passedStages: JSON.stringify(passedStages),
         ...data,
       },
     })
@@ -235,7 +287,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
-        project: { ...project, totalAmount: Number(project.totalAmount), raisedAmount: Number(project.raisedAmount) },
+        project: { ...project, totalAmount: project.totalAmount, raisedAmount: Number(project.raisedAmount) },
         mergedLead,
       },
       { status: 201 }

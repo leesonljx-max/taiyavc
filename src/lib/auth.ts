@@ -19,7 +19,7 @@ export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       credentials: {
-        email: { label: 'Email', type: 'email' },
+        email: { label: '账户名或邮箱', type: 'text' },
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
@@ -27,9 +27,20 @@ export const authOptions: NextAuthOptions = {
           return null
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
-        })
+        const loginInput = credentials.email.trim()
+
+        // 支持以账户名（username）或邮箱（email）登录
+        // 如果输入包含 @，按邮箱查询；否则按账户名查询
+        let user
+        if (loginInput.includes('@')) {
+          user = await prisma.user.findUnique({
+            where: { email: loginInput },
+          })
+        } else {
+          user = await prisma.user.findUnique({
+            where: { username: loginInput },
+          })
+        }
 
         if (!user) {
           return null

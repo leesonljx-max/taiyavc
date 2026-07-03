@@ -23,6 +23,7 @@ interface Project {
   investmentCount: number
   createdAt: string
   createdBy: { id: string; name: string | null } | null
+  passedStages?: string | null // JSON 字符串，如 ["INITIAL_TALK","PRE_DD"]
 }
 
 interface ProjectLead {
@@ -174,8 +175,8 @@ export default function ProjectListPage() {
   const fetchLeads = async () => {
     setLeadsLoading(true)
     try {
-      const leadScope = userRole === 'INVESTMENT_MANAGER' ? 'mine' : 'all'
-      const response = await fetch(`/api/project-leads?scope=${leadScope}`)
+      // 项目线索向所有账户开放，和项目库一样
+      const response = await fetch(`/api/project-leads?scope=all`)
       const data = await response.json()
       setLeads(data.leads || [])
     } catch (error) {
@@ -266,20 +267,33 @@ export default function ProjectListPage() {
     new Set(projects.map(p => p.industry).filter((i): i is string => !!i))
   ).sort()
 
+  // 解析项目的 passedStages（累计统计：经过的所有阶段）
+  const getPassedStages = (p: Project): FollowStage[] => {
+    if (!p.passedStages) return ['INITIAL_TALK']
+    try {
+      const arr = JSON.parse(p.passedStages)
+      return Array.isArray(arr) && arr.length > 0 ? arr : ['INITIAL_TALK']
+    } catch {
+      return ['INITIAL_TALK']
+    }
+  }
+
   const filteredProjects = projects.filter(project => {
     const matchesSearch = searchTerm === '' ||
       project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       project.companyFullName?.toLowerCase().includes(searchTerm.toLowerCase())
 
-    const matchesStage = selectedStage === 'all' || project.followStage === selectedStage
+    // 按经过的阶段过滤（累计统计：点击某阶段显示所有经过该阶段的项目）
+    const matchesStage = selectedStage === 'all' || getPassedStages(project).includes(selectedStage)
 
     const matchesIndustry = selectedIndustry === 'all' || project.industry === selectedIndustry
 
     return matchesSearch && matchesStage && matchesIndustry
   })
 
+  // 累计统计：经过某阶段的项目数量（而非当前处于某阶段）
   const stageCount = (stage: FollowStage) =>
-    projects.filter(p => p.followStage === stage).length
+    projects.filter(p => getPassedStages(p).includes(stage)).length
 
   // 过滤项目线索
   const filteredLeads = leads.filter(lead => {
@@ -602,7 +616,7 @@ export default function ProjectListPage() {
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-gray-400 text-xs flex-shrink-0">融资金额</span>
                           <span className="text-primary-700 font-medium text-right">
-                            {project.totalAmount > 0 ? `¥${project.totalAmount.toLocaleString()}万` : '-'}
+                            {project.totalAmount ? project.totalAmount : '-'}
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-2">

@@ -74,6 +74,7 @@ interface Project {
   status: string
   totalAmount: number
   raisedAmount: number
+  investmentValuation: number | null
   targetDate: string
   partnerReviews: PartnerReview[]
   followUpNotes: FollowUpNote[]
@@ -83,6 +84,10 @@ interface Project {
   aiCardJson: string | null
   canEdit: boolean
   canDelete: boolean
+  // 维护人与保护期
+  createdBy: { id: string; name: string | null; email: string | null } | null
+  createdById: string
+  protectionExpiresAt: string | null
 }
 
 export default function ProjectDetailPage() {
@@ -514,7 +519,11 @@ export default function ProjectDetailPage() {
               </div>
               <div className="bg-white/70 rounded-xl p-4 border border-primary-50">
                 <div className="text-xs text-gray-500 mb-1">融资金额</div>
-                <div className="text-sm font-medium text-primary-700">¥{project.totalAmount.toLocaleString()}万</div>
+                <div className="text-sm font-medium text-primary-700">{project.totalAmount}</div>
+              </div>
+              <div className="bg-white/70 rounded-xl p-4 border border-primary-50">
+                <div className="text-xs text-gray-500 mb-1">投资估值</div>
+                <div className="text-sm font-medium text-primary-700">{project.investmentValuation ? `¥${project.investmentValuation.toLocaleString()}亿` : '-'}</div>
               </div>
               <div className="bg-white/70 rounded-xl p-4 border border-primary-50">
                 <div className="text-xs text-gray-500 mb-1">历史累计融资</div>
@@ -938,6 +947,38 @@ export default function ProjectDetailPage() {
                   <p className="text-gray-400 text-xs">系统将根据竞争对手和主要产品信息检索市场竞品</p>
                 </div>
               )
+            )}
+          </div>
+
+          {/* 维护人 */}
+          <div className="bg-gradient-card rounded-2xl p-5 border border-primary-100">
+            <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              当前维护人
+            </div>
+            <div className="text-gray-900 text-sm font-medium">
+              {project.createdBy?.name || project.createdBy?.email || '未知用户'}
+            </div>
+            {project.protectionExpiresAt && (
+              <div className="mt-2 text-xs">
+                {new Date(project.protectionExpiresAt) > new Date() ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-warning-50 text-warning-700 border border-warning-200">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    保护期内 · 至 {new Date(project.protectionExpiresAt).toLocaleDateString('zh-CN')}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-success-50 text-success-700 border border-success-200">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    保护期已过期 · {new Date(project.protectionExpiresAt).toLocaleDateString('zh-CN')}
+                  </span>
+                )}
+              </div>
             )}
           </div>
 

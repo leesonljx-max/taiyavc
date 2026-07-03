@@ -2,8 +2,12 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
+import packageJson from '../../package.json'
+
+const APP_VERSION = `v${packageJson.version}`
 
 const navItems = [
   { href: '/', label: '首页', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
@@ -45,11 +49,24 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
         <div className="flex flex-col h-full">
           {/* Logo */}
           <div className="flex items-center gap-3 px-6 py-5 border-b border-primary-100">
-            <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center shadow-lg shadow-primary-500/30">
-              <span className="text-white font-bold text-xl">泰</span>
+            <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-lg shadow-primary-500/30 bg-gradient-to-br from-primary-500 to-primary-700">
+              {/* 将 logo 图片命名为 logo.png 放到 public 目录即可替换 */}
+              <Image
+                src="/logo.png"
+                alt="泰亚投资 logo"
+                width={40}
+                height={40}
+                className="w-full h-full object-cover"
+                priority
+              />
             </div>
             <div>
-              <div className="text-lg font-bold text-gray-900">泰亚投资</div>
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-bold text-gray-900">泰亚投资</span>
+                <span className="text-[10px] font-medium text-primary-600 bg-primary-50 px-1.5 py-0.5 rounded-md border border-primary-100">
+                  {APP_VERSION}
+                </span>
+              </div>
               <div className="text-xs text-gray-500">投资管理平台</div>
             </div>
           </div>

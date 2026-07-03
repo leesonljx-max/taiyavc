@@ -24,6 +24,7 @@ interface FormData {
   description: string
   totalAmount: string
   raisedAmount: string
+  investmentValuation: string
   targetDate: string
 }
 
@@ -46,6 +47,7 @@ interface Project {
   description: string | null
   totalAmount: number
   raisedAmount: number
+  investmentValuation: number | null
   targetDate: string
   canEdit: boolean
 }
@@ -74,6 +76,7 @@ export default function EditProjectPage() {
     description: '',
     totalAmount: '',
     raisedAmount: '',
+    investmentValuation: '',
     targetDate: '',
   })
   const [project, setProject] = useState<Project | null>(null)
@@ -113,8 +116,9 @@ export default function EditProjectPage() {
           followStage: projectData.followStage,
           status: projectData.status,
           description: projectData.description || '',
-          totalAmount: projectData.totalAmount.toString(),
+          totalAmount: projectData.totalAmount || '',
           raisedAmount: projectData.raisedAmount.toString(),
+          investmentValuation: projectData.investmentValuation ? projectData.investmentValuation.toString() : '',
           targetDate: new Date(projectData.targetDate).toISOString().split('T')[0],
         })
       }
@@ -147,8 +151,9 @@ export default function EditProjectPage() {
 
       const data = {
         ...formData,
-        totalAmount: parseFloat(formData.totalAmount),
+        totalAmount: formData.totalAmount.trim(),
         raisedAmount: parseFloat(formData.raisedAmount) || 0,
+        investmentValuation: formData.investmentValuation ? parseFloat(formData.investmentValuation) : null,
         financialData: parsedFinancialData,
         targetDate: formData.targetDate ? new Date(formData.targetDate).toISOString() : undefined,
       }
@@ -327,15 +332,29 @@ export default function EditProjectPage() {
 
               <div>
                 <label htmlFor="totalAmount" className={labelClass}>
-                  融资金额（万元） <span className="text-danger-500">*</span>
+                  融资金额 <span className="text-danger-500">*</span>
                 </label>
                 <input
                   id="totalAmount"
-                  type="number"
+                  type="text"
                   value={formData.totalAmount}
                   onChange={(e) => setFormData(prev => ({ ...prev, totalAmount: e.target.value }))}
                   className={inputClass}
-                  placeholder="本轮融资金额"
+                  placeholder="如 500万 / 2亿"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="investmentValuation" className={labelClass}>
+                  投资估值（亿元）
+                </label>
+                <input
+                  id="investmentValuation"
+                  type="number"
+                  value={formData.investmentValuation}
+                  onChange={(e) => setFormData(prev => ({ ...prev, investmentValuation: e.target.value }))}
+                  className={inputClass}
+                  placeholder="投资估值"
                 />
               </div>
 

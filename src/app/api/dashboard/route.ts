@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import prisma from '@/lib/prisma'
 import { authOptions, type UserRole } from '@/lib/auth'
 import { canViewProject, type PermissionUser } from '@/lib/permissions'
+import { parsePassedStages } from '@/lib/stage-utils'
 
 /**
  * 计算本周起始时间（每周一中午12:00）
@@ -88,16 +89,23 @@ export async function GET(request: Request) {
     // 统计数据（基于年份筛选后的项目）
     const totalProjects = yearFilteredProjects.length
 
-    const weeklyNewProjects = yearFilteredProjects.filter(
-      p => new Date(p.createdAt) >= weekStart
+    // 本周新增项目：本周新建（createdAt >= weekStart）或本周变更阶段（stageChangedAt >= weekStart）
+    // 注意：不限于当年，之前创建的项目如果本周变更了阶段也会显示
+    const weeklyNewProjects = visibleProjects.filter(
+      p => {
+        const createdAt = new Date(p.createdAt)
+        const stageChangedAt = p.stageChangedAt ? new Date(p.stageChangedAt) : null
+        return createdAt >= weekStart || (stageChangedAt !== null && stageChangedAt >= weekStart)
+      }
     )
 
+    // 累计统计：基于 passedStages（经过某阶段即计入）
     const initiatedProjects = yearFilteredProjects.filter(p =>
-      ['PROJECT_INITIATION', 'DUE_DILIGENCE', 'CLOSING', 'POST_INVESTMENT'].includes(p.followStage)
+      parsePassedStages(p.passedStages).includes('PROJECT_INITIATION')
     )
 
     const investedProjects = yearFilteredProjects.filter(p =>
-      ['CLOSING', 'POST_INVESTMENT'].includes(p.followStage)
+      parsePassedStages(p.passedStages).includes('CLOSING')
     )
 
     // 本周新增项目（带AI画板数据）
@@ -122,7 +130,9 @@ export async function GET(request: Request) {
       }
     })
 
-    // 按维护人分组统计（基于年份筛选后的项目）
+    // 按维护人分组统计
+    // stageCounts 基于年份筛选后的所有项目（累计统计）
+    // projects 仅包含本周新增项目（本周新建或本周变更阶段）
     const maintainerMap = new Map<string, {
       userId: string
       userName: string
@@ -133,50 +143,67 @@ export async function GET(request: Request) {
         companyPosition: string | null
         industry: string | null
         financingRound: string | null
-        totalAmount: number
+        totalAmount: string
         followStage: string
       }>
     }>()
 
+    // 初始化所有维护人（从年份筛选项目 + 本周新增项目中收集）
+    const allUserIds = new Set<string>()
+    yearFilteredProjects.forEach(p => allUserIds.add(p.createdById))
+    weeklyNewProjects.forEach(p => allUserIds.add(p.createdById))
+
+    for (const userId of allUserIds) {
+      // 从年份筛选项目中找该用户的项目获取用户名
+      const sampleProject = yearFilteredProjects.find(p => p.createdById === userId)
+        || weeklyNewProjects.find(p => p.createdById === userId)
+      const userName = sampleProject?.createdBy?.name || '未分配'
+
+      maintainerMap.set(userId, {
+        userId,
+        userName,
+        stageCounts: {
+          INITIAL_TALK: 0,
+          PRE_DD: 0,
+          PROJECT_INITIATION: 0,
+          DUE_DILIGENCE: 0,
+          CLOSING: 0,
+        },
+        projects: [],
+      })
+    }
+
+    // 累计统计：基于 passedStages（经过某阶段即+1，不因变更到后续阶段而-1）
     for (const p of yearFilteredProjects) {
-      const userId = p.createdById
-      const userName = p.createdBy?.name || '未分配'
+      const entry = maintainerMap.get(p.createdById)
+      if (!entry) continue
 
-      if (!maintainerMap.has(userId)) {
-        maintainerMap.set(userId, {
-          userId,
-          userName,
-          stageCounts: {
-            INITIAL_TALK: 0,
-            PRE_DD: 0,
-            PROJECT_INITIATION: 0,
-            DUE_DILIGENCE: 0,
-            CLOSING: 0,
-          },
-          projects: [],
-        })
+      const passedStages = parsePassedStages(p.passedStages)
+      for (const stage of MAINTAINER_STAGES) {
+        if (passedStages.includes(stage as any)) {
+          entry.stageCounts[stage]++
+        }
       }
+    }
 
-      const entry = maintainerMap.get(userId)!
+    // 项目卡片：仅本周新增项目（本周新建或本周变更阶段）
+    for (const p of weeklyNewProjects) {
+      const entry = maintainerMap.get(p.createdById)
+      if (!entry) continue
 
-      // 阶段计数（仅统计用户指定的 5 个阶段）
-      if (p.followStage in entry.stageCounts) {
-        entry.stageCounts[p.followStage]++
-      }
-
-      // 项目简要信息
       entry.projects.push({
         id: p.id,
         name: p.name,
         companyPosition: p.companyPosition,
         industry: p.industry,
         financingRound: p.financingRound,
-        totalAmount: Number(p.totalAmount),
+        totalAmount: p.totalAmount,
         followStage: p.followStage,
       })
     }
 
-    const maintainerStats = Array.from(maintainerMap.values())
+    // 仅保留有本周新增项目的维护人
+    const maintainerStats = Array.from(maintainerMap.values()).filter(m => m.projects.length > 0)
 
     return NextResponse.json({
       stats: {

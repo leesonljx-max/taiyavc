@@ -29,7 +29,7 @@ interface MaintainerProject {
   companyPosition: string | null
   industry: string | null
   financingRound: string | null
-  totalAmount: number
+  totalAmount: string
   followStage: string
 }
 
@@ -180,13 +180,13 @@ export default function HomePage() {
             )}
           </div>
           <Link
-            href="/projects/new"
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl text-sm font-medium hover:from-primary-600 hover:to-primary-700 transition-all-smooth shadow-md shadow-primary-500/30"
+            href="/projects"
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-primary-200 text-primary-700 rounded-xl text-sm font-medium hover:bg-primary-50 transition-all-smooth"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
             </svg>
-            新建项目
+            查看项目库
           </Link>
         </div>
 
@@ -242,52 +242,98 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  {/* 右侧：项目简要信息小卡片 */}
+                  {/* 右侧：项目简要信息小卡片（按阶段分两组展示） */}
                   <div className="flex-1 p-5">
                     {m.projects.length === 0 ? (
                       <div className="text-center py-8 text-sm text-gray-400">暂无项目</div>
                     ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                        {m.projects.map(project => (
-                          <Link
-                            key={project.id}
-                            href={`/projects/${project.id}`}
-                            className="block bg-white rounded-xl p-3 border border-primary-50 hover:border-primary-200 hover:shadow-md transition-all-smooth"
-                          >
-                            <div className="flex items-center justify-between mb-2">
-                              <h4 className="font-semibold text-gray-900 text-sm truncate hover:text-primary-700 transition-colors">
-                                {project.name}
-                              </h4>
-                              <span className={`px-1.5 py-0.5 rounded text-xs font-medium whitespace-nowrap flex-shrink-0 ml-2 ${followStageColors[project.followStage as FollowStage] || 'bg-gray-100 text-gray-700'}`}>
-                                {followStageLabels[project.followStage as FollowStage] || project.followStage}
-                              </span>
-                            </div>
-                            <div className="space-y-1 text-xs text-gray-500">
-                              {project.companyPosition && (
-                                <div className="truncate">
-                                  <span className="text-gray-400">定位：</span>
-                                  {project.companyPosition}
+                      <div className="space-y-4">
+                        {(() => {
+                          // 按阶段分组：上面 初聊/PreDD，下面 立项/尽调/交割（投后不计入）
+                          const earlyStages = ['INITIAL_TALK', 'PRE_DD']
+                          const lateStages = ['PROJECT_INITIATION', 'DUE_DILIGENCE', 'CLOSING']
+                          const earlyProjects = m.projects.filter(p => earlyStages.includes(p.followStage))
+                          const lateProjects = m.projects.filter(p => lateStages.includes(p.followStage))
+
+                          const renderProjectCard = (project: MaintainerProject) => (
+                            <Link
+                              key={project.id}
+                              href={`/projects/${project.id}`}
+                              className="block bg-white rounded-xl p-3 border border-primary-50 hover:border-primary-200 hover:shadow-md transition-all-smooth"
+                            >
+                              <div className="flex items-center gap-2 mb-2">
+                                <h4 className="font-semibold text-gray-900 text-sm truncate hover:text-primary-700 transition-colors">
+                                  {project.name}
+                                </h4>
+                                <span className={`px-1.5 py-0.5 rounded text-xs font-medium whitespace-nowrap flex-shrink-0 ${followStageColors[project.followStage as FollowStage] || 'bg-gray-100 text-gray-700'}`}>
+                                  {followStageLabels[project.followStage as FollowStage] || project.followStage}
+                                </span>
+                              </div>
+                              <div className="space-y-1 text-xs text-gray-500">
+                                {project.companyPosition && (
+                                  <div className="truncate">
+                                    <span className="text-gray-400">定位：</span>
+                                    {project.companyPosition}
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {project.industry && (
+                                    <span className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600">
+                                      {project.industry}
+                                    </span>
+                                  )}
+                                  {project.financingRound && (
+                                    <span className="text-gray-600">{project.financingRound}</span>
+                                  )}
                                 </div>
+                                <div className="flex items-center gap-1 text-primary-700 font-medium">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  {project.totalAmount ? project.totalAmount : '未填写'}
+                                </div>
+                              </div>
+                            </Link>
+                          )
+
+                          const renderGroup = (title: string, subtitle: string, containerClass: string, titleClass: string, projects: MaintainerProject[]) => {
+                            if (projects.length === 0) return null
+                            return (
+                              <div className={`rounded-xl border p-4 ${containerClass}`}>
+                                <div className="flex items-center gap-2 mb-3">
+                                  <span className={`text-xs font-semibold ${titleClass}`}>{title}</span>
+                                  <span className="text-xs text-gray-400">{subtitle} · {projects.length} 个</span>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                                  {projects.map(renderProjectCard)}
+                                </div>
+                              </div>
+                            )
+                          }
+
+                          return (
+                            <>
+                              {renderGroup(
+                                '初聊 · PreDD',
+                                '早期跟进',
+                                'bg-gray-50/50 border-gray-200',
+                                'text-gray-600',
+                                earlyProjects
                               )}
-                              <div className="flex items-center gap-2 flex-wrap">
-                                {project.industry && (
-                                  <span className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600">
-                                    {project.industry}
-                                  </span>
-                                )}
-                                {project.financingRound && (
-                                  <span className="text-gray-600">{project.financingRound}</span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-1 text-primary-700 font-medium">
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                {project.totalAmount > 0 ? `${project.totalAmount}万` : '未填写'}
-                              </div>
-                            </div>
-                          </Link>
-                        ))}
+                              {renderGroup(
+                                '立项 · 尽调 · 交割',
+                                '深度推进',
+                                'bg-purple-50/30 border-purple-200',
+                                'text-purple-700',
+                                lateProjects
+                              )}
+                              {/* 两组都为空时的兜底（理论上不会触发，因为 m.projects.length > 0） */}
+                              {earlyProjects.length === 0 && lateProjects.length === 0 && (
+                                <div className="text-center py-8 text-sm text-gray-400">暂无项目</div>
+                              )}
+                            </>
+                          )
+                        })()}
                       </div>
                     )}
                   </div>

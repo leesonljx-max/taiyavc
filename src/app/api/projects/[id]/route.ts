@@ -59,8 +59,9 @@ export async function GET(
 
     const result = {
       ...project,
-      totalAmount: Number(project.totalAmount),
+      totalAmount: project.totalAmount,
       raisedAmount: Number(project.raisedAmount),
+      investmentValuation: project.investmentValuation ? Number(project.investmentValuation) : null,
       investments: project.investments.map(i => ({
         ...i,
         amount: Number(i.amount),
@@ -137,33 +138,83 @@ export async function PUT(
     const body = await request.json()
     const { financialData, targetDate, ...data } = body
 
-    // 立项阶段审批检查：从其他阶段切换到 PROJECT_INITIATION 时，需要多数合伙人通过
-    if (data.followStage === 'PROJECT_INITIATION' && project.followStage !== 'PROJECT_INITIATION') {
-      const totalPartners = await prisma.user.count({
-        where: { role: 'INVESTMENT_PARTNER', status: 'ACTIVE' },
-      })
-      const approvals = await prisma.stageApproval.findMany({
-        where: { projectId: params.id },
-      })
-      const approvedCount = approvals.filter(a => a.status === 'APPROVED').length
-      const rejectedCount = approvals.filter(a => a.status === 'REJECTED').length
-      const majorityThreshold = Math.floor(totalPartners / 2) + 1
+    // 判断是否需要审批的阶段变更
+    // 1. 从 INITIAL_TALK 或 PRE_DD → PROJECT_INITIATION（立项）
+    // 2. 从 DUE_DILIGENCE → CLOSING（交割）
+    const requiresApproval = data.followStage && data.followStage !== project.followStage && (
+      (data.followStage === 'PROJECT_INITIATION' && (project.followStage === 'INITIAL_TALK' || project.followStage === 'PRE_DD')) ||
+      (data.followStage === 'CLOSING' && project.followStage === 'DUE_DILIGENCE')
+    )
 
-      if (rejectedCount > 0) {
+    if (requiresApproval) {
+      // 不直接变更阶段，而是创建阶段变更请求
+      // 检查是否已有 PENDING 的请求
+      const existingRequest = await prisma.stageChangeRequest.findFirst({
+        where: { projectId: params.id, status: 'PENDING' },
+      })
+      if (existingRequest) {
         return NextResponse.json(
-          { error: '存在合伙人拒绝立项，无法进入立项阶段', detail: `已拒绝: ${rejectedCount}` },
+          { error: '该项目的阶段变更请求正在审批中，请等待审批完成', detail: `已有 PENDING 请求: ${existingRequest.id}` },
           { status: 400 }
         )
       }
-      if (approvedCount < majorityThreshold) {
-        return NextResponse.json(
-          {
-            error: '尚未达到立项所需的合伙人多数通过',
-            detail: `需要 ${majorityThreshold} 票通过（共 ${totalPartners} 位合伙人），当前已通过 ${approvedCount} 票`,
-          },
-          { status: 400 }
-        )
+
+      // 创建阶段变更请求（先保存其他字段，但不变更 followStage）
+      const { followStage: _ignoredStage, ...dataWithoutStage } = data
+
+      // 更新非阶段字段（如投资估值、公司定位等）
+      if (financialData && typeof financialData === 'object') {
+        dataWithoutStage.financialData = JSON.stringify(financialData)
+      } else if (financialData !== undefined && financialData !== null) {
+        dataWithoutStage.financialData = financialData
       }
+      if (targetDate) {
+        const d = new Date(targetDate)
+        if (!isNaN(d.getTime())) dataWithoutStage.targetDate = d.toISOString()
+      }
+      delete dataWithoutStage.id
+      delete dataWithoutStage.createdAt
+      delete dataWithoutStage.updatedAt
+      delete dataWithoutStage.createdById
+
+      if (Object.keys(dataWithoutStage).length > 0) {
+        await prisma.project.update({
+          where: { id: params.id },
+          data: dataWithoutStage,
+        })
+      }
+
+      // 创建阶段变更请求
+      const stageRequest = await prisma.stageChangeRequest.create({
+        data: {
+          projectId: params.id,
+          requesterId: session.user.id,
+          fromStage: project.followStage,
+          toStage: data.followStage,
+          status: 'PENDING',
+          comment: body.comment || null,
+        },
+      })
+
+      return NextResponse.json({
+        project: { id: params.id },
+        stageChangeRequest: {
+          id: stageRequest.id,
+          fromStage: stageRequest.fromStage,
+          toStage: stageRequest.toStage,
+          status: stageRequest.status,
+        },
+        message: '阶段变更请求已提交，等待投资合伙人审批',
+      })
+    }
+
+    // 普通阶段变更（无需审批）：更新 passedStages 和 stageChangedAt
+    if (data.followStage && data.followStage !== project.followStage) {
+      const { parsePassedStages, computePassedStages } = await import('@/lib/stage-utils')
+      const currentPassed = parsePassedStages(project.passedStages)
+      const newPassed = computePassedStages(currentPassed, data.followStage as any)
+      data.passedStages = JSON.stringify(newPassed)
+      data.stageChangedAt = new Date()
     }
 
     // financialData: 前端可能发送对象或字符串，统一转为字符串存储
@@ -199,7 +250,7 @@ export async function PUT(
     })
 
     return NextResponse.json(
-      { project: { ...updatedProject, totalAmount: Number(updatedProject.totalAmount), raisedAmount: Number(updatedProject.raisedAmount) } }
+      { project: { ...updatedProject, totalAmount: updatedProject.totalAmount, raisedAmount: Number(updatedProject.raisedAmount) } }
     )
   } catch (error) {
     console.error('Update project error:', error)
