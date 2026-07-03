@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id               String    @id @default(cuid())
+  name             String
+  companyFullName  String?
+  industry         String?
+  companyPosition  String?
+  mainProducts     String?
+  financialData    String?
+  orderProgress    String?
+  financingPlan    String?
+  followStage      String    @default("INITIAL_TALK")
+  description      String?
+  status           String    @default("PENDING")
+  totalAmount      Decimal
+  raisedAmount     Decimal   @default(0)
+  targetDate       DateTime
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  createdById      String
+  aiCardJson       String?
+  keywords         String?
+  investments      Investment[]
+  investors        Investor[] @relation("InvestorProjects")
+  members          ProjectMember[]
+  news             ProjectNews[]
+  createdBy        User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+}
+
+model Investment {
+  id          String    @id @default(cuid())
+  amount      Decimal
+  date        DateTime @default(now())
+  investorId  String
+  projectId   String
+  investor    Investor  @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+}
+
+model Investor {
+  id          String      @id @default(cuid())
+  name        String
+  email       String      @unique
+  phone       String?
+  avatar      String?
+  investments Investment[]
+  projects    Project[]   @relation("InvestorProjects")
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model User {
+  id            String          @id @default(cuid())
+  email         String          @unique
+  passwordHash  String
+  name          String?
+  role          String          @default("TEMP_VISITOR")
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  sessions      Session[]
+  projects      Project[]
+  projectMembers ProjectMember[]
+}
+
+model ProjectMember {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, projectId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ProjectNews {
+  id             String   @id @default(cuid())
+  projectId      String
+  title          String
+  source         String?
+  url            String
+  summary        String?
+  analysisType   String   @default("UNKNOWN")
+  analysisDetail String?
+  publishedAt    DateTime
+  createdAt      DateTime @default(now())
+
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, url])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@id([identifier, token])
+}
