@@ -3,22 +3,7 @@ import { getServerSession } from 'next-auth'
 import prisma from '@/lib/prisma'
 import { authOptions, type UserRole } from '@/lib/auth'
 import { canViewProject, type PermissionUser } from '@/lib/permissions'
-
-/**
- * 计算本周起始时间（每周一中午12:00）
- */
-function getWeekStart(): Date {
-  const now = new Date()
-  const dayOfWeek = now.getDay()
-  const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
-  const monday = new Date(now)
-  monday.setDate(now.getDate() - daysSinceMonday)
-  monday.setHours(12, 0, 0, 0)
-  if (dayOfWeek === 1 && now.getHours() < 12) {
-    monday.setDate(monday.getDate() - 7)
-  }
-  return monday
-}
+import { getWeekStart } from '@/lib/datetime'
 
 /**
  * POST /api/news/search
@@ -143,34 +128,43 @@ export async function POST(request: Request) {
   ]
 }`
 
-    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${deepseekApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages: [
-          {
-            role: 'system',
-            content: '你是一个专业的投资行业新闻编辑，擅长检索和整理各行业赛道的融资新闻。请基于公开信息作答，重点关注指定来源的公众号文章。',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        temperature: 0.4,
-        max_tokens: 4000,
-      }),
-    })
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 30000)
+
+    let response: Response
+    try {
+      response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${deepseekApiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个专业的投资行业新闻编辑，擅长检索和整理各行业赛道的融资新闻。请基于公开信息作答，重点关注指定来源的公众号文章。',
+            },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          temperature: 0.4,
+          max_tokens: 4000,
+        }),
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timeoutId)
+    }
 
     if (!response.ok) {
       const errorText = await response.text()
       console.error('DeepSeek API error:', errorText)
       return NextResponse.json(
-        { error: 'DeepSeek API 调用失败', detail: errorText },
+        { error: 'DeepSeek API 调用失败' },
         { status: 502 }
       )
     }
@@ -200,42 +194,53 @@ export async function POST(request: Request) {
       console.error('Failed to parse DeepSeek response:', content)
     }
 
-    // 存入数据库
-    const createdArticles = []
+    // 存入数据库（批量插入提升性能）
+    const articlesToCreate = []
     for (const article of articles) {
-      try {
-        const publishedDate = new Date(article.publishedAt)
-        if (isNaN(publishedDate.getTime())) continue
+      const publishedDate = new Date(article.publishedAt)
+      if (isNaN(publishedDate.getTime())) continue
+      articlesToCreate.push({
+        title: article.title,
+        source: article.source,
+        sourceUrl: article.sourceUrl || null,
+        industry: article.industry,
+        summary: article.summary,
+        content: article.content,
+        author: article.author || null,
+        publishedAt: publishedDate,
+        weekStart: weekStart,
+      })
+    }
 
-        const created = await prisma.newsArticle.create({
-          data: {
-            title: article.title,
-            source: article.source,
-            sourceUrl: article.sourceUrl || null,
-            industry: article.industry,
-            summary: article.summary,
-            content: article.content,
-            author: article.author || null,
-            publishedAt: publishedDate,
-            weekStart: weekStart,
-          },
+    let createdCount = 0
+    if (articlesToCreate.length > 0) {
+      try {
+        const result = await prisma.newsArticle.createMany({
+          data: articlesToCreate,
+          skipDuplicates: true,
         })
-        createdArticles.push(created)
+        createdCount = result.count
       } catch (e) {
-        console.error('Failed to save article:', e)
+        console.error('Failed to bulk save articles:', e)
       }
     }
 
+    // 查询本周已保存的文章返回给前端
+    const savedArticles = await prisma.newsArticle.findMany({
+      where: { weekStart: { equals: weekStart } },
+      orderBy: { publishedAt: 'desc' },
+    })
+
     return NextResponse.json({
-      message: `检索完成，共找到 ${createdArticles.length} 篇融资新闻`,
-      articles: createdArticles,
+      message: `检索完成，共找到 ${createdCount} 篇融资新闻`,
+      articles: savedArticles,
       industries,
       weekStart: weekStart.toISOString(),
     })
   } catch (error) {
     console.error('News search API error:', error)
     return NextResponse.json(
-      { error: '检索新闻失败', detail: error instanceof Error ? error.message : '未知错误' },
+      { error: '检索新闻失败' },
       { status: 500 }
     )
   }

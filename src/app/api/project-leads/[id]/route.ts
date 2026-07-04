@@ -131,7 +131,7 @@ export async function PUT(
   } catch (error) {
     console.error('Project lead PUT error:', error)
     return NextResponse.json(
-      { error: '更新项目线索失败', detail: error instanceof Error ? error.message : '未知错误' },
+      { error: '更新项目线索失败' },
       { status: 500 }
     )
   }
@@ -181,7 +181,7 @@ export async function DELETE(
   } catch (error) {
     console.error('Project lead DELETE error:', error)
     return NextResponse.json(
-      { error: '删除项目线索失败', detail: error instanceof Error ? error.message : '未知错误' },
+      { error: '删除项目线索失败' },
       { status: 500 }
     )
   }

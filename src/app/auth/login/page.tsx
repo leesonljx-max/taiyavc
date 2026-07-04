@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 
@@ -57,8 +58,16 @@ function LoginContent() {
       <div className="relative max-w-md w-full">
         {/* Logo 和标题 */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-primary-500 to-primary-700 rounded-2xl flex items-center justify-center shadow-lg shadow-primary-500/40">
-            <span className="text-white font-bold text-2xl">泰</span>
+          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl overflow-hidden flex items-center justify-center shadow-lg shadow-primary-500/40 bg-gradient-to-br from-primary-500 to-primary-700">
+            {/* 登录/注册页专用 logo：将图片命名为 logo-auth.png 放到 public 目录 */}
+            <Image
+              src="/logo-auth.png"
+              alt="泰亚投资 logo"
+              width={64}
+              height={64}
+              className="w-full h-full object-cover"
+              priority
+            />
           </div>
           <h2 className="text-3xl font-bold text-gray-900">欢迎登录</h2>
           <p className="mt-2 text-sm text-gray-500">

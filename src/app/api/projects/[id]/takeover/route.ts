@@ -27,7 +27,7 @@ export async function POST(
 
     if (!session.user.id) {
       return NextResponse.json(
-        { error: '登录已过期，请退出后重新登录', detail: 'session.user.id is missing' },
+        { error: '登录已过期，请退出后重新登录' },
         { status: 401 }
       )
     }
@@ -140,7 +140,7 @@ export async function POST(
   } catch (error) {
     console.error('Takeover request error:', error)
     return NextResponse.json(
-      { error: '发起接手申请失败', detail: error instanceof Error ? error.message : String(error) },
+      { error: '发起接手申请失败' },
       { status: 500 }
     )
   }
@@ -205,7 +205,7 @@ export async function GET(
   } catch (error) {
     console.error('Get takeover requests error:', error)
     return NextResponse.json(
-      { error: '获取接手申请失败', detail: error instanceof Error ? error.message : String(error) },
+      { error: '获取接手申请失败' },
       { status: 500 }
     )
   }

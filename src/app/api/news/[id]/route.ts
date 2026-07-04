@@ -32,7 +32,7 @@ export async function GET(
   } catch (error) {
     console.error('News detail API error:', error)
     return NextResponse.json(
-      { error: '获取新闻详情失败', detail: error instanceof Error ? error.message : '未知错误' },
+      { error: '获取新闻详情失败' },
       { status: 500 }
     )
   }

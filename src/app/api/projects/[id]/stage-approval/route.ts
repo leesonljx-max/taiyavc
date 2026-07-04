@@ -75,7 +75,7 @@ export async function GET(
   } catch (error) {
     console.error('Get stage approval error:', error)
     return NextResponse.json(
-      { error: '获取审批信息失败', detail: error instanceof Error ? error.message : '未知错误' },
+      { error: '获取审批信息失败' },
       { status: 500 }
     )
   }
@@ -183,7 +183,7 @@ export async function POST(
   } catch (error) {
     console.error('Create stage approval error:', error)
     return NextResponse.json(
-      { error: '提交审批失败', detail: error instanceof Error ? error.message : '未知错误' },
+      { error: '提交审批失败' },
       { status: 500 }
     )
   }

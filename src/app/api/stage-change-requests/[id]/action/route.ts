@@ -45,30 +45,41 @@ export async function POST(
       return NextResponse.json({ error: '该请求已处理' }, { status: 400 })
     }
 
-    // 更新请求状态
-    await prisma.stageChangeRequest.update({
-      where: { id: params.id },
-      data: {
-        status: action === 'approve' ? 'APPROVED' : 'REJECTED',
-        reviewerId: session.user.id,
-        reviewerComment: comment || null,
-        reviewedAt: new Date(),
-      },
-    })
-
-    // 如果同意，变更项目阶段
+    // 如果同意，变更项目阶段（使用事务保证一致性）
     if (action === 'approve') {
       const project = stageRequest.project
       const newStage = stageRequest.toStage
       const currentPassed = parsePassedStages(project.passedStages)
       const newPassed = computePassedStages(currentPassed, newStage as any)
 
-      await prisma.project.update({
-        where: { id: stageRequest.projectId },
+      await prisma.$transaction([
+        prisma.stageChangeRequest.update({
+          where: { id: params.id },
+          data: {
+            status: 'APPROVED',
+            reviewerId: session.user.id,
+            reviewerComment: comment || null,
+            reviewedAt: new Date(),
+          },
+        }),
+        prisma.project.update({
+          where: { id: stageRequest.projectId },
+          data: {
+            followStage: newStage,
+            passedStages: JSON.stringify(newPassed),
+            stageChangedAt: new Date(),
+          },
+        }),
+      ])
+    } else {
+      // 拒绝，仅更新请求状态
+      await prisma.stageChangeRequest.update({
+        where: { id: params.id },
         data: {
-          followStage: newStage,
-          passedStages: JSON.stringify(newPassed),
-          stageChangedAt: new Date(),
+          status: 'REJECTED',
+          reviewerId: session.user.id,
+          reviewerComment: comment || null,
+          reviewedAt: new Date(),
         },
       })
     }

@@ -82,7 +82,7 @@ export async function POST(request: Request) {
 
     if (!session.user.id) {
       return NextResponse.json(
-        { error: '登录已过期，请退出后重新登录', detail: 'session.user.id is missing' },
+        { error: '登录已过期，请退出后重新登录' },
         { status: 401 }
       )
     }
@@ -119,7 +119,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Project lead POST error:', error)
     return NextResponse.json(
-      { error: '创建项目线索失败', detail: error instanceof Error ? error.message : '未知错误' },
+      { error: '创建项目线索失败' },
       { status: 500 }
     )
   }

@@ -36,7 +36,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: '当前密码错误' }, { status: 400 })
     }
 
-    const passwordHash = await bcrypt.hash(newPassword, 10)
+    const passwordHash = await bcrypt.hash(newPassword, 12)
     await prisma.user.update({
       where: { id: session.user.id },
       data: { passwordHash },
@@ -45,7 +45,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ message: '密码修改成功' })
   } catch (error) {
     return NextResponse.json(
-      { error: '修改密码失败', detail: error instanceof Error ? error.message : '未知错误' },
+      { error: '修改密码失败' },
       { status: 500 }
     )
   }

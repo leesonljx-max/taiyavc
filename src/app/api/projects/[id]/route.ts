@@ -136,7 +136,53 @@ export async function PUT(
     }
 
     const body = await request.json()
-    const { financialData, targetDate, ...data } = body
+    const {
+      name,
+      financialData,
+      targetDate,
+      companyFullName,
+      industry,
+      companyPosition,
+      mainProducts,
+      orderProgress,
+      financingPlan,
+      financingRound,
+      followStage,
+      coreAdvantage,
+      coreTeam,
+      competitors,
+      description,
+      totalAmount,
+      raisedAmount,
+      investmentValuation,
+      keywords,
+      aiCardJson,
+    } = body ?? {}
+
+    // 显式字段白名单：仅允许以下字段写入数据库，杜绝 mass-assignment
+    // 禁止客户端设置：id, createdAt, updatedAt, createdById,
+    // passedStages, protectionExpiresAt, stageChangedAt,
+    // competitorAnalysisJson, status
+    const data: Record<string, any> = {
+      ...(name !== undefined && { name }),
+      ...(companyFullName !== undefined && { companyFullName }),
+      ...(industry !== undefined && { industry }),
+      ...(companyPosition !== undefined && { companyPosition }),
+      ...(mainProducts !== undefined && { mainProducts }),
+      ...(orderProgress !== undefined && { orderProgress }),
+      ...(financingPlan !== undefined && { financingPlan }),
+      ...(financingRound !== undefined && { financingRound }),
+      ...(followStage !== undefined && { followStage }),
+      ...(coreAdvantage !== undefined && { coreAdvantage }),
+      ...(coreTeam !== undefined && { coreTeam }),
+      ...(competitors !== undefined && { competitors }),
+      ...(description !== undefined && { description }),
+      ...(totalAmount !== undefined && { totalAmount }),
+      ...(raisedAmount !== undefined && { raisedAmount }),
+      ...(investmentValuation !== undefined && { investmentValuation }),
+      ...(keywords !== undefined && { keywords }),
+      ...(aiCardJson !== undefined && { aiCardJson }),
+    }
 
     // 判断是否需要审批的阶段变更
     // 1. 从 INITIAL_TALK 或 PRE_DD → PROJECT_INITIATION（立项）
@@ -154,7 +200,7 @@ export async function PUT(
       })
       if (existingRequest) {
         return NextResponse.json(
-          { error: '该项目的阶段变更请求正在审批中，请等待审批完成', detail: `已有 PENDING 请求: ${existingRequest.id}` },
+          { error: '该项目的阶段变更请求正在审批中，请等待审批完成' },
           { status: 400 }
         )
       }
@@ -172,10 +218,6 @@ export async function PUT(
         const d = new Date(targetDate)
         if (!isNaN(d.getTime())) dataWithoutStage.targetDate = d.toISOString()
       }
-      delete dataWithoutStage.id
-      delete dataWithoutStage.createdAt
-      delete dataWithoutStage.updatedAt
-      delete dataWithoutStage.createdById
 
       if (Object.keys(dataWithoutStage).length > 0) {
         await prisma.project.update({
@@ -229,7 +271,7 @@ export async function PUT(
       const d = new Date(targetDate)
       if (isNaN(d.getTime())) {
         return NextResponse.json(
-          { error: '初聊日期格式无效', detail: `targetDate: ${targetDate}` },
+          { error: '初聊日期格式无效' },
           { status: 400 }
         )
       }
@@ -237,12 +279,6 @@ export async function PUT(
     } else if (targetDate === null || targetDate === '') {
       // 不允许清空 targetDate（必填字段），保留原值
     }
-
-    // 移除不应由前端直接更新的字段
-    delete data.id
-    delete data.createdAt
-    delete data.updatedAt
-    delete data.createdById
 
     const updatedProject = await prisma.project.update({
       where: { id: params.id },
@@ -255,7 +291,7 @@ export async function PUT(
   } catch (error) {
     console.error('Update project error:', error)
     return NextResponse.json(
-      { error: '更新项目失败', detail: error instanceof Error ? error.message : '未知错误' },
+      { error: '更新项目失败' },
       { status: 500 }
     )
   }

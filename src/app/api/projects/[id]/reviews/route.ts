@@ -73,7 +73,7 @@ export async function POST(
   } catch (error) {
     console.error('Create partner review error:', error)
     return NextResponse.json(
-      { error: '创建评价失败', detail: error instanceof Error ? error.message : '未知错误' },
+      { error: '创建评价失败' },
       { status: 500 }
     )
   }

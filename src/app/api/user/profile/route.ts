@@ -31,6 +31,9 @@ export async function PATCH(request: Request) {
     }
 
     if (avatar !== undefined) {
+      if (avatar && !avatar.startsWith('/avatars/') && !avatar.startsWith('https://')) {
+        return NextResponse.json({ error: '头像地址格式无效' }, { status: 400 })
+      }
       // avatar 可以是 null（清除头像）或字符串（头像 URL）
       data.avatar = avatar
     }
@@ -54,7 +57,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ user: updatedUser })
   } catch (error) {
     return NextResponse.json(
-      { error: '更新个人信息失败', detail: error instanceof Error ? error.message : '未知错误' },
+      { error: '更新个人信息失败' },
       { status: 500 }
     )
   }

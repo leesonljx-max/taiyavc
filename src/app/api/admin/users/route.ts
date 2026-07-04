@@ -117,7 +117,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ user: updatedUser })
   } catch (error) {
     return NextResponse.json(
-      { error: '更新用户失败', detail: error instanceof Error ? error.message : '未知错误' },
+      { error: '更新用户失败' },
       { status: 500 }
     )
   }
@@ -166,7 +166,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ message: '用户已删除' })
   } catch (error) {
     return NextResponse.json(
-      { error: '删除用户失败', detail: error instanceof Error ? error.message : '未知错误' },
+      { error: '删除用户失败' },
       { status: 500 }
     )
   }

@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Project {
@@ -53,6 +53,12 @@ model Project {
   createdBy        User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   @@index([name])
+  @@index([createdById])
+  @@index([followStage])
+  @@index([targetDate])
+  @@index([stageChangedAt])
+  @@index([protectionExpiresAt])
+  @@index([status])
 }
 
 model Investment {
@@ -64,6 +70,9 @@ model Investment {
   investor    Investor  @relation(fields: [investorId], references: [id], onDelete: Cascade)
   project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
+
+  @@index([projectId])
+  @@index([investorId])
 }
 
 model Investor {
@@ -135,6 +144,7 @@ model ProjectMember {
   createdAt DateTime @default(now())
 
   @@unique([userId, projectId])
+  @@index([projectId])
 }
 
 model Session {
@@ -143,6 +153,8 @@ model Session {
   userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model ProjectNews {
@@ -160,6 +172,7 @@ model ProjectNews {
   project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, url])
+  @@index([projectId])
 }
 
 model VerificationToken {
@@ -180,6 +193,9 @@ model PartnerReview {
 
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([userId])
 }
 
 model FollowUpNote {
@@ -192,6 +208,9 @@ model FollowUpNote {
 
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([userId])
 }
 
 model StageApproval {
@@ -207,6 +226,7 @@ model StageApproval {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, userId])
+  @@index([projectId])
 }
 
 // 项目接手申请

@@ -78,13 +78,59 @@ export async function POST(request: Request) {
 
     if (!session.user.id) {
       return NextResponse.json(
-        { error: '登录已过期，请退出后重新登录', detail: 'session.user.id is missing' },
+        { error: '登录已过期，请退出后重新登录' },
         { status: 401 }
       )
     }
 
     const body = await request.json()
-    const { name, checkDuplicate, financialData, ...data } = body
+    const {
+      name,
+      checkDuplicate,
+      financialData,
+      companyFullName,
+      industry,
+      companyPosition,
+      mainProducts,
+      orderProgress,
+      financingPlan,
+      financingRound,
+      followStage,
+      coreAdvantage,
+      coreTeam,
+      competitors,
+      description,
+      totalAmount,
+      raisedAmount,
+      investmentValuation,
+      targetDate,
+      keywords,
+      aiCardJson,
+    } = body ?? {}
+
+    // 显式字段白名单：仅允许以下字段写入数据库，杜绝 mass-assignment
+    // 禁止客户端设置：id, createdAt, updatedAt, createdById,
+    // passedStages, protectionExpiresAt, stageChangedAt,
+    // competitorAnalysisJson, status
+    const data: Record<string, any> = {
+      ...(companyFullName !== undefined && { companyFullName }),
+      ...(industry !== undefined && { industry }),
+      ...(companyPosition !== undefined && { companyPosition }),
+      ...(mainProducts !== undefined && { mainProducts }),
+      ...(orderProgress !== undefined && { orderProgress }),
+      ...(financingPlan !== undefined && { financingPlan }),
+      ...(financingRound !== undefined && { financingRound }),
+      ...(followStage !== undefined && { followStage }),
+      ...(coreAdvantage !== undefined && { coreAdvantage }),
+      ...(coreTeam !== undefined && { coreTeam }),
+      ...(competitors !== undefined && { competitors }),
+      ...(description !== undefined && { description }),
+      ...(totalAmount !== undefined && { totalAmount }),
+      ...(raisedAmount !== undefined && { raisedAmount }),
+      ...(investmentValuation !== undefined && { investmentValuation }),
+      ...(keywords !== undefined && { keywords }),
+      ...(aiCardJson !== undefined && { aiCardJson }),
+    }
 
     // financialData: 前端可能发送对象或字符串，统一转为字符串存储
     if (financialData && typeof financialData === 'object') {
@@ -93,12 +139,12 @@ export async function POST(request: Request) {
       data.financialData = financialData
     }
 
-    // targetDate: 确保是完整的 ISO-8601 DateTime
-    if (data.targetDate) {
-      const d = new Date(data.targetDate)
+    // targetDate: 确保是完整的 ISO-8601 DateTime（"YYYY-MM-DD" → ISO-8601）
+    if (targetDate) {
+      const d = new Date(targetDate)
       if (isNaN(d.getTime())) {
         return NextResponse.json(
-          { error: '初聊日期格式无效', detail: `targetDate: ${data.targetDate}` },
+          { error: '初聊日期格式无效' },
           { status: 400 }
         )
       }
@@ -124,7 +170,7 @@ export async function POST(request: Request) {
       const v = Number(data.investmentValuation)
       if (isNaN(v)) {
         return NextResponse.json(
-          { error: '投资估值格式无效', detail: `investmentValuation: ${data.investmentValuation}` },
+          { error: '投资估值格式无效' },
           { status: 400 }
         )
       }
@@ -133,12 +179,6 @@ export async function POST(request: Request) {
       // 空字符串或未提供时存 null
       data.investmentValuation = null
     }
-
-    // 移除不应由前端直接设置的字段
-    delete data.id
-    delete data.createdAt
-    delete data.updatedAt
-    delete data.createdById
 
     if (!name) {
       return NextResponse.json(
@@ -295,7 +335,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Create project error:', error)
     return NextResponse.json(
-      { error: '创建项目失败', detail: error instanceof Error ? error.message : '未知错误' },
+      { error: '创建项目失败' },
       { status: 500 }
     )
   }

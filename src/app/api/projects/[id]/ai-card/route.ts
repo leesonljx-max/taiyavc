@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
 import prisma from '@/lib/prisma'
+import { authOptions, type UserRole } from '@/lib/auth'
+import { canViewProject, canEditProject, type PermissionUser } from '@/lib/permissions'
 
 interface AICardData {
   projectName: string
@@ -13,14 +16,42 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
+    const session = await getServerSession(authOptions)
+
+    if (!session?.user || !session.user.id) {
+      return NextResponse.json(
+        { error: '登录已过期，请退出后重新登录' },
+        { status: 401 }
+      )
+    }
+
+    const currentUser: PermissionUser = {
+      id: session.user.id,
+      role: session.user.role as UserRole,
+    }
+
     const project = await prisma.project.findUnique({
       where: { id: params.id },
+      include: { members: { select: { userId: true } } },
     })
 
     if (!project) {
       return NextResponse.json(
         { error: '项目不存在' },
         { status: 404 }
+      )
+    }
+
+    const memberIds = project.members.map(m => m.userId)
+
+    if (!canEditProject(currentUser, {
+      followStage: project.followStage,
+      createdById: project.createdById,
+      memberIds,
+    })) {
+      return NextResponse.json(
+        { error: '无权生成该项目 AI 卡片' },
+        { status: 403 }
       )
     }
 
@@ -69,28 +100,37 @@ export async function POST(
       )
     }
 
-    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${deepseekApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages: [
-          {
-            role: 'system',
-            content: '你是一个专业的投资分析助手，擅长分析项目信息并生成结构化的投资分析报告。',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        response_format: { type: 'json_object' },
-        temperature: 0.7,
-      }),
-    })
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 30000)
+
+    let response: Response
+    try {
+      response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${deepseekApiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个专业的投资分析助手，擅长分析项目信息并生成结构化的投资分析报告。',
+            },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.7,
+        }),
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timeoutId)
+    }
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: 'API 请求失败' }))
@@ -140,14 +180,42 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    const session = await getServerSession(authOptions)
+
+    if (!session?.user || !session.user.id) {
+      return NextResponse.json(
+        { error: '登录已过期，请退出后重新登录' },
+        { status: 401 }
+      )
+    }
+
+    const currentUser: PermissionUser = {
+      id: session.user.id,
+      role: session.user.role as UserRole,
+    }
+
     const project = await prisma.project.findUnique({
       where: { id: params.id },
+      include: { members: { select: { userId: true } } },
     })
 
     if (!project) {
       return NextResponse.json(
         { error: '项目不存在' },
         { status: 404 }
+      )
+    }
+
+    const memberIds = project.members.map(m => m.userId)
+
+    if (!canViewProject(currentUser, {
+      followStage: project.followStage,
+      createdById: project.createdById,
+      memberIds,
+    })) {
+      return NextResponse.json(
+        { error: '无权查看该项目' },
+        { status: 403 }
       )
     }
 

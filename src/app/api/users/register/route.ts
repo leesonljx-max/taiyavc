@@ -63,7 +63,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const passwordHash = await bcrypt.hash(password, 10)
+    const passwordHash = await bcrypt.hash(password, 12)
 
     // 自助注册用户默认 PENDING 状态，需管理员审批
     const user = await prisma.user.create({

@@ -127,34 +127,43 @@ export async function GET(request: Request) {
   ]
 }`
 
-    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${deepseekApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages: [
-          {
-            role: 'system',
-            content: '你是一个专业的投资分析助手，擅长行业融资趋势分析。请基于公开信息作答，无法确定的信息请合理估算并标注。',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        temperature: 0.3,
-        max_tokens: 2000,
-      }),
-    })
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 30000)
+
+    let response: Response
+    try {
+      response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${deepseekApiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个专业的投资分析助手，擅长行业融资趋势分析。请基于公开信息作答，无法确定的信息请合理估算并标注。',
+            },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          temperature: 0.3,
+          max_tokens: 2000,
+        }),
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timeoutId)
+    }
 
     if (!response.ok) {
       const errorText = await response.text()
       console.error('DeepSeek API error:', errorText)
       return NextResponse.json(
-        { error: 'DeepSeek API 调用失败', detail: errorText },
+        { error: 'DeepSeek API 调用失败' },
         { status: 502 }
       )
     }
@@ -211,7 +220,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Financing heatmap API error:', error)
     return NextResponse.json(
-      { error: '获取融资热点数据失败', detail: error instanceof Error ? error.message : '未知错误' },
+      { error: '获取融资热点数据失败' },
       { status: 500 }
     )
   }

@@ -66,11 +66,14 @@ export const authOptions: NextAuthOptions = {
           throw new Error('您的账号已被禁用，请联系管理员')
         }
 
+        const validRoles = ['ADMIN', 'INVESTMENT_PARTNER', 'INVESTMENT_MANAGER', 'POST_INVESTMENT_OFFICER', 'TEMP_VISITOR']
+        const userRole = validRoles.includes(user.role) ? user.role : 'TEMP_VISITOR'
+
         return {
           id: user.id,
           email: user.email,
           name: user.name,
-          role: user.role as UserRole,
+          role: userRole as UserRole,
           avatar: user.avatar,
         }
       },
@@ -78,6 +81,17 @@ export const authOptions: NextAuthOptions = {
   ],
   session: {
     strategy: 'jwt',
+  },
+  cookies: {
+    sessionToken: {
+      name: process.env.NODE_ENV === 'production' ? '__Secure-next-auth.session-token' : 'next-auth.session-token',
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        path: '/',
+      },
+    },
   },
   callbacks: {
     async jwt({ token, user }) {
@@ -90,10 +104,17 @@ export const authOptions: NextAuthOptions = {
       return token
     },
     async session({ session, token }) {
-      session.user.id = token.id as string
-      session.user.role = token.role as UserRole
-      session.user.name = token.name as string | undefined
-      session.user.avatar = token.avatar as string | undefined
+      if (session.user) {
+        session.user.id = token.id as string
+        session.user.role = token.role as string
+        session.user.name = token.name as string | undefined
+        session.user.avatar = token.avatar as string | undefined
+        // 校验 role
+        const validRoles = ['ADMIN', 'INVESTMENT_PARTNER', 'INVESTMENT_MANAGER', 'POST_INVESTMENT_OFFICER', 'TEMP_VISITOR']
+        if (!validRoles.includes(session.user.role as string)) {
+          session.user.role = 'TEMP_VISITOR'
+        }
+      }
       return session
     },
   },

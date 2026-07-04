@@ -108,7 +108,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Industry map API error:', error)
     return NextResponse.json(
-      { error: '获取行业图谱数据失败', detail: error instanceof Error ? error.message : '未知错误' },
+      { error: '获取行业图谱数据失败' },
       { status: 500 }
     )
   }
