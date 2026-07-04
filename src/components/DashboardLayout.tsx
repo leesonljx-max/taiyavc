@@ -3,8 +3,9 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
+import ProfileEditModal from './ProfileEditModal'
 import packageJson from '../../package.json'
 
 const APP_VERSION = `v${packageJson.version}`
@@ -31,8 +32,10 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children, title, subtitle, actions }: DashboardLayoutProps) {
   const pathname = usePathname()
-  const { data: session } = useSession()
+  const router = useRouter()
+  const { data: session, update: updateSession } = useSession()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [profileModalOpen, setProfileModalOpen] = useState(false)
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/'
@@ -99,16 +102,31 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
           <div className="px-3 py-4 border-t border-primary-100">
             {session ? (
               <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-primary-50">
-                <div className="w-9 h-9 bg-gradient-to-br from-primary-400 to-primary-600 rounded-full flex items-center justify-center text-white font-medium text-sm">
-                  {session.user?.name?.charAt(0).toUpperCase() || 'U'}
-                </div>
-                <div className="flex-1 min-w-0">
+                <button
+                  onClick={() => setProfileModalOpen(true)}
+                  className="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-medium text-sm flex-shrink-0 ring-2 ring-white hover:ring-primary-300 transition-all cursor-pointer"
+                  title="点击修改个人信息"
+                >
+                  {session.user?.avatar ? (
+                    <Image src={session.user.avatar} alt="头像" width={36} height={36} className="w-full h-full object-cover" unoptimized />
+                  ) : (
+                    session.user?.name?.charAt(0).toUpperCase() || 'U'
+                  )}
+                </button>
+                <button
+                  onClick={() => setProfileModalOpen(true)}
+                  className="flex-1 min-w-0 text-left hover:opacity-80 transition-opacity"
+                  title="点击修改个人信息"
+                >
                   <div className="text-sm font-medium text-gray-900 truncate">{session.user?.name || '用户'}</div>
                   <div className="text-xs text-gray-500 truncate">{session.user?.email}</div>
-                </div>
+                </button>
                 <button
-                  onClick={() => signOut({ callbackUrl: '/auth/login' })}
-                  className="text-gray-400 hover:text-danger-600 transition-colors"
+                  onClick={async () => {
+                    await signOut({ redirect: false })
+                    router.push('/auth/login')
+                  }}
+                  className="text-gray-400 hover:text-danger-600 transition-colors flex-shrink-0"
                   title="退出登录"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -164,6 +182,13 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
           {children}
         </main>
       </div>
+
+      {/* 个人设置弹窗 */}
+      <ProfileEditModal
+        open={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+        onUpdate={async () => { await updateSession() }}
+      />
     </div>
   )
 }

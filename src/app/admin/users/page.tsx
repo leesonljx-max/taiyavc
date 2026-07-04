@@ -51,6 +51,7 @@ export default function AdminUsersPage() {
   const [editRole, setEditRole] = useState<string>('')
   const [editStatus, setEditStatus] = useState<string>('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [deletingUser, setDeletingUser] = useState<User | null>(null)
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -103,6 +104,27 @@ export default function AdminUsersPage() {
       await fetchUsers()
     } catch (error) {
       setError('更新用户失败')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleDeleteUser = async (userId: string) => {
+    setIsSubmitting(true)
+    setError('')
+    try {
+      const response = await fetch(`/api/admin/users?id=${userId}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) {
+        const data = await response.json()
+        setError(data.error || '删除失败')
+        return
+      }
+      setDeletingUser(null)
+      await fetchUsers()
+    } catch (error) {
+      setError('删除用户失败')
     } finally {
       setIsSubmitting(false)
     }
@@ -305,6 +327,14 @@ export default function AdminUsersPage() {
                           >
                             编辑
                           </button>
+                          {user.id !== session.user.id && (
+                            <button
+                              onClick={() => setDeletingUser(user)}
+                              className="px-3 py-1 bg-danger-50 text-danger-700 text-xs rounded-lg hover:bg-danger-100"
+                            >
+                              删除
+                            </button>
+                          )}
                         </div>
                       )}
                     </td>
@@ -319,6 +349,43 @@ export default function AdminUsersPage() {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+      {/* 删除确认弹窗 */}
+      {deletingUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-danger-100 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-danger-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">确认删除账号</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-1">
+              确定要删除用户 <span className="font-medium text-gray-900">{deletingUser.name || deletingUser.email}</span> 吗？
+            </p>
+            <p className="text-xs text-gray-400 mb-6">
+              该操作不可撤销，用户的所有关联数据将被删除。
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeletingUser(null)}
+                disabled={isSubmitting}
+                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200 transition-colors disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => handleDeleteUser(deletingUser.id)}
+                disabled={isSubmitting}
+                className="flex-1 px-4 py-2.5 bg-danger-500 text-white text-sm font-medium rounded-xl hover:bg-danger-600 transition-colors disabled:opacity-50"
+              >
+                {isSubmitting ? '删除中...' : '确认删除'}
+              </button>
+            </div>
           </div>
         </div>
       )}

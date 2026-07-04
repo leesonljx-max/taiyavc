@@ -71,6 +71,7 @@ export const authOptions: NextAuthOptions = {
           email: user.email,
           name: user.name,
           role: user.role as UserRole,
+          avatar: user.avatar,
         }
       },
     }),
@@ -84,6 +85,7 @@ export const authOptions: NextAuthOptions = {
         token.id = (user as { id: string }).id
         token.role = (user as { role: UserRole }).role
         token.name = user.name ?? undefined
+        token.avatar = (user as { avatar?: string | null }).avatar ?? undefined
       }
       return token
     },
@@ -91,6 +93,7 @@ export const authOptions: NextAuthOptions = {
       session.user.id = token.id as string
       session.user.role = token.role as UserRole
       session.user.name = token.name as string | undefined
+      session.user.avatar = token.avatar as string | undefined
       return session
     },
   },

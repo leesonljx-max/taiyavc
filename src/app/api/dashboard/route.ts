@@ -73,29 +73,29 @@ export async function GET(request: Request) {
       })
     })
 
-    // 可用年份列表（从项目 createdAt 提取，去重排序降序）
+    // 可用年份列表（从项目初聊日期 targetDate 提取，去重排序降序）
     const yearsSet = new Set<number>()
     visibleProjects.forEach(p => {
-      yearsSet.add(new Date(p.createdAt).getFullYear())
+      if (p.targetDate) yearsSet.add(new Date(p.targetDate).getFullYear())
     })
     yearsSet.add(currentYear) // 确保当年始终可选
     const years = Array.from(yearsSet).sort((a, b) => b - a)
 
-    // 按年份筛选项目
+    // 按年份筛选项目（以初聊日期 targetDate 为准）
     const yearFilteredProjects = visibleProjects.filter(
-      p => new Date(p.createdAt).getFullYear() === validYear
+      p => p.targetDate && new Date(p.targetDate).getFullYear() === validYear
     )
 
     // 统计数据（基于年份筛选后的项目）
     const totalProjects = yearFilteredProjects.length
 
-    // 本周新增项目：本周新建（createdAt >= weekStart）或本周变更阶段（stageChangedAt >= weekStart）
+    // 本周新增项目：以初聊日期为准（targetDate >= weekStart）或本周变更阶段（stageChangedAt >= weekStart）
     // 注意：不限于当年，之前创建的项目如果本周变更了阶段也会显示
     const weeklyNewProjects = visibleProjects.filter(
       p => {
-        const createdAt = new Date(p.createdAt)
+        const initialDate = p.targetDate ? new Date(p.targetDate) : null
         const stageChangedAt = p.stageChangedAt ? new Date(p.stageChangedAt) : null
-        return createdAt >= weekStart || (stageChangedAt !== null && stageChangedAt >= weekStart)
+        return (initialDate !== null && initialDate >= weekStart) || (stageChangedAt !== null && stageChangedAt >= weekStart)
       }
     )
 
@@ -124,6 +124,7 @@ export async function GET(request: Request) {
         companyFullName: p.companyFullName,
         industry: p.industry,
         followStage: p.followStage,
+        targetDate: p.targetDate,
         createdAt: p.createdAt,
         aiCard,
         maintainerName: p.createdBy?.name || '未分配',

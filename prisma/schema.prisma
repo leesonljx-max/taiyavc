@@ -84,6 +84,7 @@ model User {
   username      String?         @unique  // 账户名（可用于登录）
   passwordHash  String
   name          String?
+  avatar        String?  // 头像 URL（如 /avatars/xxx.png）
   role          String          @default("TEMP_VISITOR")
   status        String          @default("ACTIVE")  // ACTIVE / PENDING / REJECTED / DISABLED
   createdAt     DateTime        @default(now())
@@ -257,4 +258,24 @@ model StageChangeRequest {
   @@index([projectId])
   @@index([status])
   @@index([requesterId])
+}
+
+// 新闻监控：融资新闻文章
+model NewsArticle {
+  id          String   @id @default(cuid())
+  title       String   // 文章标题
+  source      String   // 来源（如 36氪、投资界、量子位等）
+  sourceUrl   String?  // 原文链接
+  industry    String   // 所属行业赛道
+  summary     String   // 摘要（卡片展示用）
+  content     String   // 详细内容
+  author      String?  // 作者
+  publishedAt DateTime // 发布时间
+  weekStart   DateTime // 所属周的开始时间（周一12:00），用于按周筛选
+  createdAt   DateTime @default(now())
+
+  @@index([industry])
+  @@index([publishedAt])
+  @@index([weekStart])
+  @@index([source])
 }

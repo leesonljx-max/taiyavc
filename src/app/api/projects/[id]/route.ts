@@ -229,7 +229,7 @@ export async function PUT(
       const d = new Date(targetDate)
       if (isNaN(d.getTime())) {
         return NextResponse.json(
-          { error: '目标日期格式无效', detail: `targetDate: ${targetDate}` },
+          { error: '初聊日期格式无效', detail: `targetDate: ${targetDate}` },
           { status: 400 }
         )
       }

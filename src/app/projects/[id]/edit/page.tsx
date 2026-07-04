@@ -374,7 +374,7 @@ export default function EditProjectPage() {
 
               <div>
                 <label htmlFor="targetDate" className={labelClass}>
-                  目标日期
+                  初聊日期
                 </label>
                 <input
                   id="targetDate"

@@ -98,7 +98,7 @@ export async function POST(request: Request) {
       const d = new Date(data.targetDate)
       if (isNaN(d.getTime())) {
         return NextResponse.json(
-          { error: '目标日期格式无效', detail: `targetDate: ${data.targetDate}` },
+          { error: '初聊日期格式无效', detail: `targetDate: ${data.targetDate}` },
           { status: 400 }
         )
       }

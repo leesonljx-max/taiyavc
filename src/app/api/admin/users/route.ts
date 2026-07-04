@@ -122,3 +122,52 @@ export async function PATCH(request: Request) {
     )
   }
 }
+
+// DELETE: 删除用户账号（仅管理员）
+export async function DELETE(request: Request) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user) {
+      return NextResponse.json({ error: '未登录' }, { status: 401 })
+    }
+
+    const currentUser: PermissionUser = {
+      id: session.user.id,
+      role: session.user.role as UserRole,
+    }
+
+    if (!canManageUsers(currentUser)) {
+      return NextResponse.json({ error: '无权操作，仅管理员可管理用户' }, { status: 403 })
+    }
+
+    const { searchParams } = new URL(request.url)
+    const userId = searchParams.get('id')
+
+    if (!userId) {
+      return NextResponse.json({ error: '用户 ID 必填' }, { status: 400 })
+    }
+
+    // 防止管理员删除自己
+    if (userId === session.user.id) {
+      return NextResponse.json(
+        { error: '不能删除自己的账号' },
+        { status: 400 }
+      )
+    }
+
+    // 检查目标用户是否存在
+    const targetUser = await prisma.user.findUnique({ where: { id: userId } })
+    if (!targetUser) {
+      return NextResponse.json({ error: '用户不存在' }, { status: 404 })
+    }
+
+    await prisma.user.delete({ where: { id: userId } })
+
+    return NextResponse.json({ message: '用户已删除' })
+  } catch (error) {
+    return NextResponse.json(
+      { error: '删除用户失败', detail: error instanceof Error ? error.message : '未知错误' },
+      { status: 500 }
+    )
+  }
+}
