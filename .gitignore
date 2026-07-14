@@ -42,5 +42,6 @@ next-env.d.ts
 # logs
 *.log
 
-# user uploads (avatars)
+# user uploads (avatars, project documents)
 /public/avatars/
+/public/project-docs/
