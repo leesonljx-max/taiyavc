@@ -84,11 +84,14 @@ export const authOptions: NextAuthOptions = {
   },
   cookies: {
     sessionToken: {
-      name: process.env.NODE_ENV === 'production' ? '__Secure-next-auth.session-token' : 'next-auth.session-token',
+      // 根据 NEXTAUTH_URL 是否为 HTTPS 决定 cookie 配置
+      // HTTP 环境（如公网 IP 部署）必须使用不带 __Secure- 前缀的 cookie 名 + secure: false
+      // 否则浏览器会拒绝保存 session cookie，导致登录后立即跳回登录页
+      name: process.env.NEXTAUTH_URL?.startsWith('https://') ? '__Secure-next-auth.session-token' : 'next-auth.session-token',
       options: {
         httpOnly: true,
         sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production',
+        secure: process.env.NEXTAUTH_URL?.startsWith('https://') ?? false,
         path: '/',
       },
     },

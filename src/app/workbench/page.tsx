@@ -143,7 +143,8 @@ export default function WorkbenchPage() {
   const [stageRequests, setStageRequests] = useState<StageChangeRequest[]>([])
   const [requestsLoading, setRequestsLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [rejectLoading, setRejectLoading] = useState<string | null>(null)
+  // 当前选中的阶段卡片（点击卡片筛选对应阶段项目）
+  const [selectedStage, setSelectedStage] = useState<FollowStage>('INITIAL_TALK')
 
   // 投资合伙人筛选投资经理
   const [managers, setManagers] = useState<{ id: string; name: string | null; username: string | null; email: string | null }[]>([])
@@ -229,30 +230,15 @@ export default function WorkbenchPage() {
     setActionLoading(null)
   }
 
-  // 标记项目为"已否"（否决）
-  const handleReject = async (projectId: string, projectName: string) => {
-    if (!confirm(`确定要将项目「${projectName}」标记为"已否"吗？\n\n否决后的项目将归入"已否"阶段。`)) return
-    setRejectLoading(projectId)
-    try {
-      const response = await fetch(`/api/projects/${projectId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ followStage: 'REJECTED' }),
-      })
-      if (response.ok) {
-        fetchProjects()
-      } else {
-        const data = await response.json()
-        alert(data.error || '操作失败')
-      }
-    } catch {
-      alert('操作失败')
-    }
-    setRejectLoading(null)
-  }
-
   // 投资合伙人只看立项及之后阶段
   const visibleStages = isPartner ? PARTNER_VISIBLE_STAGES : STAGE_ORDER
+
+  // 合伙人默认选中 'PROJECT_INITIATION'（初聊不在合伙人可见范围内）
+  useEffect(() => {
+    if (status === 'authenticated' && isPartner && !PARTNER_VISIBLE_STAGES.includes(selectedStage)) {
+      setSelectedStage('PROJECT_INITIATION')
+    }
+  }, [status, isPartner, selectedStage])
 
   // 应用筛选：投资合伙人可按投资经理筛选项目（按创建人）
   const filteredProjects = isPartner && selectedManagerId
@@ -315,20 +301,32 @@ export default function WorkbenchPage() {
         )}
       </div>
 
-      {/* 阶段统计概览：6 个阶段一行（收窄卡片） */}
-      <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mb-6">
-        {projectsByStage.map(({ stage, label, projects: stageProjects }) => (
-          <div
-            key={stage}
-            className="bg-gradient-card rounded-xl p-3 shadow-sm border border-primary-100 flex flex-col items-center gap-1.5"
-          >
-            <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${stageGradients[stage]} flex items-center justify-center shadow-md flex-shrink-0`}>
-              {stageIcons[stage]}
-            </div>
-            <div className="text-lg font-bold text-gray-900 leading-tight">{stageProjects.length}</div>
-            <div className="text-xs text-gray-500 truncate text-center w-full">{label}</div>
-          </div>
-        ))}
+      {/* 阶段卡片栏：所有阶段（含已否）在同一行，点击筛选对应阶段项目 */}
+      <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
+        {projectsByStage.map(({ stage, label, projects: stageProjects }) => {
+          const isSelected = selectedStage === stage
+          const isRejectedStage = stage === 'REJECTED'
+          return (
+            <button
+              key={stage}
+              type="button"
+              onClick={() => setSelectedStage(stage)}
+              className={`flex-1 min-w-[110px] rounded-xl p-3 shadow-sm border transition-all flex flex-col items-center gap-1.5 cursor-pointer
+                ${isSelected
+                  ? 'border-primary-500 ring-2 ring-primary-400 bg-white'
+                  : isRejectedStage
+                    ? 'border-red-100 bg-red-50/30 hover:border-red-300'
+                    : 'border-primary-100 bg-gradient-card hover:border-primary-300'
+                }`}
+            >
+              <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${stageGradients[stage]} flex items-center justify-center shadow-md flex-shrink-0`}>
+                {stageIcons[stage]}
+              </div>
+              <div className={`text-lg font-bold leading-tight ${isRejectedStage ? 'text-red-600' : 'text-gray-900'}`}>{stageProjects.length}</div>
+              <div className={`text-xs truncate text-center w-full ${isRejectedStage ? 'text-red-500' : 'text-gray-500'}`}>{label}</div>
+            </button>
+          )
+        })}
       </div>
 
       {/* 待办请求区块（仅投资合伙人/管理员可见） */}
@@ -445,7 +443,7 @@ export default function WorkbenchPage() {
         </div>
       )}
 
-      {/* 各阶段项目列表 */}
+      {/* 当前选中阶段的项目列表 */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
@@ -473,13 +471,18 @@ export default function WorkbenchPage() {
           )}
         </div>
       ) : (
-        <div className="space-y-6">
-          {projectsByStage.map(({ stage, label, projects: stageProjects }) => (
-            <div key={stage} className="bg-gradient-card rounded-2xl shadow-sm border border-primary-100 overflow-hidden">
+        (() => {
+          const stageInfo = projectsByStage.find(s => s.stage === selectedStage)
+          const stageProjects = stageInfo?.projects || []
+          const stageLabel = stageInfo?.label || ''
+          const stageKey = selectedStage
+
+          return (
+            <div className="bg-gradient-card rounded-2xl shadow-sm border border-primary-100 overflow-hidden">
               {/* 阶段头部 */}
-              <div className={`flex items-center justify-between px-5 py-3 bg-gradient-to-r ${stageGradients[stage]} from-opacity-10`}>
+              <div className={`flex items-center justify-between px-5 py-3 bg-gradient-to-r ${stageGradients[stageKey]} from-opacity-10`}>
                 <div className="flex items-center gap-2">
-                  <span className="text-white font-semibold text-sm">{label}</span>
+                  <span className="text-white font-semibold text-sm">{stageLabel}</span>
                   <span className="px-2 py-0.5 bg-white/20 rounded-full text-white text-xs font-medium">
                     {stageProjects.length}
                   </span>
@@ -489,14 +492,14 @@ export default function WorkbenchPage() {
               {/* 项目卡片 */}
               {stageProjects.length === 0 ? (
                 <div className="px-5 py-6 text-center text-sm text-gray-400">
-                  暂无{label}阶段项目
+                  暂无{stageLabel}阶段项目
                 </div>
               ) : (
                 <div className="divide-y divide-primary-50">
                   {stageProjects.map(project => (
                     <div
                       key={project.id}
-                      className={`block px-5 py-3 hover:bg-primary-50/50 transition-colors border-l-4 ${stageBorderLeft[stage]}`}
+                      className={`block px-5 py-3 hover:bg-primary-50/50 transition-colors border-l-4 ${stageBorderLeft[stageKey]}`}
                     >
                       <div className="flex items-center justify-between gap-3 flex-wrap">
                         <Link href={`/projects/${project.id}`} className="flex items-center gap-2 min-w-0 flex-1 hover:text-primary-700 transition-colors">
@@ -523,20 +526,6 @@ export default function WorkbenchPage() {
                           {project.industry && (
                             <span className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600">{project.industry}</span>
                           )}
-                          {/* "标记为已否"按钮：仅非已否阶段的项目显示 */}
-                          {stage !== 'REJECTED' && (
-                            <button
-                              onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                handleReject(project.id, project.name)
-                              }}
-                              disabled={rejectLoading === project.id}
-                              className="px-2 py-0.5 bg-red-50 text-red-600 rounded text-xs font-medium hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              {rejectLoading === project.id ? '处理中...' : '标记为已否'}
-                            </button>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -544,8 +533,8 @@ export default function WorkbenchPage() {
                 </div>
               )}
             </div>
-          ))}
-        </div>
+          )
+        })()
       )}
     </DashboardLayout>
   )
