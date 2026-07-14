@@ -60,7 +60,7 @@ export async function GET(
     const result = {
       ...project,
       totalAmount: project.totalAmount,
-      raisedAmount: Number(project.raisedAmount),
+      raisedAmount: project.raisedAmount,  // 字符串类型
       investmentValuation: project.investmentValuation ? Number(project.investmentValuation) : null,
       investments: project.investments.map(i => ({
         ...i,
@@ -184,12 +184,44 @@ export async function PUT(
       ...(aiCardJson !== undefined && { aiCardJson }),
     }
 
+    // 必填字段校验：industry / companyPosition / investmentValuation 不允许设为空
+    // 仅在字段被显式传递时校验，避免影响只更新其他字段的请求
+    const REQUIRED_FIELDS: Array<keyof typeof data> = ['industry', 'companyPosition', 'investmentValuation']
+    for (const field of REQUIRED_FIELDS) {
+      if (field in data) {
+        const val = data[field]
+        if (val === null || val === undefined || String(val).trim() === '') {
+          return NextResponse.json(
+            { error: `字段 ${field} 不能为空` },
+            { status: 400 }
+          )
+        }
+      }
+    }
+
+    // raisedAmount 统一转为字符串（去单位后由用户自行填写单位）
+    if ('raisedAmount' in data) {
+      data.raisedAmount = String(data.raisedAmount ?? '').trim()
+    }
+
+    // investmentValuation 校验为有效数字
+    if ('investmentValuation' in data && data.investmentValuation !== null && data.investmentValuation !== '') {
+      const v = Number(data.investmentValuation)
+      if (isNaN(v)) {
+        return NextResponse.json(
+          { error: '投资估值必须为有效数字' },
+          { status: 400 }
+        )
+      }
+      data.investmentValuation = v
+    }
+
     // 判断是否需要审批的阶段变更
     // 1. 从 INITIAL_TALK 或 PRE_DD → PROJECT_INITIATION（立项）
-    // 2. 从 DUE_DILIGENCE → CLOSING（交割）
+    // 2. 从 AGREEMENT → CLOSING（交割）
     const requiresApproval = data.followStage && data.followStage !== project.followStage && (
       (data.followStage === 'PROJECT_INITIATION' && (project.followStage === 'INITIAL_TALK' || project.followStage === 'PRE_DD')) ||
-      (data.followStage === 'CLOSING' && project.followStage === 'DUE_DILIGENCE')
+      (data.followStage === 'CLOSING' && project.followStage === 'AGREEMENT')
     )
 
     if (requiresApproval) {
@@ -286,12 +318,18 @@ export async function PUT(
     })
 
     return NextResponse.json(
-      { project: { ...updatedProject, totalAmount: updatedProject.totalAmount, raisedAmount: Number(updatedProject.raisedAmount) } }
+      { project: { ...updatedProject, totalAmount: updatedProject.totalAmount, raisedAmount: updatedProject.raisedAmount } }
     )
   } catch (error) {
     console.error('Update project error:', error)
+    const isDev = process.env.NODE_ENV !== 'production'
     return NextResponse.json(
-      { error: '更新项目失败' },
+      {
+        error: '更新项目失败',
+        ...(isDev && {
+          detail: error instanceof Error ? error.message : String(error),
+        }),
+      },
       { status: 500 }
     )
   }

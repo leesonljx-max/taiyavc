@@ -26,8 +26,8 @@ model Project {
   description      String?
   status           String    @default("PENDING")
   totalAmount      String   // 融资金额（用户自填单位，如"500万"、"2亿"）
-  raisedAmount     Float     @default(0)
-  investmentValuation Float?  // 投资估值（万元）
+  raisedAmount     String   @default("")  // 历史累计融资金额（用户自填单位，如"500万"、"2亿"）
+  investmentValuation Float?  // 投资估值（亿元）
   targetDate       DateTime
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -50,6 +50,7 @@ model Project {
   stageApprovals   StageApproval[]
   takeoverRequests TakeoverRequest[]
   stageChangeRequests StageChangeRequest[]
+  documents        ProjectDocument[]
   createdBy        User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   @@index([name])
@@ -59,6 +60,24 @@ model Project {
   @@index([stageChangedAt])
   @@index([protectionExpiresAt])
   @@index([status])
+}
+
+// 项目文档（如 BP、商业计划书等 PDF/PPT 文件，支持多个历史版本）
+model ProjectDocument {
+  id            String   @id @default(cuid())
+  projectId     String
+  fileName      String   // 原始文件名（展示用）
+  fileUrl       String   // 文件访问 URL（/project-docs/xxx.pdf 或 COS URL）
+  fileType      String   // MIME 类型（application/pdf, application/vnd.ms-powerpoint 等）
+  fileSize      Int      // 文件大小（字节）
+  uploadedById  String
+  createdAt     DateTime @default(now())
+
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploadedBy    User     @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([uploadedById])
 }
 
 model Investment {
@@ -113,6 +132,8 @@ model User {
   stageChangeRequestsInitiated StageChangeRequest[] @relation("StageChangeRequestRequester")
   // 阶段变更请求：作为审批者
   stageChangeRequestsReviewed  StageChangeRequest[] @relation("StageChangeRequestReviewer")
+  // 上传的项目文档
+  projectDocuments   ProjectDocument[]
 }
 
 // 项目线索（用于在新建项目时进行重合检测和合并）
@@ -298,4 +319,18 @@ model NewsArticle {
   @@index([publishedAt])
   @@index([weekStart])
   @@index([source])
+}
+
+// 新闻监控：自定义关注关键字
+model NewsKeyword {
+  id        String   @id @default(cuid())
+  keyword   String   @unique
+  createdAt DateTime @default(now())
+}
+
+// 新闻监控：自定义关注文章来源
+model NewsSource {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
 }

@@ -17,7 +17,7 @@ interface Project {
   followStage: FollowStage
   status: string
   totalAmount: number
-  raisedAmount: number
+  raisedAmount: string
   investmentValuation: number | null
   targetDate: string
   createdAt: string
@@ -51,16 +51,20 @@ const STAGE_ORDER: FollowStage[] = [
   'PRE_DD',
   'PROJECT_INITIATION',
   'DUE_DILIGENCE',
+  'AGREEMENT',
   'CLOSING',
   'POST_INVESTMENT',
+  'REJECTED',
 ]
 
 // 投资合伙人可见的阶段（只看立项及之后）
 const PARTNER_VISIBLE_STAGES: FollowStage[] = [
   'PROJECT_INITIATION',
   'DUE_DILIGENCE',
+  'AGREEMENT',
   'CLOSING',
   'POST_INVESTMENT',
+  'REJECTED',
 ]
 
 // 各阶段配色
@@ -69,8 +73,10 @@ const stageGradients: Record<FollowStage, string> = {
   PRE_DD: 'from-blue-400 to-blue-500',
   PROJECT_INITIATION: 'from-purple-400 to-purple-500',
   DUE_DILIGENCE: 'from-amber-400 to-amber-500',
+  AGREEMENT: 'from-teal-400 to-teal-500',
   CLOSING: 'from-emerald-400 to-emerald-500',
   POST_INVESTMENT: 'from-indigo-400 to-indigo-500',
+  REJECTED: 'from-red-400 to-red-500',
 }
 
 const stageBorderLeft: Record<FollowStage, string> = {
@@ -78,41 +84,53 @@ const stageBorderLeft: Record<FollowStage, string> = {
   PRE_DD: 'border-l-blue-400',
   PROJECT_INITIATION: 'border-l-purple-400',
   DUE_DILIGENCE: 'border-l-amber-400',
+  AGREEMENT: 'border-l-teal-400',
   CLOSING: 'border-l-emerald-400',
   POST_INVESTMENT: 'border-l-indigo-400',
+  REJECTED: 'border-l-red-400',
 }
 
 // 各阶段图标
 const stageIcons: Record<FollowStage, JSX.Element> = {
   INITIAL_TALK: (
-    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
     </svg>
   ),
   PRE_DD: (
-    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
     </svg>
   ),
   PROJECT_INITIATION: (
-    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
     </svg>
   ),
   DUE_DILIGENCE: (
-    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
     </svg>
   ),
+  AGREEMENT: (
+    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+    </svg>
+  ),
   CLOSING: (
-    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
     </svg>
   ),
   POST_INVESTMENT: (
-    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+    </svg>
+  ),
+  REJECTED: (
+    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14L21 3m0 0v6m0-6h-6M19 13a8 8 0 11-2.343 5.657" />
     </svg>
   ),
 }
@@ -125,6 +143,11 @@ export default function WorkbenchPage() {
   const [stageRequests, setStageRequests] = useState<StageChangeRequest[]>([])
   const [requestsLoading, setRequestsLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [rejectLoading, setRejectLoading] = useState<string | null>(null)
+
+  // 投资合伙人筛选投资经理
+  const [managers, setManagers] = useState<{ id: string; name: string | null; username: string | null; email: string | null }[]>([])
+  const [selectedManagerId, setSelectedManagerId] = useState<string>('')  // 空 = 全部
 
   const userRole = session?.user?.role as string | undefined
   const isPartner = userRole === 'INVESTMENT_PARTNER' || userRole === 'ADMIN'
@@ -139,9 +162,24 @@ export default function WorkbenchPage() {
   useEffect(() => {
     if (status === 'authenticated') {
       fetchProjects()
-      if (isPartner) fetchStageRequests()
+      if (isPartner) {
+        fetchStageRequests()
+        fetchManagers()
+      }
     }
   }, [status, isPartner])
+
+  const fetchManagers = async () => {
+    try {
+      const response = await fetch('/api/users/managers')
+      if (response.ok) {
+        const data = await response.json()
+        setManagers(data.managers || [])
+      }
+    } catch (error) {
+      console.error('Failed to fetch managers:', error)
+    }
+  }
 
   const fetchProjects = async () => {
     setLoading(true)
@@ -191,17 +229,44 @@ export default function WorkbenchPage() {
     setActionLoading(null)
   }
 
+  // 标记项目为"已否"（否决）
+  const handleReject = async (projectId: string, projectName: string) => {
+    if (!confirm(`确定要将项目「${projectName}」标记为"已否"吗？\n\n否决后的项目将归入"已否"阶段。`)) return
+    setRejectLoading(projectId)
+    try {
+      const response = await fetch(`/api/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ followStage: 'REJECTED' }),
+      })
+      if (response.ok) {
+        fetchProjects()
+      } else {
+        const data = await response.json()
+        alert(data.error || '操作失败')
+      }
+    } catch {
+      alert('操作失败')
+    }
+    setRejectLoading(null)
+  }
+
   // 投资合伙人只看立项及之后阶段
   const visibleStages = isPartner ? PARTNER_VISIBLE_STAGES : STAGE_ORDER
+
+  // 应用筛选：投资合伙人可按投资经理筛选项目（按创建人）
+  const filteredProjects = isPartner && selectedManagerId
+    ? projects.filter(p => p.createdBy?.id === selectedManagerId)
+    : projects
 
   // 按当前阶段分组（仅当前处于该阶段的项目计入）
   const projectsByStage = visibleStages.map(stage => ({
     stage,
     label: followStageLabels[stage],
-    projects: projects.filter(p => p.followStage === stage),
+    projects: filteredProjects.filter(p => p.followStage === stage),
   }))
 
-  const totalProjects = projects.filter(p => visibleStages.includes(p.followStage)).length
+  const totalProjects = filteredProjects.filter(p => visibleStages.includes(p.followStage)).length
 
   return (
     <DashboardLayout
@@ -215,11 +280,11 @@ export default function WorkbenchPage() {
       {/* 说明条 */}
       <div className="bg-gradient-to-r from-primary-50 to-blue-50 rounded-2xl p-4 mb-6 border border-primary-100 flex items-center gap-3">
         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-md shadow-primary-500/30 flex-shrink-0">
-          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
         </div>
-        <div className="text-sm text-gray-600">
+        <div className="text-sm text-gray-600 flex-1">
           {isPartner ? (
             <>
               <span className="font-medium text-gray-900">投资合伙人工作台</span>：查看立项及之后阶段的项目，审批项目阶段变更请求。
@@ -230,22 +295,38 @@ export default function WorkbenchPage() {
             </>
           )}
         </div>
+        {/* 投资合伙人筛选投资经理 */}
+        {isPartner && managers.length > 0 && (
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <label className="text-xs text-gray-500 whitespace-nowrap">按投资经理筛选</label>
+            <select
+              value={selectedManagerId}
+              onChange={(e) => setSelectedManagerId(e.target.value)}
+              className="px-3 py-1.5 bg-white border border-primary-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-primary-400 focus:border-primary-400 max-w-[180px]"
+            >
+              <option value="">全部投资经理</option>
+              {managers.map(m => (
+                <option key={m.id} value={m.id}>
+                  {m.name || m.username || m.email}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
-      {/* 阶段统计概览：左边图标，右边数量 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      {/* 阶段统计概览：6 个阶段一行（收窄卡片） */}
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mb-6">
         {projectsByStage.map(({ stage, label, projects: stageProjects }) => (
           <div
             key={stage}
-            className="bg-gradient-card rounded-2xl p-4 shadow-sm border border-primary-100 flex items-center gap-3"
+            className="bg-gradient-card rounded-xl p-3 shadow-sm border border-primary-100 flex flex-col items-center gap-1.5"
           >
-            <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${stageGradients[stage]} flex items-center justify-center shadow-md flex-shrink-0`}>
+            <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${stageGradients[stage]} flex items-center justify-center shadow-md flex-shrink-0`}>
               {stageIcons[stage]}
             </div>
-            <div className="min-w-0">
-              <div className="text-xl font-bold text-gray-900 leading-tight">{stageProjects.length}</div>
-              <div className="text-xs text-gray-500 truncate">{label}</div>
-            </div>
+            <div className="text-lg font-bold text-gray-900 leading-tight">{stageProjects.length}</div>
+            <div className="text-xs text-gray-500 truncate text-center w-full">{label}</div>
           </div>
         ))}
       </div>
@@ -413,13 +494,12 @@ export default function WorkbenchPage() {
               ) : (
                 <div className="divide-y divide-primary-50">
                   {stageProjects.map(project => (
-                    <Link
+                    <div
                       key={project.id}
-                      href={`/projects/${project.id}`}
                       className={`block px-5 py-3 hover:bg-primary-50/50 transition-colors border-l-4 ${stageBorderLeft[stage]}`}
                     >
                       <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <Link href={`/projects/${project.id}`} className="flex items-center gap-2 min-w-0 flex-1 hover:text-primary-700 transition-colors">
                           <h4 className="font-semibold text-gray-900 text-sm truncate hover:text-primary-700 transition-colors">
                             {project.name}
                           </h4>
@@ -435,7 +515,7 @@ export default function WorkbenchPage() {
                               · {project.companyPosition}
                             </span>
                           )}
-                        </div>
+                        </Link>
                         <div className="flex items-center gap-3 text-xs text-gray-500 whitespace-nowrap">
                           {project.financingRound && (
                             <span>{project.financingRound}</span>
@@ -443,9 +523,23 @@ export default function WorkbenchPage() {
                           {project.industry && (
                             <span className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600">{project.industry}</span>
                           )}
+                          {/* "标记为已否"按钮：仅非已否阶段的项目显示 */}
+                          {stage !== 'REJECTED' && (
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                handleReject(project.id, project.name)
+                              }}
+                              disabled={rejectLoading === project.id}
+                              className="px-2 py-0.5 bg-red-50 text-red-600 rounded text-xs font-medium hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {rejectLoading === project.id ? '处理中...' : '标记为已否'}
+                            </button>
+                          )}
                         </div>
                       </div>
-                    </Link>
+                    </div>
                   ))}
                 </div>
               )}

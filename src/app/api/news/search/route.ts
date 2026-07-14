@@ -66,9 +66,20 @@ export async function POST(request: Request) {
 
     const industries = Array.from(industriesSet)
 
-    if (industries.length === 0) {
+    // 获取自定义关键字和来源
+    const [customKeywords, customSources] = await Promise.all([
+      prisma.newsKeyword.findMany({ orderBy: { createdAt: 'desc' } }),
+      prisma.newsSource.findMany({ orderBy: { createdAt: 'desc' } }),
+    ])
+
+    // 默认来源 + 自定义来源
+    const defaultSources = ['36氪', '投资界', '硬氪', '腾讯科技', '投中网', 'AI科技评论', 'DeepTech', '光子盒', '量子位', '智东西', 'Founder Park', 'Z potentials', '高瓴创投', '线性资本']
+    const allSources = Array.from(new Set([...defaultSources, ...customSources.map(s => s.name)]))
+    const customKeywordsList = customKeywords.map(k => k.keyword)
+
+    if (industries.length === 0 && customKeywordsList.length === 0) {
       return NextResponse.json({
-        message: '该年份暂无行业数据，无法检索融资新闻',
+        message: '该年份暂无行业数据且无自定义关键字，无法检索融资新闻',
         articles: [],
         industries: [],
       })
@@ -84,33 +95,39 @@ export async function POST(request: Request) {
     }
 
     const weekStart = getWeekStart()
-    const weekEnd = new Date(weekStart)
-    weekEnd.setDate(weekStart.getDate() + 7)
     const todayStr = new Date().toISOString().split('T')[0]
+    // 最近7天的起始日期（用于过滤发布时间）
+    const sevenDaysAgo = new Date()
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+    const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0]
 
-    const prompt = `你是一个资深的投资行业新闻编辑，擅长检索和整理融资新闻。请根据以下行业列表，检索本周（${weekStart.toISOString().split('T')[0]} 至 ${todayStr}）各行业的融资新闻。
+    // 构建检索内容：行业赛道 + 自定义关键字
+    const searchTopics = [
+      ...industries,
+      ...customKeywordsList,
+    ]
 
-待检索的行业赛道：${industries.join('、')}
+    const prompt = `你是一个资深的投资行业新闻编辑，擅长检索和整理融资新闻。请根据以下检索主题，检索最近一周（${sevenDaysAgoStr} 至 ${todayStr}）的融资新闻和技术进展新闻。
+
+待检索的主题/关键字：${searchTopics.join('、')}
 
 重点关注以下来源的公众号文章：
-- 36氪、投资界、硬氪、腾讯科技、投中网
-- AI科技评论、DeepTech、光子盒、量子位
-- 智东西、Founder Park、Z potentials
-- 高瓴创投、线性资本
+${allSources.map(s => `- ${s}`).join('\n')}
 
 任务要求：
-1. 针对 EACH 行业，检索本周发布的融资相关新闻文章（2-5篇）
+1. 针对 EACH 主题/关键字，检索最近一周（${sevenDaysAgoStr} 至 ${todayStr}）发布的融资相关新闻文章（2-5篇）
 2. 每篇文章提供以下信息：
    - title: 文章标题
    - source: 来源（如 36氪、投资界、量子位等）
    - sourceUrl: 原文链接（如有）
-   - industry: 所属行业
+   - industry: 所属行业或关键字
    - summary: 摘要（50-100字，用于卡片展示）
    - content: 详细内容（200-500字，包含融资方、投资方、金额、轮次等关键信息）
    - author: 作者（如有）
-   - publishedAt: 发布日期（ISO 格式，如 2026-07-01）
-3. 文章应聚焦融资事件（融资轮次、金额、投资方），而非一般行业资讯
-4. 若某行业本周无融资新闻，可跳过该行业
+   - publishedAt: 发布日期（ISO 格式，如 ${todayStr}）
+3. 文章应聚焦融资事件（融资轮次、金额、投资方）或技术进展，而非一般行业资讯
+4. **重要：每篇文章的 publishedAt 必须在 ${sevenDaysAgoStr} 至 ${todayStr} 范围内，不要包含超过7天的旧文章**
+5. 若某主题本周无相关新闻，可跳过该主题
 
 请严格按照以下 JSON 格式输出，不要包含任何其他文字：
 {
@@ -123,7 +140,7 @@ export async function POST(request: Request) {
       "summary": "摘要内容",
       "content": "详细内容",
       "author": "作者名",
-      "publishedAt": "2026-07-01"
+      "publishedAt": "${todayStr}"
     }
   ]
 }`
@@ -195,10 +212,13 @@ export async function POST(request: Request) {
     }
 
     // 存入数据库（批量插入提升性能）
+    // 过滤：仅保存最近7天内发布的文章
     const articlesToCreate = []
     for (const article of articles) {
       const publishedDate = new Date(article.publishedAt)
       if (isNaN(publishedDate.getTime())) continue
+      // 仅保存最近7天内的文章
+      if (publishedDate < sevenDaysAgo) continue
       articlesToCreate.push({
         title: article.title,
         source: article.source,
@@ -225,9 +245,11 @@ export async function POST(request: Request) {
       }
     }
 
-    // 查询本周已保存的文章返回给前端
+    // 查询最近7天已保存的文章返回给前端
     const savedArticles = await prisma.newsArticle.findMany({
-      where: { weekStart: { equals: weekStart } },
+      where: {
+        publishedAt: { gte: sevenDaysAgo },
+      },
       orderBy: { publishedAt: 'desc' },
     })
 

@@ -41,7 +41,7 @@ async function main() {
       followStage: 'INITIAL_TALK',
       description: '词元无限专注大型研发组织AI转型。核心理念是拒绝工具拼凑，构建以"数字劳动力"为核心的企业级AI原生交付体系，实现生产力确定性跃升。深耕金融、政企、能源、高端制造、轨道交通及互联网等拥有复杂业务场景的大型研发组织。',
       status: 'PENDING',
-      totalAmount: 5000,
+      totalAmount: '5000',
       raisedAmount: 0,
       targetDate: new Date('2026-12-31'),
       keywords: '词元无限,AI智能体,企业服务,数字劳动力,安全AI',

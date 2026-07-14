@@ -50,7 +50,7 @@ export async function GET(request: Request) {
     const result = filteredProjects.map(p => ({
       ...p,
       totalAmount: p.totalAmount,
-      raisedAmount: Number(p.raisedAmount),
+      raisedAmount: p.raisedAmount,  // 字符串类型，不再 Number() 转换
       investmentCount: p.investments.length,
       investorCount: p.investors.length,
       memberIds: p.members.map(m => m.userId),
@@ -165,7 +165,12 @@ export async function POST(request: Request) {
       }
     }
 
-    // investmentValuation: 投资估值（亿元），可选字段，确保是数字或 null
+    // raisedAmount: 字符串类型（用户自填单位，如"500万"、"2亿"）
+    if (data.raisedAmount !== undefined && data.raisedAmount !== null) {
+      data.raisedAmount = String(data.raisedAmount).trim()
+    }
+
+    // investmentValuation: 投资估值（亿元），必填字段
     if (data.investmentValuation !== undefined && data.investmentValuation !== null && data.investmentValuation !== '') {
       const v = Number(data.investmentValuation)
       if (isNaN(v)) {
@@ -183,6 +188,26 @@ export async function POST(request: Request) {
     if (!name) {
       return NextResponse.json(
         { error: '项目名称是必填项' },
+        { status: 400 }
+      )
+    }
+
+    // 必填项校验：所处行业、公司定位、投资估值
+    if (!industry || !String(industry).trim()) {
+      return NextResponse.json(
+        { error: '所处行业是必填项' },
+        { status: 400 }
+      )
+    }
+    if (!companyPosition || !String(companyPosition).trim()) {
+      return NextResponse.json(
+        { error: '公司定位是必填项' },
+        { status: 400 }
+      )
+    }
+    if (data.investmentValuation === null || data.investmentValuation === undefined) {
+      return NextResponse.json(
+        { error: '投资估值是必填项' },
         { status: 400 }
       )
     }
@@ -327,15 +352,22 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
-        project: { ...project, totalAmount: project.totalAmount, raisedAmount: Number(project.raisedAmount) },
+        project: { ...project, totalAmount: project.totalAmount, raisedAmount: project.raisedAmount },
         mergedLead,
       },
       { status: 201 }
     )
   } catch (error) {
     console.error('Create project error:', error)
+    // 开发环境返回详细错误信息，便于诊断
+    const isDev = process.env.NODE_ENV !== 'production'
     return NextResponse.json(
-      { error: '创建项目失败' },
+      {
+        error: '创建项目失败',
+        ...(isDev && {
+          detail: error instanceof Error ? error.message : String(error),
+        }),
+      },
       { status: 500 }
     )
   }

@@ -75,7 +75,7 @@ export async function POST(
 融资规划：${project.financingPlan || '未填写'}
 项目描述：${project.description || '未填写'}
 目标金额：${project.totalAmount}
-已筹金额：¥${project.raisedAmount}万元
+已筹金额：${project.raisedAmount || '未填写'}
 跟进阶段：${project.followStage}
 
 请按照以下 JSON 格式输出，不要包含任何其他文字：

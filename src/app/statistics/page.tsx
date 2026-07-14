@@ -49,6 +49,7 @@ const stageLabels: Record<string, string> = {
   PRE_DD: 'PreDD',
   PROJECT_INITIATION: '立项',
   DUE_DILIGENCE: '尽调',
+  AGREEMENT: '协议',
   CLOSING: '交割',
   POST_INVESTMENT: '投后',
 }

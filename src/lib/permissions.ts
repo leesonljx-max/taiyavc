@@ -12,7 +12,7 @@ export type PermissionProject = {
   memberIds: string[]
 }
 
-const RESTRICTED_STAGES: FollowStage[] = ['PRE_DD', 'PROJECT_INITIATION', 'DUE_DILIGENCE', 'CLOSING', 'POST_INVESTMENT']
+const RESTRICTED_STAGES: FollowStage[] = ['PRE_DD', 'PROJECT_INITIATION', 'DUE_DILIGENCE', 'AGREEMENT', 'CLOSING', 'POST_INVESTMENT']
 const PUBLIC_STAGES: FollowStage[] = ['INITIAL_TALK']
 
 /**

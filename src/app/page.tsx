@@ -42,31 +42,28 @@ interface MaintainerStat {
 
 interface DashboardData {
   stats: {
-    totalProjects: number
     weeklyNew: number
+    preDD: number
     initiated: number
-    invested: number
+    dueDiligence: number
   }
   weekStart: string
   weeklyProjects: WeeklyProject[]
-  years: number[]
-  selectedYear: number
   maintainerStats: MaintainerStat[]
 }
 
 export default function HomePage() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
 
   useEffect(() => {
-    fetchDashboard(selectedYear)
-  }, [selectedYear])
+    fetchDashboard()
+  }, [])
 
-  const fetchDashboard = async (year: number) => {
+  const fetchDashboard = async () => {
     setLoading(true)
     try {
-      const response = await fetch(`/api/dashboard?year=${year}`)
+      const response = await fetch(`/api/dashboard`)
       const result = await response.json()
       if (result.stats) {
         setData(result)
@@ -77,20 +74,9 @@ export default function HomePage() {
     setLoading(false)
   }
 
-  const formatDate = (iso: string) => {
-    const d = new Date(iso)
-    return `${d.getMonth() + 1}月${d.getDate()}日`
-  }
-
+  // 四个统计卡片：本周新增 / PreDD / 立项项目 / 尽调项目
+  // 统计口径：本周更改为对应阶段的项目数（本周新增=本周新建项目数）
   const stats = [
-    {
-      label: '项目库',
-      value: data?.stats?.totalProjects ?? 0,
-      icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4',
-      gradient: 'from-primary-400 to-primary-600',
-      shadow: 'shadow-primary-500/30',
-      bg: 'bg-primary-50',
-    },
     {
       label: '本周新增',
       value: data?.stats?.weeklyNew ?? 0,
@@ -98,6 +84,14 @@ export default function HomePage() {
       gradient: 'from-success-400 to-success-600',
       shadow: 'shadow-success-500/30',
       bg: 'bg-success-50',
+    },
+    {
+      label: 'PreDD',
+      value: data?.stats?.preDD ?? 0,
+      icon: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z',
+      gradient: 'from-blue-400 to-blue-600',
+      shadow: 'shadow-blue-500/30',
+      bg: 'bg-blue-50',
     },
     {
       label: '立项项目',
@@ -108,44 +102,18 @@ export default function HomePage() {
       bg: 'bg-warning-50',
     },
     {
-      label: '已投项目',
-      value: data?.stats?.invested ?? 0,
-      icon: 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2V9a2 2 0 00-2-2H9a2 2 0 00-2 2v10a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z',
-      gradient: 'from-primary-500 to-primary-700',
-      shadow: 'shadow-primary-600/30',
-      bg: 'bg-primary-50',
+      label: '尽调项目',
+      value: data?.stats?.dueDiligence ?? 0,
+      icon: 'M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z',
+      gradient: 'from-amber-400 to-amber-600',
+      shadow: 'shadow-amber-500/30',
+      bg: 'bg-amber-50',
     },
   ]
 
   return (
-    <DashboardLayout title="首页" subtitle="投资组合总览与本周动态">
-      {/* 年份筛选器 */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
-          <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-          <span className="text-sm font-medium text-gray-700">年份筛选</span>
-          <div className="flex items-center gap-1 bg-gradient-card rounded-xl p-1 border border-primary-100">
-            {data?.years.map(y => (
-              <button
-                key={y}
-                onClick={() => setSelectedYear(y)}
-                className={`px-3 py-1 rounded-lg text-sm font-medium transition-all-smooth ${
-                  selectedYear === y
-                    ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md shadow-primary-500/30'
-                    : 'text-gray-600 hover:bg-primary-50 hover:text-primary-700'
-                }`}
-              >
-                {y}
-              </button>
-            ))}
-          </div>
-        </div>
-        <span className="text-xs text-gray-400">当前显示 {selectedYear} 年数据</span>
-      </div>
-
-      {/* Stats Cards */}
+    <DashboardLayout title="首页" subtitle="本周项目动态总览">
+      {/* Stats Cards - 四个本周统计卡片 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {stats.map((stat) => (
           <div
@@ -174,20 +142,11 @@ export default function HomePage() {
             <h2 className="text-lg font-bold text-gray-900">本周新增项目</h2>
             {data && (
               <p className="text-sm text-gray-500 mt-0.5">
-                {selectedYear} 年 · 共 {data.maintainerStats?.length || 0} 位维护人
+                共 {data.maintainerStats?.length || 0} 位维护人
                 {data.weeklyProjects.length > 0 && ` · 本周新增 ${data.weeklyProjects.length} 个`}
               </p>
             )}
           </div>
-          <Link
-            href="/projects"
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-primary-200 text-primary-700 rounded-xl text-sm font-medium hover:bg-primary-50 transition-all-smooth"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
-            查看项目库
-          </Link>
         </div>
 
         {loading ? (
@@ -197,7 +156,7 @@ export default function HomePage() {
         ) : !data || !data.maintainerStats || data.maintainerStats.length === 0 ? (
           <div className="text-center py-16">
             <div className="text-gray-300 text-5xl mb-3">📋</div>
-            <p className="text-gray-500">{selectedYear} 年暂无项目数据</p>
+            <p className="text-gray-500">本周暂无项目数据</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -221,13 +180,15 @@ export default function HomePage() {
                       </div>
                     </div>
 
-                    {/* 各阶段项目数量 */}
+                    {/* 各阶段项目数量（本周变更统计） */}
+                    <div className="text-xs text-gray-400 mb-1.5">本周阶段变更</div>
                     <div className="space-y-2">
                       {[
                         { key: 'INITIAL_TALK', label: '初聊', color: 'bg-gray-100 text-gray-700' },
                         { key: 'PRE_DD', label: 'PreDD', color: 'bg-blue-100 text-blue-700' },
                         { key: 'PROJECT_INITIATION', label: '立项', color: 'bg-purple-100 text-purple-700' },
                         { key: 'DUE_DILIGENCE', label: '尽调', color: 'bg-amber-100 text-amber-700' },
+                        { key: 'AGREEMENT', label: '协议', color: 'bg-teal-100 text-teal-700' },
                         { key: 'CLOSING', label: '交割', color: 'bg-emerald-100 text-emerald-700' },
                       ].map(stage => (
                         <div key={stage.key} className="flex items-center justify-between">
@@ -251,7 +212,7 @@ export default function HomePage() {
                         {(() => {
                           // 按阶段分组：上面 初聊/PreDD，下面 立项/尽调/交割（投后不计入）
                           const earlyStages = ['INITIAL_TALK', 'PRE_DD']
-                          const lateStages = ['PROJECT_INITIATION', 'DUE_DILIGENCE', 'CLOSING']
+                          const lateStages = ['PROJECT_INITIATION', 'DUE_DILIGENCE', 'AGREEMENT', 'CLOSING']
                           const earlyProjects = m.projects.filter(p => earlyStages.includes(p.followStage))
                           const lateProjects = m.projects.filter(p => lateStages.includes(p.followStage))
 

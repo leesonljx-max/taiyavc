@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import DashboardLayout from '@/components/DashboardLayout'
+import DocumentPreviewModal from '@/components/DocumentPreviewModal'
 import { followStageLabels, followStageColors, type FollowStage } from '../types'
 
 interface PartnerReview {
@@ -54,6 +55,16 @@ interface CompetitorItem {
   founderBackground: string
 }
 
+interface ProjectDocument {
+  id: string
+  fileName: string
+  fileUrl: string
+  fileType: string
+  fileSize: number
+  createdAt: string
+  uploadedBy: { id: string; name: string | null } | null
+}
+
 interface Project {
   id: string
   name: string
@@ -73,7 +84,7 @@ interface Project {
   description: string | null
   status: string
   totalAmount: number
-  raisedAmount: number
+  raisedAmount: string
   investmentValuation: number | null
   targetDate: string
   partnerReviews: PartnerReview[]
@@ -88,6 +99,28 @@ interface Project {
   createdBy: { id: string; name: string | null; email: string | null } | null
   createdById: string
   protectionExpiresAt: string | null
+}
+
+/**
+ * 安全渲染 HTML 内容（富文本编辑器存储的 HTML）
+ * - 过滤 <script> 标签防止 XSS
+ * - 空内容显示 '-'
+ */
+function renderHtmlContent(content: string | null): { __html: string } {
+  if (!content) return { __html: '' }
+  // 简单过滤 <script> 标签
+  const sanitized = content.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+  return { __html: sanitized }
+}
+
+// 判断内容是否为空（HTML 空内容或纯文本空内容）
+function isContentEmpty(content: string | null): boolean {
+  if (!content) return true
+  const trimmed = content.trim()
+  if (!trimmed) return true
+  // 移除 HTML 标签后检查是否为空
+  const textOnly = trimmed.replace(/<[^>]+>/g, '').trim()
+  return !textOnly && !trimmed.includes('<img')
 }
 
 export default function ProjectDetailPage() {
@@ -106,6 +139,13 @@ export default function ProjectDetailPage() {
   const [competitorList, setCompetitorList] = useState<CompetitorItem[] | null>(null)
   const [isGeneratingCompetitors, setIsGeneratingCompetitors] = useState(false)
   const [competitorError, setCompetitorError] = useState('')
+
+  // 项目文档
+  const [documents, setDocuments] = useState<ProjectDocument[]>([])
+  const [uploadingDoc, setUploadingDoc] = useState(false)
+  const [docError, setDocError] = useState('')
+  const [previewDoc, setPreviewDoc] = useState<{ fileName: string; fileUrl: string; fileType: string } | null>(null)
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null)
 
   // 合伙人评价
   const [reviewContent, setReviewContent] = useState('')
@@ -159,10 +199,91 @@ export default function ProjectDetailPage() {
 
       // 拉取立项审批信息
       fetchApproval()
+      // 拉取项目文档列表
+      fetchDocuments()
     } catch (error) {
       console.error('Failed to fetch project:', error)
     }
     setLoading(false)
+  }
+
+  // 获取项目文档列表
+  const fetchDocuments = async () => {
+    try {
+      const response = await fetch(`/api/projects/${params.id}/documents`)
+      if (response.ok) {
+        const data = await response.json()
+        setDocuments(data.documents || [])
+      }
+    } catch (error) {
+      console.error('Failed to fetch documents:', error)
+    }
+  }
+
+  // 上传项目文档
+  const handleUploadDocument = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = '' // 清空 input，允许重复选择同一文件
+
+    setUploadingDoc(true)
+    setDocError('')
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const response = await fetch(`/api/projects/${params.id}/documents`, {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        setDocError(data.error || '上传失败')
+        return
+      }
+      setDocuments(prev => [data.document, ...prev])
+    } catch (error) {
+      console.error('Upload document error:', error)
+      setDocError('网络错误，上传失败')
+    } finally {
+      setUploadingDoc(false)
+    }
+  }
+
+  // 删除项目文档
+  const handleDeleteDocument = async (docId: string) => {
+    if (!confirm('确定要删除该文档吗？此操作不可撤销。')) return
+    setDeletingDocId(docId)
+    try {
+      const response = await fetch(`/api/projects/${params.id}/documents/${docId}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) {
+        const data = await response.json()
+        setDocError(data.error || '删除失败')
+        return
+      }
+      setDocuments(prev => prev.filter(d => d.id !== docId))
+    } catch (error) {
+      console.error('Delete document error:', error)
+      setDocError('网络错误，删除失败')
+    } finally {
+      setDeletingDocId(null)
+    }
+  }
+
+  // 格式化文件大小
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  // 获取文件类型图标颜色
+  const getDocIconColor = (fileType: string, fileName: string): string => {
+    const name = fileName.toLowerCase()
+    if (fileType === 'application/pdf' || name.endsWith('.pdf')) return 'bg-red-100 text-red-600'
+    if (name.endsWith('.ppt') || name.endsWith('.pptx')) return 'bg-orange-100 text-orange-600'
+    return 'bg-gray-100 text-gray-600'
   }
 
   const fetchApproval = async () => {
@@ -527,7 +648,7 @@ export default function ProjectDetailPage() {
               </div>
               <div className="bg-white/70 rounded-xl p-4 border border-primary-50">
                 <div className="text-xs text-gray-500 mb-1">历史累计融资</div>
-                <div className="text-sm font-medium text-gray-900">¥{project.raisedAmount.toLocaleString()}万</div>
+                <div className="text-sm font-medium text-gray-900">{project.raisedAmount || '-'}</div>
               </div>
             </div>
           </div>
@@ -540,7 +661,11 @@ export default function ProjectDetailPage() {
               </svg>
               主要产品
             </h2>
-            <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">{project.mainProducts || '-'}</p>
+            {isContentEmpty(project.mainProducts) ? (
+              <p className="text-gray-400">-</p>
+            ) : (
+              <div className="text-gray-600 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.mainProducts)} />
+            )}
           </div>
 
           {/* 核心优势 */}
@@ -551,7 +676,11 @@ export default function ProjectDetailPage() {
               </svg>
               核心优势
             </h2>
-            <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">{project.coreAdvantage || '-'}</p>
+            {isContentEmpty(project.coreAdvantage) ? (
+              <p className="text-gray-400">-</p>
+            ) : (
+              <div className="text-gray-600 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.coreAdvantage)} />
+            )}
           </div>
 
           {/* 财务数据 */}
@@ -562,29 +691,36 @@ export default function ProjectDetailPage() {
               </svg>
               财务数据
             </h2>
-            {project.financialData ? (
-              (() => {
+            {(() => {
+              // 兼容旧数据：如果是 JSON 对象，显示键值对
+              if (project.financialData) {
                 let parsed = project.financialData
                 if (typeof parsed === 'string') {
-                  try { parsed = JSON.parse(parsed) } catch { /* not JSON, show as text */ }
-                }
-                if (typeof parsed === 'object' && parsed !== null) {
-                  return (
-                    <div className="space-y-2">
-                      {Object.entries(parsed).map(([key, value]) => (
-                        <div key={key} className="flex justify-between py-2.5 border-b border-primary-50 last:border-0">
-                          <span className="text-gray-500 text-sm">{key}</span>
-                          <span className="text-gray-900 font-medium text-sm">{String(value)}</span>
+                  try {
+                    const obj = JSON.parse(parsed)
+                    if (typeof obj === 'object' && obj !== null) {
+                      return (
+                        <div className="space-y-2">
+                          {Object.entries(obj).map(([key, value]) => (
+                            <div key={key} className="flex justify-between py-2.5 border-b border-primary-50 last:border-0">
+                              <span className="text-gray-500 text-sm">{key}</span>
+                              <span className="text-gray-900 font-medium text-sm">{String(value)}</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  )
+                      )
+                    }
+                  } catch {
+                    // 不是 JSON，按 HTML 渲染
+                  }
                 }
-                return <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">{String(project.financialData)}</p>
-              })()
-            ) : (
-              <p className="text-gray-400">-</p>
-            )}
+                // HTML 内容渲染
+                if (!isContentEmpty(typeof parsed === 'string' ? parsed : String(parsed))) {
+                  return <div className="text-gray-600 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(typeof parsed === 'string' ? parsed : String(parsed))} />
+                }
+              }
+              return <p className="text-gray-400">-</p>
+            })()}
           </div>
 
           {/* 订单进展 */}
@@ -595,7 +731,11 @@ export default function ProjectDetailPage() {
               </svg>
               订单进展
             </h2>
-            <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">{project.orderProgress || '-'}</p>
+            {isContentEmpty(project.orderProgress) ? (
+              <p className="text-gray-400">-</p>
+            ) : (
+              <div className="text-gray-600 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.orderProgress)} />
+            )}
           </div>
 
           {/* 核心团队 */}
@@ -606,7 +746,11 @@ export default function ProjectDetailPage() {
               </svg>
               核心团队
             </h2>
-            <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">{project.coreTeam || '-'}</p>
+            {isContentEmpty(project.coreTeam) ? (
+              <p className="text-gray-400">-</p>
+            ) : (
+              <div className="text-gray-600 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.coreTeam)} />
+            )}
           </div>
 
           {/* 竞争对手 */}
@@ -617,7 +761,11 @@ export default function ProjectDetailPage() {
               </svg>
               竞争对手
             </h2>
-            <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">{project.competitors || '-'}</p>
+            {isContentEmpty(project.competitors) ? (
+              <p className="text-gray-400">-</p>
+            ) : (
+              <div className="text-gray-600 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.competitors)} />
+            )}
           </div>
 
           {/* 融资规划 */}
@@ -628,7 +776,11 @@ export default function ProjectDetailPage() {
               </svg>
               融资规划
             </h2>
-            <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">{project.financingPlan || '-'}</p>
+            {isContentEmpty(project.financingPlan) ? (
+              <p className="text-gray-400">-</p>
+            ) : (
+              <div className="text-gray-600 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.financingPlan)} />
+            )}
           </div>
 
           {/* 项目描述 */}
@@ -639,7 +791,11 @@ export default function ProjectDetailPage() {
               </svg>
               项目描述
             </h2>
-            <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">{project.description || '-'}</p>
+            {isContentEmpty(project.description) ? (
+              <p className="text-gray-400">-</p>
+            ) : (
+              <div className="text-gray-600 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.description)} />
+            )}
           </div>
         </div>
 
@@ -864,6 +1020,148 @@ export default function ProjectDetailPage() {
             </div>
           )}
 
+          {/* 项目文档（BP、商业计划书等，支持多版本） */}
+          <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+                项目文档 ({documents.length})
+              </h2>
+              {project.canEdit && (
+                <label className={`inline-flex items-center gap-2 px-3 py-1.5 bg-primary-50 text-primary-700 rounded-xl text-xs font-medium hover:bg-primary-100 transition-colors cursor-pointer ${uploadingDoc ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  {uploadingDoc ? (
+                    <>
+                      <svg className="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      上传中...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                      </svg>
+                      上传文档
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept="application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,.pdf,.ppt,.pptx"
+                    onChange={handleUploadDocument}
+                    disabled={uploadingDoc}
+                    className="hidden"
+                  />
+                </label>
+              )}
+            </div>
+
+            {docError && (
+              <div className="mb-3 flex items-center gap-2 px-3 py-2 bg-danger-50 border border-danger-200 rounded-xl text-xs text-danger-700">
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                {docError}
+              </div>
+            )}
+
+            {documents.length === 0 ? (
+              <div className="text-center py-6">
+                <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-primary-50 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <p className="text-gray-500 text-sm">
+                  {project.canEdit ? '点击右上角"上传文档"添加 BP 等资料' : '暂无项目文档'}
+                </p>
+                <p className="text-gray-400 text-xs mt-1">支持 PDF / PPT / PPTX 格式</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {documents.map(doc => (
+                  <div
+                    key={doc.id}
+                    className="group flex items-center gap-3 bg-white/70 rounded-xl p-3 border border-primary-50 hover:border-primary-200 hover:shadow-sm transition-all-smooth"
+                  >
+                    {/* 文件类型图标 */}
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${getDocIconColor(doc.fileType, doc.fileName)}`}>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+
+                    {/* 文件信息（点击预览） */}
+                    <button
+                      onClick={() => setPreviewDoc({ fileName: doc.fileName, fileUrl: doc.fileUrl, fileType: doc.fileType })}
+                      className="flex-1 min-w-0 text-left"
+                    >
+                      <div className="font-medium text-gray-900 text-sm truncate hover:text-primary-700 transition-colors" title={doc.fileName}>
+                        {doc.fileName}
+                      </div>
+                      <div className="text-xs text-gray-500 flex items-center gap-2">
+                        <span>{formatFileSize(doc.fileSize)}</span>
+                        <span>·</span>
+                        <span>{new Date(doc.createdAt).toLocaleDateString('zh-CN')}</span>
+                        {doc.uploadedBy?.name && (
+                          <>
+                            <span>·</span>
+                            <span>{doc.uploadedBy.name}</span>
+                          </>
+                        )}
+                      </div>
+                    </button>
+
+                    {/* 操作按钮 */}
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        onClick={() => setPreviewDoc({ fileName: doc.fileName, fileUrl: doc.fileUrl, fileType: doc.fileType })}
+                        className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                        title="预览"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      </button>
+                      <a
+                        href={doc.fileUrl}
+                        download={doc.fileName}
+                        className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                        title="下载"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                      </a>
+                      {project.canEdit && (
+                        <button
+                          onClick={() => handleDeleteDocument(doc.id)}
+                          disabled={deletingDocId === doc.id}
+                          className="p-1.5 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg transition-colors disabled:opacity-50"
+                          title="删除"
+                        >
+                          {deletingDocId === doc.id ? (
+                            <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* 竞争态势分析 */}
           <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
             <div className="flex items-center justify-between mb-4">
@@ -1025,6 +1323,15 @@ export default function ProjectDetailPage() {
           </div>
         </div>
       )}
+
+      {/* 文档预览模态框 */}
+      <DocumentPreviewModal
+        open={!!previewDoc}
+        onClose={() => setPreviewDoc(null)}
+        fileName={previewDoc?.fileName || ''}
+        fileUrl={previewDoc?.fileUrl || ''}
+        fileType={previewDoc?.fileType || ''}
+      />
     </DashboardLayout>
   )
 }

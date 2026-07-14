@@ -4,27 +4,10 @@ import prisma from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 
 /**
- * 计算本周起始时间（每周一中午12:00）
- */
-function getWeekStart(): Date {
-  const now = new Date()
-  const dayOfWeek = now.getDay()
-  const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
-  const monday = new Date(now)
-  monday.setDate(now.getDate() - daysSinceMonday)
-  monday.setHours(12, 0, 0, 0)
-  if (dayOfWeek === 1 && now.getHours() < 12) {
-    monday.setDate(monday.getDate() - 7)
-  }
-  return monday
-}
-
-/**
  * GET /api/news
- * 获取新闻列表，默认返回本周新闻
+ * 获取新闻列表，仅返回最近7天内发布的文章
  *
  * 查询参数：
- * - week: 'current' (默认) | 'all' — 本周或全部
  * - industry: 行业筛选
  * - source: 来源筛选
  */
@@ -36,19 +19,19 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url)
-    const week = searchParams.get('week') || 'current'
     const industry = searchParams.get('industry')
     const source = searchParams.get('source')
 
     const where: {
-      weekStart?: { gte: Date }
+      publishedAt?: { gte: Date }
       industry?: string
       source?: string
     } = {}
 
-    if (week === 'current') {
-      where.weekStart = { gte: getWeekStart() }
-    }
+    // 仅返回最近7天内发布的文章
+    const sevenDaysAgo = new Date()
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+    where.publishedAt = { gte: sevenDaysAgo }
 
     if (industry && industry !== 'all') {
       where.industry = industry
@@ -74,8 +57,9 @@ export async function GET(request: Request) {
       },
     })
 
-    // 获取所有行业和来源（用于筛选器）
+    // 获取所有行业和来源（用于筛选器，仅从最近7天的文章中提取）
     const allArticles = await prisma.newsArticle.findMany({
+      where: { publishedAt: { gte: sevenDaysAgo } },
       select: { industry: true, source: true },
     })
     const industriesSet = new Set<string>()
@@ -90,7 +74,6 @@ export async function GET(request: Request) {
       industries: Array.from(industriesSet).sort(),
       sources: Array.from(sourcesSet).sort(),
       total: articles.length,
-      weekStart: week === 'current' ? getWeekStart().toISOString() : null,
     })
   } catch (error) {
     console.error('News list API error:', error)

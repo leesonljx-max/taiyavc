@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import DashboardLayout from '@/components/DashboardLayout'
@@ -17,7 +17,7 @@ interface Project {
   followStage: FollowStage
   status: string
   totalAmount: number
-  raisedAmount: number
+  raisedAmount: string
   targetDate: string
   investorCount: number
   investmentCount: number
@@ -88,6 +88,11 @@ const stageIcons: Record<FollowStage | 'all', JSX.Element> = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
     </svg>
   ),
+  AGREEMENT: (
+    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+    </svg>
+  ),
   CLOSING: (
     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -98,6 +103,11 @@ const stageIcons: Record<FollowStage | 'all', JSX.Element> = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
     </svg>
   ),
+  REJECTED: (
+    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14L21 3m0 0v6m0-6h-6M19 13a8 8 0 11-2.343 5.657" />
+    </svg>
+  ),
 }
 
 const stageCardStyles: Record<FollowStage | 'all', string> = {
@@ -106,8 +116,10 @@ const stageCardStyles: Record<FollowStage | 'all', string> = {
   PRE_DD: 'from-blue-400 to-blue-500',
   PROJECT_INITIATION: 'from-purple-400 to-purple-500',
   DUE_DILIGENCE: 'from-amber-400 to-amber-500',
+  AGREEMENT: 'from-teal-400 to-teal-500',
   CLOSING: 'from-emerald-400 to-emerald-500',
   POST_INVESTMENT: 'from-indigo-400 to-indigo-500',
+  REJECTED: 'from-red-400 to-red-500',
 }
 
 type TabKey = 'library' | 'mine' | 'leads'
@@ -123,7 +135,7 @@ export default function ProjectListPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedStage, setSelectedStage] = useState<FollowStage | 'all'>('all')
   const [selectedIndustry, setSelectedIndustry] = useState<string>('all')
-  const [scope, setScope] = useState<'all' | 'mine'>(isManagerOnly ? 'mine' : 'all')
+  const [selectedYear, setSelectedYear] = useState<number | 'all'>('all')
 
   // Tab 切换：项目库 / 我的项目 / 项目线索
   const [tab, setTab] = useState<TabKey>(isManagerOnly ? 'mine' : 'library')
@@ -139,51 +151,81 @@ export default function ProjectListPage() {
   const [leadSaving, setLeadSaving] = useState(false)
   const [leadError, setLeadError] = useState('')
 
-  // 当用户 session 加载完成后，如果是投资经理且当前 scope 未初始化，切换到 mine
+  // AbortController：防止快速切换 Tab 时旧请求覆盖新数据（竞态保护）
+  const fetchProjectsAbort = useRef<AbortController | null>(null)
+  const fetchLeadsAbort = useRef<AbortController | null>(null)
+
+  // 当用户 session 加载完成后，如果是投资经理，默认切换到"我的项目"
   useEffect(() => {
-    if (userRole === 'INVESTMENT_MANAGER' && scope === 'all') {
-      setScope('mine')
+    if (userRole === 'INVESTMENT_MANAGER' && tab === 'library') {
+      setTab('mine')
     }
   }, [userRole])
 
-  // Tab 切换时同步 scope
+  // Tab 切换时触发请求（使用 AbortController 防竞态）
   useEffect(() => {
-    if (tab === 'library') setScope('all')
-    else if (tab === 'mine') setScope('mine')
+    if (tab === 'leads') {
+      fetchLeads()
+    } else {
+      const currentScope = tab === 'library' ? 'all' : 'mine'
+      fetchProjects(currentScope)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
 
-  useEffect(() => {
-    if (tab !== 'leads') fetchProjects()
-  }, [scope, tab])
+  const fetchProjects = useCallback(async (currentScope: 'all' | 'mine') => {
+    // 取消上一个未完成的请求，防止旧响应覆盖新数据
+    if (fetchProjectsAbort.current) {
+      fetchProjectsAbort.current.abort()
+    }
+    const controller = new AbortController()
+    fetchProjectsAbort.current = controller
 
-  useEffect(() => {
-    if (tab === 'leads') fetchLeads()
-  }, [tab])
-
-  const fetchProjects = async () => {
     setLoading(true)
     try {
-      const response = await fetch(`/api/projects?scope=${scope}`)
+      const response = await fetch(`/api/projects?scope=${currentScope}`, {
+        signal: controller.signal,
+      })
       const data = await response.json()
       setProjects(data.projects || [])
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        // 请求被取消（正常行为，用户快速切换 Tab），不显示错误
+        return
+      }
       console.error('Failed to fetch projects:', error)
     }
-    setLoading(false)
-  }
+    // 仅在当前请求未被取消时才更新 loading 状态
+    if (fetchProjectsAbort.current === controller) {
+      setLoading(false)
+    }
+  }, [])
 
-  const fetchLeads = async () => {
+  const fetchLeads = useCallback(async () => {
+    if (fetchLeadsAbort.current) {
+      fetchLeadsAbort.current.abort()
+    }
+    const controller = new AbortController()
+    fetchLeadsAbort.current = controller
+
     setLeadsLoading(true)
     try {
       // 项目线索向所有账户开放，和项目库一样
-      const response = await fetch(`/api/project-leads?scope=all`)
+      const response = await fetch(`/api/project-leads?scope=all`, {
+        signal: controller.signal,
+      })
       const data = await response.json()
       setLeads(data.leads || [])
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return
+      }
       console.error('Failed to fetch leads:', error)
     }
-    setLeadsLoading(false)
-  }
+    if (fetchLeadsAbort.current === controller) {
+      setLeadsLoading(false)
+    }
+  }, [])
 
   const openCreateLead = () => {
     setEditingLead(null)
@@ -267,6 +309,15 @@ export default function ProjectListPage() {
     new Set(projects.map(p => p.industry).filter((i): i is string => !!i))
   ).sort()
 
+  // 从项目列表中提取不重复的年份（基于初聊日期 targetDate），降序排列
+  const availableYears = Array.from(
+    new Set(
+      projects
+        .map(p => p.targetDate ? new Date(p.targetDate).getFullYear() : null)
+        .filter((y): y is number => y !== null)
+    )
+  ).sort((a, b) => b - a)
+
   // 解析项目的 passedStages（累计统计：经过的所有阶段）
   const getPassedStages = (p: Project): FollowStage[] => {
     if (!p.passedStages) return ['INITIAL_TALK']
@@ -288,7 +339,11 @@ export default function ProjectListPage() {
 
     const matchesIndustry = selectedIndustry === 'all' || project.industry === selectedIndustry
 
-    return matchesSearch && matchesStage && matchesIndustry
+    // 按年份过滤（基于初聊日期 targetDate）
+    const matchesYear = selectedYear === 'all' ||
+      (project.targetDate && new Date(project.targetDate).getFullYear() === selectedYear)
+
+    return matchesSearch && matchesStage && matchesIndustry && matchesYear
   })
 
   // 累计统计：经过某阶段的项目数量（而非当前处于某阶段）
@@ -483,8 +538,8 @@ export default function ProjectListPage() {
       {/* ════════════ 项目视图（项目库 / 我的项目）════════════ */}
       {tab !== 'leads' && (
         <>
-          {/* 统计卡片区域 - 项目库 + 6个阶段 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">
+          {/* 统计卡片区域 - 项目库 + 7个阶段 */}
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-6">
             {/* 项目库卡片 */}
             <button
               onClick={() => setSelectedStage('all')}
@@ -503,8 +558,8 @@ export default function ProjectListPage() {
               </div>
             </button>
 
-            {/* 6个阶段卡片 */}
-            {(Object.keys(followStageLabels) as FollowStage[]).map(stage => (
+            {/* 阶段卡片（不含"已否"，已否仅在工作台展示） */}
+            {(Object.keys(followStageLabels) as FollowStage[]).filter(s => s !== 'REJECTED').map(stage => (
               <button
                 key={stage}
                 onClick={() => setSelectedStage(selectedStage === stage ? 'all' : stage)}
@@ -525,7 +580,40 @@ export default function ProjectListPage() {
             ))}
           </div>
 
-          {/* 搜索和行业筛选 */}
+          {/* 年份筛选（与阶段卡片同行级，按钮样式） */}
+          <div className="flex items-center gap-2 mb-6">
+            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span className="text-sm font-medium text-gray-700">年份筛选</span>
+            <div className="flex items-center gap-1 bg-gradient-card rounded-xl p-1 border border-primary-100">
+              <button
+                onClick={() => setSelectedYear('all')}
+                className={`px-3 py-1 rounded-lg text-sm font-medium transition-all-smooth ${
+                  selectedYear === 'all'
+                    ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md shadow-primary-500/30'
+                    : 'text-gray-600 hover:bg-primary-50 hover:text-primary-700'
+                }`}
+              >
+                全部
+              </button>
+              {availableYears.map(y => (
+                <button
+                  key={y}
+                  onClick={() => setSelectedYear(y)}
+                  className={`px-3 py-1 rounded-lg text-sm font-medium transition-all-smooth ${
+                    selectedYear === y
+                      ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md shadow-primary-500/30'
+                      : 'text-gray-600 hover:bg-primary-50 hover:text-primary-700'
+                  }`}
+                >
+                  {y}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 搜索、行业筛选 */}
           <div className="bg-gradient-card rounded-2xl shadow-sm p-4 mb-6 border border-primary-100">
             <div className="flex flex-col md:flex-row gap-4">
               <div className="flex-1 relative">
@@ -622,7 +710,7 @@ export default function ProjectListPage() {
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-gray-400 text-xs flex-shrink-0">历史累计融资</span>
                           <span className="text-gray-900 text-right">
-                            {project.raisedAmount > 0 ? `¥${project.raisedAmount.toLocaleString()}万` : '-'}
+                            {project.raisedAmount || '-'}
                           </span>
                         </div>
                       </div>

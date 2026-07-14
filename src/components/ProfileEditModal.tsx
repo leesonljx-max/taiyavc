@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import Image from 'next/image'
+import AvatarCropper from './AvatarCropper'
 
 interface ProfileEditModalProps {
   open: boolean
@@ -31,6 +32,8 @@ export default function ProfileEditModal({ open, onClose, onUpdate }: ProfileEdi
   // 头像 tab
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [rawFile, setRawFile] = useState<File | null>(null)  // 原始未裁剪的文件
+  const [showCropper, setShowCropper] = useState(false)
   const [avatarLoading, setAvatarLoading] = useState(false)
   const [avatarError, setAvatarError] = useState('')
   const [avatarSuccess, setAvatarSuccess] = useState('')
@@ -54,7 +57,8 @@ export default function ProfileEditModal({ open, onClose, onUpdate }: ProfileEdi
         return
       }
       setInfoSuccess('姓名修改成功')
-      await updateSession()
+      // 通过 updateSession 主动更新 JWT token 中的 name
+      await updateSession({ name })
       onUpdate()
     } catch {
       setInfoError('网络错误')
@@ -97,16 +101,29 @@ export default function ProfileEditModal({ open, onClose, onUpdate }: ProfileEdi
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    if (file.size > 2 * 1024 * 1024) {
-      setAvatarError('图片不能超过 2MB')
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarError('图片不能超过 5MB')
       return
     }
-    setAvatarFile(file)
-    const reader = new FileReader()
-    reader.onload = (ev) => setAvatarPreview(ev.target?.result as string)
-    reader.readAsDataURL(file)
     setAvatarError('')
     setAvatarSuccess('')
+    setRawFile(file)
+    setShowCropper(true)
+  }
+
+  // 裁剪完成回调
+  const handleCropComplete = (croppedFile: File) => {
+    setAvatarFile(croppedFile)
+    const reader = new FileReader()
+    reader.onload = (ev) => setAvatarPreview(ev.target?.result as string)
+    reader.readAsDataURL(croppedFile)
+    setShowCropper(false)
+  }
+
+  // 裁剪取消回调
+  const handleCropCancel = () => {
+    setShowCropper(false)
+    setRawFile(null)
   }
 
   const handleUploadAvatar = async () => {
@@ -124,7 +141,9 @@ export default function ProfileEditModal({ open, onClose, onUpdate }: ProfileEdi
         return
       }
       setAvatarSuccess('头像更新成功')
-      await updateSession()
+      // 关键修复：通过 updateSession 主动更新 JWT token 中的 avatar
+      // JWT 策略下，updateSession() 默认不会从 DB 重新加载，需要显式传值
+      await updateSession({ avatar: data.avatar })
       onUpdate()
     } catch {
       setAvatarError('网络错误')
@@ -272,18 +291,26 @@ export default function ProfileEditModal({ open, onClose, onUpdate }: ProfileEdi
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
                   onChange={handleFileSelect}
                   className="hidden"
                 />
 
-                <div className="flex gap-3">
+                <div className="flex gap-3 flex-wrap justify-center">
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200 transition-colors"
                   >
                     选择图片
                   </button>
+                  {avatarFile && rawFile && (
+                    <button
+                      onClick={() => { setAvatarFile(null); setAvatarPreview(null); setShowCropper(true) }}
+                      className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200 transition-colors"
+                    >
+                      重新裁剪
+                    </button>
+                  )}
                   <button
                     onClick={handleUploadAvatar}
                     disabled={avatarLoading || !avatarFile}
@@ -295,7 +322,7 @@ export default function ProfileEditModal({ open, onClose, onUpdate }: ProfileEdi
               </div>
 
               <p className="text-xs text-gray-400 text-center">
-                支持 JPG/PNG/GIF/WebP/SVG 格式，文件大小不超过 2MB
+                支持 JPG/PNG/GIF/WebP 格式，文件大小不超过 5MB。选择图片后可裁剪为正方形头像。
               </p>
 
               {avatarError && <p className="text-sm text-danger-600 text-center">{avatarError}</p>}
@@ -304,6 +331,14 @@ export default function ProfileEditModal({ open, onClose, onUpdate }: ProfileEdi
           )}
         </div>
       </div>
+      {/* 头像裁剪弹窗 */}
+      {showCropper && rawFile && (
+        <AvatarCropper
+          file={rawFile}
+          onCropComplete={handleCropComplete}
+          onCancel={handleCropCancel}
+        />
+      )}
     </div>
   )
 }

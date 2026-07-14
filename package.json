@@ -10,6 +10,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
+    "db:push": "prisma db push && prisma generate",
+    "postinstall": "prisma generate",
     "news-cron": "tsx scripts/news-cron.ts"
   },
   "dependencies": {

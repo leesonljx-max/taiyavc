@@ -94,12 +94,23 @@ export const authOptions: NextAuthOptions = {
     },
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
+      // 初次登录：从 user 对象读取信息
       if (user) {
         token.id = (user as { id: string }).id
         token.role = (user as { role: UserRole }).role
         token.name = user.name ?? undefined
         token.avatar = (user as { avatar?: string | null }).avatar ?? undefined
+      }
+      // 会话更新（updateSession 调用）：从 session 读取最新值
+      // 解决 JWT 策略下 updateSession() 不从 DB 重新加载的问题
+      if (trigger === 'update' && session) {
+        if (session.avatar !== undefined) {
+          token.avatar = session.avatar
+        }
+        if (session.name !== undefined) {
+          token.name = session.name
+        }
       }
       return token
     },

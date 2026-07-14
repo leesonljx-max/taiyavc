@@ -5,7 +5,24 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import DashboardLayout from '@/components/DashboardLayout'
+import RichTextEditor from '@/components/RichTextEditor'
 import { followStageLabels, type FollowStage } from '../types'
+
+// 行业预设选项（支持下拉选择 + 自定义输入）
+const INDUSTRY_OPTIONS = [
+  'AI应用',
+  'AI硬件',
+  'AI基础设施',
+  '具身智能',
+  '商业航天',
+  '量子计算',
+  '脑机接口',
+  '可控核聚变',
+  '半导体设备',
+  '半导体芯片',
+  '光学',
+  '新材料',
+]
 
 interface FormData {
   name: string
@@ -379,8 +396,21 @@ export default function NewProjectPage() {
     e.preventDefault()
     setError('')
 
+    // 必填项校验：项目名称、融资金额、所处行业、公司定位、投资估值
     if (!formData.name || !formData.totalAmount) {
       setError('项目名称和融资金额是必填项')
+      return
+    }
+    if (!formData.industry.trim()) {
+      setError('所处行业是必填项')
+      return
+    }
+    if (!formData.companyPosition.trim()) {
+      setError('公司定位是必填项')
+      return
+    }
+    if (!formData.investmentValuation || isNaN(parseFloat(formData.investmentValuation))) {
+      setError('投资估值是必填项，请输入有效数字')
       return
     }
 
@@ -393,21 +423,14 @@ export default function NewProjectPage() {
     setLoading(true)
 
     try {
-      let parsedFinancialData = null
-      if (formData.financialData?.trim()) {
-        try {
-          parsedFinancialData = JSON.parse(formData.financialData)
-        } catch {
-          parsedFinancialData = formData.financialData
-        }
-      }
-
+      // financialData 现在是 HTML 字符串（来自 RichTextEditor），直接传递
+      // 兼容旧数据：如果内容不是 HTML 且能解析为 JSON，则保持字符串形式
       const data = {
         ...formData,
         totalAmount: formData.totalAmount.trim(),
-        raisedAmount: parseFloat(formData.raisedAmount) || 0,
-        investmentValuation: formData.investmentValuation ? parseFloat(formData.investmentValuation) : null,
-        financialData: parsedFinancialData,
+        raisedAmount: formData.raisedAmount.trim(),  // 字符串，用户自填单位
+        investmentValuation: parseFloat(formData.investmentValuation),
+        financialData: formData.financialData || null,  // HTML 字符串
         targetDate: formData.targetDate ? new Date(formData.targetDate).toISOString() : undefined,
       }
 
@@ -417,8 +440,25 @@ export default function NewProjectPage() {
         body: JSON.stringify(data),
       })
 
+      // 安全解析 JSON：防止 API 返回 HTML（如 dev server 编译错误页面）导致 JSON 解析失败
+      const contentType = response.headers.get('content-type') || ''
+      let result: any = null
+      if (contentType.includes('application/json')) {
+        try {
+          result = await response.json()
+        } catch {
+          setError('服务器返回了无效的响应，请刷新页面后重试')
+          setLoading(false)
+          return
+        }
+      } else {
+        // API 返回了非 JSON 响应（如 HTML 错误页面），通常是 dev server 编译错误或缓存问题
+        setError('服务器返回了非预期的响应，请重启开发服务器后重试')
+        setLoading(false)
+        return
+      }
+
       if (!response.ok) {
-        const result = await response.json()
         if (response.status === 409) {
           setDuplicateWarning(result.existingProject)
           setConfirmedDuplicate(false)
@@ -430,7 +470,6 @@ export default function NewProjectPage() {
         return
       }
 
-      const result = await response.json()
       if (result.mergedLead) {
         alert(`已自动合并项目线索「${result.mergedLead.name}」的信息，该线索已删除。`)
       }
@@ -747,21 +786,27 @@ export default function NewProjectPage() {
 
               <div>
                 <label htmlFor="industry" className={labelClass}>
-                  所处行业
+                  所处行业 <span className="text-danger-500">*</span>
                 </label>
                 <input
                   id="industry"
                   type="text"
+                  list="industry-options"
                   value={formData.industry}
                   onChange={(e) => setFormData(prev => ({ ...prev, industry: e.target.value }))}
                   className={inputClass}
-                  placeholder="请输入行业"
+                  placeholder="请选择或输入行业"
                 />
+                <datalist id="industry-options">
+                  {INDUSTRY_OPTIONS.map(opt => (
+                    <option key={opt} value={opt} />
+                  ))}
+                </datalist>
               </div>
 
               <div>
                 <label htmlFor="companyPosition" className={labelClass}>
-                  公司定位
+                  公司定位 <span className="text-danger-500">*</span>
                 </label>
                 <input
                   id="companyPosition"
@@ -822,29 +867,31 @@ export default function NewProjectPage() {
 
               <div>
                 <label htmlFor="investmentValuation" className={labelClass}>
-                  投资估值（亿元）
+                  投资估值（亿元） <span className="text-danger-500">*</span>
                 </label>
                 <input
                   id="investmentValuation"
                   type="number"
+                  step="0.01"
                   value={formData.investmentValuation}
                   onChange={(e) => setFormData(prev => ({ ...prev, investmentValuation: e.target.value }))}
                   className={inputClass}
-                  placeholder="投资估值"
+                  placeholder="请输入投资估值（亿元）"
+                  required
                 />
               </div>
 
               <div>
                 <label htmlFor="raisedAmount" className={labelClass}>
-                  历史累计融资金额（万元）
+                  历史累计融资金额
                 </label>
                 <input
                   id="raisedAmount"
-                  type="number"
+                  type="text"
                   value={formData.raisedAmount}
                   onChange={(e) => setFormData(prev => ({ ...prev, raisedAmount: e.target.value }))}
                   className={inputClass}
-                  placeholder="历史累计融资金额"
+                  placeholder="如 500万 / 2亿（请输入单位）"
                 />
               </div>
 
@@ -889,13 +936,11 @@ export default function NewProjectPage() {
                 <label htmlFor="mainProducts" className={labelClass}>
                   主要产品
                 </label>
-                <textarea
-                  id="mainProducts"
+                <RichTextEditor
                   value={formData.mainProducts}
-                  onChange={(e) => setFormData(prev => ({ ...prev, mainProducts: e.target.value }))}
-                  className={`${inputClass} resize-none`}
+                  onChange={(html) => setFormData(prev => ({ ...prev, mainProducts: html }))}
+                  placeholder="请输入主要产品，可粘贴截图"
                   rows={3}
-                  placeholder="请输入主要产品"
                 />
               </div>
 
@@ -903,41 +948,11 @@ export default function NewProjectPage() {
                 <label htmlFor="coreAdvantage" className={labelClass}>
                   核心优势
                 </label>
-                <textarea
-                  id="coreAdvantage"
+                <RichTextEditor
                   value={formData.coreAdvantage}
-                  onChange={(e) => setFormData(prev => ({ ...prev, coreAdvantage: e.target.value }))}
-                  className={`${inputClass} resize-none`}
+                  onChange={(html) => setFormData(prev => ({ ...prev, coreAdvantage: html }))}
+                  placeholder="请输入核心优势（技术壁垒、团队背景、资源优势等），可粘贴截图"
                   rows={3}
-                  placeholder="请输入核心优势（技术壁垒、团队背景、资源优势等）"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="financialData" className={labelClass}>
-                  财务数据（JSON格式）
-                </label>
-                <textarea
-                  id="financialData"
-                  value={formData.financialData}
-                  onChange={(e) => setFormData(prev => ({ ...prev, financialData: e.target.value }))}
-                  className={`${inputClass} resize-none font-mono text-sm`}
-                  rows={3}
-                  placeholder='{"营收": "1000万", "净利润": "200万"}'
-                />
-              </div>
-
-              <div>
-                <label htmlFor="orderProgress" className={labelClass}>
-                  订单进展
-                </label>
-                <textarea
-                  id="orderProgress"
-                  value={formData.orderProgress}
-                  onChange={(e) => setFormData(prev => ({ ...prev, orderProgress: e.target.value }))}
-                  className={`${inputClass} resize-none`}
-                  rows={3}
-                  placeholder="请输入订单进展"
                 />
               </div>
 
@@ -945,13 +960,35 @@ export default function NewProjectPage() {
                 <label htmlFor="coreTeam" className={labelClass}>
                   核心团队
                 </label>
-                <textarea
-                  id="coreTeam"
+                <RichTextEditor
                   value={formData.coreTeam}
-                  onChange={(e) => setFormData(prev => ({ ...prev, coreTeam: e.target.value }))}
-                  className={`${inputClass} resize-none`}
+                  onChange={(html) => setFormData(prev => ({ ...prev, coreTeam: html }))}
+                  placeholder="请输入核心团队成员介绍（创始人、高管等背景信息），可粘贴截图"
                   rows={3}
-                  placeholder="请输入核心团队成员介绍（创始人、高管等背景信息）"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="financialData" className={labelClass}>
+                  财务数据
+                </label>
+                <RichTextEditor
+                  value={formData.financialData}
+                  onChange={(html) => setFormData(prev => ({ ...prev, financialData: html }))}
+                  placeholder="请输入财务数据，可粘贴截图"
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="orderProgress" className={labelClass}>
+                  订单进展
+                </label>
+                <RichTextEditor
+                  value={formData.orderProgress}
+                  onChange={(html) => setFormData(prev => ({ ...prev, orderProgress: html }))}
+                  placeholder="请输入订单进展，可粘贴截图"
+                  rows={3}
                 />
               </div>
 
@@ -959,13 +996,11 @@ export default function NewProjectPage() {
                 <label htmlFor="competitors" className={labelClass}>
                   竞争对手
                 </label>
-                <textarea
-                  id="competitors"
+                <RichTextEditor
                   value={formData.competitors}
-                  onChange={(e) => setFormData(prev => ({ ...prev, competitors: e.target.value }))}
-                  className={`${inputClass} resize-none`}
+                  onChange={(html) => setFormData(prev => ({ ...prev, competitors: html }))}
+                  placeholder="请输入主要竞争对手（可一行一个，便于 AI 检索分析），可粘贴截图"
                   rows={3}
-                  placeholder="请输入主要竞争对手（可一行一个，便于 AI 检索分析）"
                 />
               </div>
 
@@ -973,13 +1008,11 @@ export default function NewProjectPage() {
                 <label htmlFor="financingPlan" className={labelClass}>
                   融资规划
                 </label>
-                <textarea
-                  id="financingPlan"
+                <RichTextEditor
                   value={formData.financingPlan}
-                  onChange={(e) => setFormData(prev => ({ ...prev, financingPlan: e.target.value }))}
-                  className={`${inputClass} resize-none`}
+                  onChange={(html) => setFormData(prev => ({ ...prev, financingPlan: html }))}
+                  placeholder="请输入融资规划，可粘贴截图"
                   rows={3}
-                  placeholder="请输入融资规划"
                 />
               </div>
 
@@ -987,13 +1020,11 @@ export default function NewProjectPage() {
                 <label htmlFor="description" className={labelClass}>
                   项目描述
                 </label>
-                <textarea
-                  id="description"
+                <RichTextEditor
                   value={formData.description}
-                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                  className={`${inputClass} resize-none`}
+                  onChange={(html) => setFormData(prev => ({ ...prev, description: html }))}
+                  placeholder="请输入项目描述，可粘贴截图"
                   rows={3}
-                  placeholder="请输入项目描述"
                 />
               </div>
             </div>

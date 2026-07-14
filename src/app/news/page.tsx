@@ -34,6 +34,15 @@ export default function NewsPage() {
   const [viewingArticle, setViewingArticle] = useState<NewsDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
 
+  // 自定义关键字和来源管理
+  const [keywords, setKeywords] = useState<{ id: string; keyword: string }[]>([])
+  const [sourcesList, setSourcesList] = useState<{ id: string; name: string }[]>([])
+  const [newKeyword, setNewKeyword] = useState('')
+  const [newSource, setNewSource] = useState('')
+  const [keywordSaving, setKeywordSaving] = useState(false)
+  const [sourceSaving, setSourceSaving] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+
   useEffect(() => {
     if (status !== 'authenticated') return
     fetchNews()
@@ -43,7 +52,7 @@ export default function NewsPage() {
     setLoading(true)
     setError('')
     try {
-      const params = new URLSearchParams({ week: 'current' })
+      const params = new URLSearchParams()
       if (selectedIndustry !== 'all') params.set('industry', selectedIndustry)
       if (selectedSource !== 'all') params.set('source', selectedSource)
       const res = await fetch(`/api/news?${params}`)
@@ -102,6 +111,92 @@ export default function NewsPage() {
     }
   }
 
+  // 关键字和来源管理
+  const fetchKeywordsAndSources = async () => {
+    try {
+      const [kwRes, srcRes] = await Promise.all([
+        fetch('/api/news/keywords'),
+        fetch('/api/news/sources'),
+      ])
+      const kwData = await kwRes.json()
+      const srcData = await srcRes.json()
+      setKeywords(kwData.keywords || [])
+      setSourcesList(srcData.sources || [])
+    } catch {
+      // 忽略
+    }
+  }
+
+  const handleAddKeyword = async () => {
+    const kw = newKeyword.trim()
+    if (!kw) return
+    setKeywordSaving(true)
+    try {
+      const res = await fetch('/api/news/keywords', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: kw }),
+      })
+      if (res.ok) {
+        setNewKeyword('')
+        await fetchKeywordsAndSources()
+      } else {
+        const data = await res.json()
+        setError(data.error || '添加关键字失败')
+      }
+    } catch {
+      setError('网络错误')
+    }
+    setKeywordSaving(false)
+  }
+
+  const handleDeleteKeyword = async (id: string) => {
+    try {
+      await fetch(`/api/news/keywords?id=${id}`, { method: 'DELETE' })
+      await fetchKeywordsAndSources()
+    } catch {
+      // 忽略
+    }
+  }
+
+  const handleAddSource = async () => {
+    const src = newSource.trim()
+    if (!src) return
+    setSourceSaving(true)
+    try {
+      const res = await fetch('/api/news/sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: src }),
+      })
+      if (res.ok) {
+        setNewSource('')
+        await fetchKeywordsAndSources()
+      } else {
+        const data = await res.json()
+        setError(data.error || '添加来源失败')
+      }
+    } catch {
+      setError('网络错误')
+    }
+    setSourceSaving(false)
+  }
+
+  const handleDeleteSource = async (id: string) => {
+    try {
+      await fetch(`/api/news/sources?id=${id}`, { method: 'DELETE' })
+      await fetchKeywordsAndSources()
+    } catch {
+      // 忽略
+    }
+  }
+
+  useEffect(() => {
+    if (status === 'authenticated') {
+      fetchKeywordsAndSources()
+    }
+  }, [status])
+
   if (status === 'loading') {
     return (
       <div className="min-h-screen bg-gradient-primary flex items-center justify-center">
@@ -120,7 +215,7 @@ export default function NewsPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">新闻监控</h1>
             <p className="text-sm text-gray-500 mt-1">
-              AI 检索各行业赛道融资新闻 · 重点关注 36氪/投资界/量子位等来源
+              AI 检索最近7天内各行业赛道融资新闻 · 支持自定义关键字和来源
             </p>
           </div>
           <button
@@ -141,7 +236,7 @@ export default function NewsPage() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-                检索本周融资新闻
+                检索最近7天融资新闻
               </>
             )}
           </button>
@@ -159,6 +254,121 @@ export default function NewsPage() {
             {error}
           </div>
         )}
+
+        {/* 关键字和来源管理 */}
+        <div className="bg-gradient-card rounded-2xl shadow-sm border border-primary-100 overflow-hidden">
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="w-full flex items-center justify-between px-5 py-3 hover:bg-primary-50/50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span className="text-sm font-medium text-gray-700">检索设置：关键字和来源管理</span>
+              {keywords.length > 0 && (
+                <span className="px-2 py-0.5 bg-primary-100 text-primary-700 rounded-full text-xs">
+                  {keywords.length} 个关键字
+                </span>
+              )}
+              {sourcesList.length > 0 && (
+                <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs">
+                  {sourcesList.length} 个来源
+                </span>
+              )}
+            </div>
+            <svg className={`w-4 h-4 text-gray-400 transition-transform ${showSettings ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {showSettings && (
+            <div className="px-5 py-4 border-t border-primary-100 space-y-4">
+              {/* 关键字管理 */}
+              <div>
+                <p className="text-xs text-gray-500 mb-2">
+                  自定义关键字：AI 检索时除行业赛道外，还会检索以下关键字的融资和技术进展新闻
+                </p>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    placeholder="如：可控核聚变"
+                    value={newKeyword}
+                    onChange={(e) => setNewKeyword(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddKeyword()}
+                    className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-400"
+                  />
+                  <button
+                    onClick={handleAddKeyword}
+                    disabled={keywordSaving || !newKeyword.trim()}
+                    className="px-4 py-2 bg-primary-500 text-white text-sm font-medium rounded-lg hover:bg-primary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    添加
+                  </button>
+                </div>
+                {keywords.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {keywords.map(kw => (
+                      <span key={kw.id} className="inline-flex items-center gap-1 px-3 py-1 bg-primary-50 text-primary-700 rounded-lg text-sm">
+                        {kw.keyword}
+                        <button
+                          onClick={() => handleDeleteKeyword(kw.id)}
+                          className="text-primary-400 hover:text-red-500 transition-colors"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 来源管理 */}
+              <div>
+                <p className="text-xs text-gray-500 mb-2">
+                  自定义来源：AI 检索时除默认来源外，还会重点关注以下来源发布的文章
+                </p>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    placeholder="如：中科创星"
+                    value={newSource}
+                    onChange={(e) => setNewSource(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddSource()}
+                    className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-400"
+                  />
+                  <button
+                    onClick={handleAddSource}
+                    disabled={sourceSaving || !newSource.trim()}
+                    className="px-4 py-2 bg-primary-500 text-white text-sm font-medium rounded-lg hover:bg-primary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    添加
+                  </button>
+                </div>
+                {sourcesList.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {sourcesList.map(src => (
+                      <span key={src.id} className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-sm">
+                        {src.name}
+                        <button
+                          onClick={() => handleDeleteSource(src.id)}
+                          className="text-blue-400 hover:text-red-500 transition-colors"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* 筛选器 */}
         {articles.length > 0 && (
@@ -212,8 +422,8 @@ export default function NewsPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
               </svg>
             </div>
-            <p className="text-sm text-gray-500 mb-1">本周暂无融资新闻</p>
-            <p className="text-xs text-gray-400">点击上方"检索本周融资新闻"按钮，AI 将自动检索各行业融资新闻</p>
+            <p className="text-sm text-gray-500 mb-1">最近7天暂无融资新闻</p>
+            <p className="text-xs text-gray-400">点击上方"检索最近7天融资新闻"按钮，AI 将自动检索各行业融资新闻</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
