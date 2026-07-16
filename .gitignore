@@ -42,6 +42,10 @@ next-env.d.ts
 # logs
 *.log
 
-# user uploads (avatars, project documents)
-/public/avatars/
-/public/project-docs/
+# user uploads (avatars, project documents, project images)
+/public/avatars/*
+!/public/avatars/.gitkeep
+/public/project-docs/*
+!/public/project-docs/.gitkeep
+/public/project-images/*
+!/public/project-images/.gitkeep
