@@ -42,6 +42,8 @@ interface HeatmapData {
   heatData: HeatItem[]
   totalIndustries?: number
   message?: string
+  cachedAt?: string
+  refreshedAt?: string
 }
 
 const stageLabels: Record<string, string> = {
@@ -98,6 +100,7 @@ export default function StatisticsPage() {
     }
   }
 
+  // 获取缓存的融资热点图数据（GET，命中缓存直接返回）
   const fetchHeatmap = async (year: number) => {
     setHeatmapLoading(true)
     setHeatmapError('')
@@ -116,13 +119,33 @@ export default function StatisticsPage() {
     }
   }
 
-  // 自动触发融资热点图获取（用户点击"检索融资信息"按钮时触发）
+  // 刷新融资热点图（POST，触发 Tavily 搜索 + DeepSeek 分析，结果缓存供所有账号共享）
+  const refreshHeatmap = async (year: number) => {
+    setHeatmapLoading(true)
+    setHeatmapError('')
+    try {
+      const res = await fetch(`/api/statistics/financing-heatmap?year=${year}`, {
+        method: 'POST',
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setHeatmapError(data.error || '刷新融资热点失败')
+        return
+      }
+      setHeatmapData(data)
+    } catch {
+      setHeatmapError('网络错误')
+    } finally {
+      setHeatmapLoading(false)
+    }
+  }
+
+  // 页面加载时自动获取缓存的融资热点图（如果有缓存则直接展示）
   useEffect(() => {
     if (status !== 'authenticated') return
-    if (heatmapData === null && !heatmapLoading) {
-      // 不自动获取，等待用户点击
-    }
-  }, [status])
+    fetchHeatmap(selectedYear)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, selectedYear])
 
   if (status === 'loading') {
     return (
@@ -285,21 +308,33 @@ export default function StatisticsPage() {
           {/* ═══ 右侧：融资热点图 ═══ */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">融资热点图</h2>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">融资热点图</h2>
+                {heatmapData?.cachedAt && (
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    缓存时间：{new Date(heatmapData.cachedAt).toLocaleString('zh-CN')}
+                  </p>
+                )}
+                {heatmapData?.refreshedAt && (
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    刷新时间：{new Date(heatmapData.refreshedAt).toLocaleString('zh-CN')}
+                  </p>
+                )}
+              </div>
               <button
-                onClick={() => fetchHeatmap(selectedYear)}
+                onClick={() => refreshHeatmap(selectedYear)}
                 disabled={heatmapLoading || !industryData?.industries.length}
                 className="px-3 py-1.5 bg-primary-500 text-white text-xs font-medium rounded-lg hover:bg-primary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {heatmapLoading ? '检索中...' : heatmapData ? '重新检索' : '检索融资信息'}
+                {heatmapLoading ? '检索中...' : heatmapData?.heatData?.length ? '重新检索' : '检索融资信息'}
               </button>
             </div>
 
             {heatmapLoading && (
               <div className="flex flex-col items-center justify-center py-20">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-                <span className="mt-3 text-sm text-gray-500">正在通过 AI 检索外网融资信息...</span>
-                <span className="mt-1 text-xs text-gray-400">这可能需要 10-30 秒</span>
+                <span className="mt-3 text-sm text-gray-500">正在通过 Tavily 检索 + DeepSeek 分析...</span>
+                <span className="mt-1 text-xs text-gray-400">这可能需要 30-60 秒</span>
               </div>
             )}
 
@@ -307,7 +342,7 @@ export default function StatisticsPage() {
               <div className="py-10 text-center">
                 <p className="text-sm text-danger-600">{heatmapError}</p>
                 <button
-                  onClick={() => fetchHeatmap(selectedYear)}
+                  onClick={() => refreshHeatmap(selectedYear)}
                   className="mt-3 px-3 py-1.5 bg-primary-50 text-primary-700 text-xs rounded-lg hover:bg-primary-100"
                 >
                   重试
@@ -315,7 +350,7 @@ export default function StatisticsPage() {
               </div>
             )}
 
-            {!heatmapLoading && !heatmapError && !heatmapData && (
+            {!heatmapLoading && !heatmapError && heatmapData && heatmapData.heatData.length === 0 && (
               <div className="py-10 text-center">
                 <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
                   <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -323,14 +358,15 @@ export default function StatisticsPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                 </div>
-                <p className="text-sm text-gray-500 mb-1">点击"检索融资信息"按钮</p>
-                <p className="text-xs text-gray-400">AI 将检索 {selectedYear} 年各行业的外部融资数据</p>
-              </div>
-            )}
-
-            {!heatmapLoading && !heatmapError && heatmapData && heatmapData.heatData.length === 0 && (
-              <div className="py-10 text-center">
-                <p className="text-sm text-gray-400">{heatmapData.message || '暂无融资数据'}</p>
+                <p className="text-sm text-gray-500 mb-1">{heatmapData.message || '暂无融资数据'}</p>
+                <p className="text-xs text-gray-400 mb-3">点击"检索融资信息"按钮，AI 将检索 {selectedYear} 年各行业的外部融资数据</p>
+                <button
+                  onClick={() => refreshHeatmap(selectedYear)}
+                  disabled={!industryData?.industries.length}
+                  className="px-3 py-1.5 bg-primary-500 text-white text-xs rounded-lg hover:bg-primary-600 disabled:opacity-50"
+                >
+                  检索融资信息
+                </button>
               </div>
             )}
 

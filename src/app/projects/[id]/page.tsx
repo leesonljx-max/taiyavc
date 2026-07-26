@@ -50,9 +50,12 @@ interface AICard {
 
 interface CompetitorItem {
   projectName: string
-  latestRound: string
-  amount: string
-  founderBackground: string
+  products: string           // 产品维度
+  techRoute: string          // 技术路线维度
+  teamBackground: string     // 团队背景维度
+  latestRound: string        // 融资进展维度 - 轮次
+  amount: string             // 融资进展维度 - 金额
+  investors: string          // 融资进展维度 - 投资方
 }
 
 interface ProjectDocument {
@@ -516,12 +519,12 @@ export default function ProjectDetailPage() {
     >
       {/* 返回链接 */}
       <div className="mb-4">
-        <Link href="/projects" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-primary-600 transition-colors">
+        <button onClick={() => router.back()} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-primary-600 transition-colors">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
           </svg>
-          返回项目列表
-        </Link>
+          返回
+        </button>
       </div>
 
       {/* 阶段标签徽章 */}
@@ -1208,7 +1211,7 @@ export default function ProjectDetailPage() {
               <div className="space-y-3">
                 {competitorList.map((c, idx) => (
                   <div key={idx} className="bg-white/70 rounded-xl p-4 border border-primary-50">
-                    <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-start justify-between mb-3">
                       <h3 className="font-semibold text-gray-900 text-sm flex items-center gap-2">
                         <span className="w-6 h-6 rounded-lg bg-gradient-to-br from-purple-400 to-pink-500 text-white text-xs font-bold flex items-center justify-center">
                           {idx + 1}
@@ -1216,18 +1219,31 @@ export default function ProjectDetailPage() {
                         {c.projectName || '-'}
                       </h3>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                      <div>
-                        <div className="text-xs text-gray-500 mb-0.5">最近融资轮次</div>
-                        <div className="font-medium text-gray-900">{c.latestRound || '-'}</div>
+                    <div className="space-y-2.5 text-sm">
+                      {/* 产品维度 */}
+                      <div className="flex gap-2">
+                        <div className="flex-shrink-0 w-20 text-xs text-gray-500 pt-0.5">产品</div>
+                        <div className="flex-1 text-gray-900">{(c as any).products || '-'}</div>
                       </div>
-                      <div>
-                        <div className="text-xs text-gray-500 mb-0.5">融资金额</div>
-                        <div className="font-medium text-primary-700">{c.amount || '-'}</div>
+                      {/* 技术路线维度 */}
+                      <div className="flex gap-2">
+                        <div className="flex-shrink-0 w-20 text-xs text-gray-500 pt-0.5">技术路线</div>
+                        <div className="flex-1 text-gray-900">{(c as any).techRoute || '-'}</div>
                       </div>
-                      <div>
-                        <div className="text-xs text-gray-500 mb-0.5">创始人背景</div>
-                        <div className="font-medium text-gray-900">{c.founderBackground || '-'}</div>
+                      {/* 团队背景维度 */}
+                      <div className="flex gap-2">
+                        <div className="flex-shrink-0 w-20 text-xs text-gray-500 pt-0.5">团队背景</div>
+                        <div className="flex-1 text-gray-900">{(c as any).teamBackground || (c as any).founderBackground || '-'}</div>
+                      </div>
+                      {/* 融资进展维度 */}
+                      <div className="flex gap-2">
+                        <div className="flex-shrink-0 w-20 text-xs text-gray-500 pt-0.5">融资进展</div>
+                        <div className="flex-1 text-gray-900">
+                          {c.latestRound && c.latestRound !== '未公开' ? c.latestRound : ''}
+                          {c.amount && c.amount !== '未公开' ? ` · ${c.amount}` : ''}
+                          {(c as any).investors && (c as any).investors !== '未公开' ? ` · ${(c as any).investors}` : ''}
+                          {!((c.latestRound && c.latestRound !== '未公开') || (c.amount && c.amount !== '未公开') || ((c as any).investors && (c as any).investors !== '未公开')) && '未公开'}
+                        </div>
                       </div>
                     </div>
                   </div>

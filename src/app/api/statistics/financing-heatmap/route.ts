@@ -4,22 +4,61 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import prisma from '@/lib/prisma'
 import { authOptions, type UserRole } from '@/lib/auth'
-import { canViewProject, type PermissionUser } from '@/lib/permissions'
+import { canViewProject, canEditProject, type PermissionUser } from '@/lib/permissions'
+import { searchWeb } from '@/lib/tavily-search'
 
 /**
  * GET /api/statistics/financing-heatmap?year=2026
- * 融资热点图数据：通过 DeepSeek 检索外网融资信息，分析各行业赛道融资热度
+ * 返回缓存的融资热点图数据（所有用户共享缓存）
  *
- * 流程：
- * 1. 获取该年初聊项目涉及的所有行业
- * 2. 调用 DeepSeek API 检索各行业的外部融资信息
- * 3. 返回每个行业的融资热度数据
- *
- * 返回：{
- *   year, years,
- *   heatData: [{ industry, financingCount, totalAmount, heatLevel, notableCompanies, summary }]
- * }
+ * POST /api/statistics/financing-heatmap?year=2026
+ * 刷新：Tavily 搜索各行业融资信息 → DeepSeek 分析 → 缓存
  */
+
+/** 获取可见项目的行业列表和年份 */
+async function getVisibleIndustries(currentUser: PermissionUser, year: number) {
+  const allProjects = await prisma.project.findMany({
+    select: {
+      industry: true,
+      targetDate: true,
+      followStage: true,
+      createdById: true,
+      members: { select: { userId: true } },
+    },
+  })
+
+  const visibleProjects = allProjects.filter(project => {
+    const memberIds = project.members.map(m => m.userId)
+    return canViewProject(currentUser, {
+      followStage: project.followStage,
+      createdById: project.createdById,
+      memberIds,
+    })
+  })
+
+  // 可用年份
+  const yearsSet = new Set<number>()
+  visibleProjects.forEach(p => {
+    if (p.targetDate) yearsSet.add(new Date(p.targetDate).getFullYear())
+  })
+  yearsSet.add(new Date().getFullYear())
+  const years = Array.from(yearsSet).sort((a, b) => b - a)
+
+  // 按年份筛选
+  const yearFiltered = visibleProjects.filter(
+    p => p.targetDate && new Date(p.targetDate).getFullYear() === year
+  )
+
+  // 提取行业
+  const industriesSet = new Set<string>()
+  yearFiltered.forEach(p => {
+    const ind = p.industry?.trim()
+    if (ind) industriesSet.add(ind)
+  })
+
+  return { industries: Array.from(industriesSet), years }
+}
+
 export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions)
@@ -38,48 +77,7 @@ export async function GET(request: Request) {
     const year = yearParam ? parseInt(yearParam, 10) : currentYear
     const validYear = isNaN(year) ? currentYear : year
 
-    // 获取所有项目（带权限过滤）
-    const allProjects = await prisma.project.findMany({
-      select: {
-        id: true,
-        industry: true,
-        targetDate: true,
-        followStage: true,
-        createdById: true,
-        members: { select: { userId: true } },
-      },
-    })
-
-    const visibleProjects = allProjects.filter(project => {
-      const memberIds = project.members.map(m => m.userId)
-      return canViewProject(currentUser, {
-        followStage: project.followStage,
-        createdById: project.createdById,
-        memberIds,
-      })
-    })
-
-    // 可用年份列表
-    const yearsSet = new Set<number>()
-    visibleProjects.forEach(p => {
-      if (p.targetDate) yearsSet.add(new Date(p.targetDate).getFullYear())
-    })
-    yearsSet.add(currentYear)
-    const years = Array.from(yearsSet).sort((a, b) => b - a)
-
-    // 按初聊日期年份筛选
-    const yearFilteredProjects = visibleProjects.filter(
-      p => p.targetDate && new Date(p.targetDate).getFullYear() === validYear
-    )
-
-    // 提取所有行业（去重）
-    const industriesSet = new Set<string>()
-    yearFilteredProjects.forEach(p => {
-      const ind = p.industry?.trim()
-      if (ind) industriesSet.add(ind)
-    })
-
-    const industries = Array.from(industriesSet)
+    const { industries, years } = await getVisibleIndustries(currentUser, validYear)
 
     if (industries.length === 0) {
       return NextResponse.json({
@@ -90,47 +88,117 @@ export async function GET(request: Request) {
       })
     }
 
-    // 调用 DeepSeek API 检索外网融资信息
+    // 检查缓存
+    const cacheKey = `heatmap:${validYear}`
+    const cached = await prisma.aICache.findUnique({ where: { cacheKey } })
+
+    if (cached) {
+      const cachedData = JSON.parse(cached.data)
+      return NextResponse.json({
+        year: validYear,
+        years,
+        ...cachedData,
+        cachedAt: cached.updatedAt,
+      })
+    }
+
+    // 无缓存，返回空数据提示用户刷新
+    return NextResponse.json({
+      year: validYear,
+      years,
+      heatData: [],
+      totalIndustries: industries.length,
+      message: '暂无融资热点数据，请点击刷新按钮生成',
+    })
+  } catch (error) {
+    console.error('Financing heatmap GET error:', error)
+    return NextResponse.json(
+      { error: '获取融资热点数据失败' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user || !session.user.id) {
+      return NextResponse.json(
+        { error: '登录已过期，请退出后重新登录' },
+        { status: 401 }
+      )
+    }
+
+    const currentUser: PermissionUser = {
+      id: session.user.id,
+      role: session.user.role as UserRole,
+    }
+
+    const { searchParams } = new URL(request.url)
+    const currentYear = new Date().getFullYear()
+    const yearParam = searchParams.get('year')
+    const year = yearParam ? parseInt(yearParam, 10) : currentYear
+    const validYear = isNaN(year) ? currentYear : year
+
+    const { industries, years } = await getVisibleIndustries(currentUser, validYear)
+
+    if (industries.length === 0) {
+      return NextResponse.json({
+        year: validYear,
+        years,
+        heatData: [],
+        message: '该年份暂无行业数据',
+      })
+    }
+
+    // 1. 用 Tavily 并发搜索各行业融资信息
+    const searchPromises = industries.map(ind =>
+      searchWeb(`${ind} 融资 ${validYear} 年`, { maxResults: 3 })
+    )
+    const searchArrays = await Promise.all(searchPromises)
+    const searchByIndustry = industries.map((ind, i) => ({
+      industry: ind,
+      results: searchArrays[i],
+    }))
+
+    // 2. 构建 DeepSeek prompt
+    const industrySearchInfo = searchByIndustry
+      .map(({ industry, results }) => {
+        const snippets = results
+          .map((r, j) => `[${j + 1}] ${r.title}\n${r.content.substring(0, 300)}`)
+          .join('\n')
+        return `【${industry}】\n${snippets || '未找到相关搜索结果'}`
+      })
+      .join('\n\n')
+
     const deepseekApiKey = process.env.DEEPSEEK_API_KEY
     if (!deepseekApiKey) {
       return NextResponse.json(
-        { error: 'DeepSeek API Key 未配置，无法检索融资信息' },
+        { error: 'DeepSeek API Key 未配置' },
         { status: 500 }
       )
     }
 
-    const prompt = `你是一个资深的投资分析师，擅长行业融资趋势分析。请根据以下行业列表，检索并分析 ${validYear} 年各行业赛道的外部融资信息。
+    const prompt = `你是一个资深的投资分析师。请根据以下各行业的搜索结果，分析 ${validYear} 年各行业赛道的融资热度。
 
-待分析的行业赛道：${industries.join('、')}
+外网搜索结果：
+${industrySearchInfo}
 
 任务要求：
-1. 针对 EACH 行业，检索 ${validYear} 年该行业的公开融资事件信息
+1. 针对每个行业，基于搜索结果分析融资热度
 2. 每个行业提供以下信息：
    - industry: 行业名称
-   - financingCount: 该行业 ${validYear} 年公开的融资事件数量（估算值）
-   - totalAmount: 该行业 ${validYear} 年公开的融资总金额（估算值，格式如 "约50亿元人民币"）
+   - financingCount: 该行业融资事件数量（估算值）
+   - totalAmount: 融资总金额（估算值，格式如"约50亿元"）
    - heatLevel: 融资热度等级（1-5，5为最热）
-   - notableCompanies: 该行业融资活跃的代表性公司（2-4个，用顿号分隔）
-   - summary: 一句话总结该行业融资趋势（不超过60字）
-3. 热度等级参考：5=极度热门(月均20+融资事件)、4=热门(月均10-20)、3=正常(月均5-10)、2=较冷(月均1-5)、1=冷门(月均<1)
-4. 若无法确定具体数字，请给出合理估算并标注"约"字
+   - notableCompanies: 代表性公司（2-4个，用顿号分隔）
+   - summary: 一句话总结（不超过60字）
 
-请严格按照以下 JSON 格式输出，不要包含任何其他文字：
-{
-  "heatData": [
-    {
-      "industry": "行业名称",
-      "financingCount": 30,
-      "totalAmount": "约50亿元人民币",
-      "heatLevel": 4,
-      "notableCompanies": "公司A、公司B、公司C",
-      "summary": "该行业融资活跃，主要集中在早期阶段"
-    }
-  ]
-}`
+请严格按 JSON 格式输出：
+{"heatData":[{"industry":"行业","financingCount":30,"totalAmount":"约50亿元","heatLevel":4,"notableCompanies":"公司A、公司B","summary":"摘要"}]}`
 
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 30000)
+    const timeoutId = setTimeout(() => controller.abort(), 60000)
 
     let response: Response
     try {
@@ -141,11 +209,11 @@ export async function GET(request: Request) {
           'Authorization': `Bearer ${deepseekApiKey}`,
         },
         body: JSON.stringify({
-          model: 'deepseek-chat',
+          model: 'deepseek-v4-flash',
           messages: [
             {
               role: 'system',
-              content: '你是一个专业的投资分析助手，擅长行业融资趋势分析。请基于公开信息作答，无法确定的信息请合理估算并标注。',
+              content: '你是一个专业的投资分析助手，擅长行业融资趋势分析。',
             },
             {
               role: 'user',
@@ -162,8 +230,6 @@ export async function GET(request: Request) {
     }
 
     if (!response.ok) {
-      const errorText = await response.text()
-      console.error('DeepSeek API error:', errorText)
       return NextResponse.json(
         { error: 'DeepSeek API 调用失败' },
         { status: 502 }
@@ -173,7 +239,6 @@ export async function GET(request: Request) {
     const aiData = await response.json()
     const content = aiData.choices?.[0]?.message?.content || ''
 
-    // 解析 AI 返回的 JSON
     let heatData: Array<{
       industry: string
       financingCount: number
@@ -184,18 +249,24 @@ export async function GET(request: Request) {
     }> = []
 
     try {
-      // 尝试直接解析
-      const jsonMatch = content.match(/\{[\s\S]*\}/)
+      // 使用 repairJson 容错处理 DeepSeek 返回的常见格式问题
+      const repaired = content
+        .replace(/```json/g, '')
+        .replace(/```/g, '')
+        .replace(/,(\s*[}\]])/g, '$1')
+        .replace(/[\u201C\u201D]/g, '"')
+        .replace(/[\u2018\u2019]/g, "'")
+        .trim()
+      const jsonMatch = repaired.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0])
         heatData = parsed.heatData || []
       }
     } catch {
-      // 解析失败，返回空数据
       console.error('Failed to parse DeepSeek response:', content)
     }
 
-    // 确保每个行业都有数据（DeepSeek 可能遗漏某些行业）
+    // 补全缺失行业
     const returnedIndustries = new Set(heatData.map(h => h.industry))
     for (const ind of industries) {
       if (!returnedIndustries.has(ind)) {
@@ -210,19 +281,29 @@ export async function GET(request: Request) {
       }
     }
 
-    // 按热度降序排序
     heatData.sort((a, b) => b.heatLevel - a.heatLevel)
+
+    // 3. 缓存结果
+    const cacheKey = `heatmap:${validYear}`
+    const cacheData = JSON.stringify({ heatData, totalIndustries: industries.length })
+
+    await prisma.aICache.upsert({
+      where: { cacheKey },
+      create: { cacheKey, data: cacheData },
+      update: { data: cacheData },
+    })
 
     return NextResponse.json({
       year: validYear,
       years,
       heatData,
       totalIndustries: industries.length,
+      refreshedAt: new Date().toISOString(),
     })
   } catch (error) {
-    console.error('Financing heatmap API error:', error)
+    console.error('Financing heatmap POST error:', error)
     return NextResponse.json(
-      { error: '获取融资热点数据失败' },
+      { error: '刷新融资热点数据失败' },
       { status: 500 }
     )
   }

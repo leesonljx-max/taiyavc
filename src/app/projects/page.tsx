@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import DashboardLayout from '@/components/DashboardLayout'
+import AILeadsTab from '@/components/AILeadsTab'
 import { followStageLabels, followStageColors, type FollowStage } from './types'
 
 interface Project {
@@ -122,7 +123,7 @@ const stageCardStyles: Record<FollowStage | 'all', string> = {
   REJECTED: 'from-red-400 to-red-500',
 }
 
-type TabKey = 'library' | 'mine' | 'leads'
+type TabKey = 'library' | 'mine' | 'leads' | 'ai-leads'
 
 export default function ProjectListPage() {
   const { data: session } = useSession()
@@ -347,8 +348,16 @@ export default function ProjectListPage() {
   })
 
   // 累计统计：经过某阶段的项目数量（而非当前处于某阶段）
+  // 注意：阶段统计应随年份、行业筛选联动，但不随阶段本身和搜索词联动（否则循环/无意义）
+  const yearAndIndustryFiltered = projects.filter(project => {
+    const matchesIndustry = selectedIndustry === 'all' || project.industry === selectedIndustry
+    const matchesYear = selectedYear === 'all' ||
+      (project.targetDate && new Date(project.targetDate).getFullYear() === selectedYear)
+    return matchesIndustry && matchesYear
+  })
+
   const stageCount = (stage: FollowStage) =>
-    projects.filter(p => getPassedStages(p).includes(stage)).length
+    yearAndIndustryFiltered.filter(p => getPassedStages(p).includes(stage)).length
 
   // 过滤项目线索
   const filteredLeads = leads.filter(lead => {
@@ -377,6 +386,9 @@ export default function ProjectListPage() {
             </svg>
             新增线索
           </button>
+        ) : tab === 'ai-leads' ? (
+          // AI 线索 Tab 不显示新建按钮（检索按钮在组件内）
+          <></>
         ) : (
           <Link
             href="/projects/new"
@@ -435,6 +447,21 @@ export default function ProjectListPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
             项目线索
+          </span>
+        </button>
+        <button
+          onClick={() => setTab('ai-leads')}
+          className={`px-5 py-2 rounded-xl text-sm font-medium transition-all-smooth ${
+            tab === 'ai-leads'
+              ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-md shadow-purple-500/30'
+              : 'text-gray-600 hover:bg-purple-50 hover:text-purple-700'
+          }`}
+        >
+          <span className="inline-flex items-center gap-1.5">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+            AI 线索
           </span>
         </button>
       </div>
@@ -535,8 +562,11 @@ export default function ProjectListPage() {
         </>
       )}
 
+      {/* ════════════ AI 线索视图 ════════════ */}
+      {tab === 'ai-leads' && <AILeadsTab />}
+
       {/* ════════════ 项目视图（项目库 / 我的项目）════════════ */}
-      {tab !== 'leads' && (
+      {tab !== 'leads' && tab !== 'ai-leads' && (
         <>
           {/* 统计卡片区域 - 项目库 + 7个阶段 */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-6">

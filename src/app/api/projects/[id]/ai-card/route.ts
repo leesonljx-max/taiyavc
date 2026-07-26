@@ -5,12 +5,24 @@ import { getServerSession } from 'next-auth'
 import prisma from '@/lib/prisma'
 import { authOptions, type UserRole } from '@/lib/auth'
 import { canViewProject, canEditProject, type PermissionUser } from '@/lib/permissions'
+import { searchWeb } from '@/lib/tavily-search'
 
 interface AICardData {
   projectName: string
   highlights: string[]
   barriers: string[]
   risks: string[]
+}
+
+/** JSON 修复：处理 DeepSeek 返回的常见格式问题 */
+function repairJson(text: string): string {
+  return text
+    .replace(/```json/g, '')
+    .replace(/```/g, '')
+    .replace(/,(\s*[}\]])/g, '$1')
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'")
+    .trim()
 }
 
 export async function POST(
@@ -65,7 +77,19 @@ export async function POST(
       financialData = { raw: financialDataStr }
     }
 
-    const prompt = `你是一个资深的投资分析师。请根据以下项目信息，生成一份结构化的投资分析卡片。
+    // 用 Tavily 搜索项目的外网信息（融资、产品、行业地位等）
+    const searchQueries = [
+      `${project.name} 融资 投资`,
+      project.industry ? `${project.name} ${project.industry}` : `${project.companyFullName || project.name} 公司介绍`,
+    ]
+    const searchResults = await Promise.all(
+      searchQueries.map(q => searchWeb(q, { maxResults: 3 }))
+    )
+    const externalInfo = searchResults.flat()
+      .map((r, i) => `[${i + 1}] ${r.title}\n${r.content.substring(0, 500)}`)
+      .join('\n\n')
+
+    const prompt = `你是一个资深的投资分析师。请根据以下项目信息和外网搜索结果，生成一份结构化的投资分析卡片。
 
 项目名称：${project.name}
 公司全称：${project.companyFullName || '未填写'}
@@ -79,6 +103,9 @@ export async function POST(
 目标金额：${project.totalAmount}
 已筹金额：${project.raisedAmount || '未填写'}
 跟进阶段：${project.followStage}
+
+外网搜索结果：
+${externalInfo || '未找到相关外网信息'}
 
 请按照以下 JSON 格式输出，不要包含任何其他文字：
 {
@@ -103,7 +130,7 @@ export async function POST(
     }
 
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 30000)
+    const timeoutId = setTimeout(() => controller.abort(), 60000)
 
     let response: Response
     try {
@@ -114,7 +141,7 @@ export async function POST(
           'Authorization': `Bearer ${deepseekApiKey}`,
         },
         body: JSON.stringify({
-          model: 'deepseek-chat',
+          model: 'deepseek-v4-flash',
           messages: [
             {
               role: 'system',
@@ -154,7 +181,9 @@ export async function POST(
 
     let aiCardData: AICardData
     try {
-      aiCardData = JSON.parse(aiCardJson)
+      const repaired = repairJson(aiCardJson)
+      const jsonMatch = repaired.match(/\{[\s\S]*\}/)
+      aiCardData = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(repaired)
     } catch {
       return NextResponse.json(
         { error: 'AI 返回数据格式错误' },

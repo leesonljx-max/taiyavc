@@ -156,7 +156,7 @@ detail 简要说明分析理由，不超过100字。`
         'Authorization': `Bearer ${deepseekApiKey}`,
       },
       body: JSON.stringify({
-        model: 'deepseek-chat',
+        model: 'deepseek-v4-flash',
         messages: [
           {
             role: 'system',
