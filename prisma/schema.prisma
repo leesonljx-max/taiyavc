@@ -139,6 +139,8 @@ model User {
   aiRetrievalLogs    AIRetrievalLog[]
   // 投研分析模块文档
   researchDocuments  ResearchDocument[]
+  // 投研分析模块点评
+  researchComments   ResearchComment[]
 }
 
 // 项目线索（用于在新建项目时进行重合检测和合并，也用于AI自动检索）
@@ -414,6 +416,7 @@ model ResearchModule {
 
   project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   documents     ResearchDocument[]
+  comments      ResearchComment[]
 
   @@unique([projectId, moduleType])
   @@index([projectId])
@@ -439,4 +442,26 @@ model ResearchDocument {
 
   @@index([moduleId])
   @@index([uploadedById])
+}
+
+// 投研分析模块点评（含回复）
+// - 一级点评：parentId 为空，直接对模块内容进行标注点评
+// - 回复：parentId 指向一级点评，仅主维护人/辅助维护人可回复
+model ResearchComment {
+  id          String   @id @default(cuid())
+  moduleId    String   // 关联的 ResearchModule
+  userId      String   // 发布人
+  parentId    String?  // 父点评 ID（为空表示一级点评；非空表示回复）
+  content     String   // 点评/回复内容
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  module      ResearchModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent      ResearchComment? @relation("ResearchCommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     ResearchComment[] @relation("ResearchCommentReplies")
+
+  @@index([moduleId])
+  @@index([userId])
+  @@index([parentId])
 }

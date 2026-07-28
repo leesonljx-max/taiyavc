@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import DashboardLayout from '@/components/DashboardLayout'
+import Pagination from '@/components/Pagination'
 import { followStageLabels, followStageColors, type FollowStage } from '../projects/types'
 
 interface Project {
@@ -146,6 +147,10 @@ export default function WorkbenchPage() {
   // 当前选中的阶段卡片（点击卡片筛选对应阶段项目）
   const [selectedStage, setSelectedStage] = useState<FollowStage>('INITIAL_TALK')
 
+  // 分页：每个阶段每页显示 20 个项目
+  const STAGE_PAGE_SIZE = 20
+  const [stagePage, setStagePage] = useState(1)
+
   // 投资合伙人筛选投资经理
   const [managers, setManagers] = useState<{ id: string; name: string | null; username: string | null; email: string | null }[]>([])
   const [selectedManagerId, setSelectedManagerId] = useState<string>('')  // 空 = 全部
@@ -239,6 +244,9 @@ export default function WorkbenchPage() {
       setSelectedStage('PROJECT_INITIATION')
     }
   }, [status, isPartner, selectedStage])
+
+  // 阶段或投资经理变化时重置分页
+  useEffect(() => { setStagePage(1) }, [selectedStage, selectedManagerId])
 
   // 应用筛选：投资合伙人可按投资经理筛选项目（按创建人）
   const filteredProjects = isPartner && selectedManagerId
@@ -477,9 +485,16 @@ export default function WorkbenchPage() {
           const stageLabel = stageInfo?.label || ''
           const stageKey = selectedStage
 
+          // 分页计算
+          const totalStagePages = Math.ceil(stageProjects.length / STAGE_PAGE_SIZE)
+          const pagedStageProjects = stageProjects.slice(
+            (stagePage - 1) * STAGE_PAGE_SIZE,
+            stagePage * STAGE_PAGE_SIZE
+          )
+
           return (
             <div className="bg-gradient-card rounded-2xl shadow-sm border border-primary-100 overflow-hidden">
-              {/* 阶段头部 */}
+              {/* 阶段头部 + 分页按钮 */}
               <div className={`flex items-center justify-between px-5 py-3 bg-gradient-to-r ${stageGradients[stageKey]} from-opacity-10`}>
                 <div className="flex items-center gap-2">
                   <span className="text-white font-semibold text-sm">{stageLabel}</span>
@@ -487,6 +502,31 @@ export default function WorkbenchPage() {
                     {stageProjects.length}
                   </span>
                 </div>
+                {stageProjects.length > STAGE_PAGE_SIZE && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setStagePage(stagePage - 1)}
+                      disabled={stagePage <= 1}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/20 text-white hover:bg-white/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <span className="text-white text-xs font-medium px-2">
+                      {stagePage} / {totalStagePages}
+                    </span>
+                    <button
+                      onClick={() => setStagePage(stagePage + 1)}
+                      disabled={stagePage >= totalStagePages}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/20 text-white hover:bg-white/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* 项目卡片 */}
@@ -496,7 +536,7 @@ export default function WorkbenchPage() {
                 </div>
               ) : (
                 <div className="divide-y divide-primary-50">
-                  {stageProjects.map(project => (
+                  {pagedStageProjects.map(project => (
                     <div
                       key={project.id}
                       className={`block px-5 py-3 hover:bg-primary-50/50 transition-colors border-l-4 ${stageBorderLeft[stageKey]}`}

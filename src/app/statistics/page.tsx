@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import DashboardLayout from '@/components/DashboardLayout'
 
@@ -76,6 +76,7 @@ export default function StatisticsPage() {
   const [industryError, setIndustryError] = useState('')
   const [heatmapError, setHeatmapError] = useState('')
   const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null)
+  const autoTriggeredRef = useRef(false)  // 防止重复自动触发检索
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -101,6 +102,7 @@ export default function StatisticsPage() {
   }
 
   // 获取缓存的融资热点图数据（GET，命中缓存直接返回）
+  // 如果无缓存，自动触发 POST 检索（Tavily + DeepSeek）
   const fetchHeatmap = async (year: number) => {
     setHeatmapLoading(true)
     setHeatmapError('')
@@ -112,6 +114,15 @@ export default function StatisticsPage() {
         return
       }
       setHeatmapData(data)
+      // 如果无缓存数据且行业数据存在，自动触发检索
+      if (
+        (!data.heatData || data.heatData.length === 0) &&
+        industryData?.industries?.length > 0 &&
+        !autoTriggeredRef.current
+      ) {
+        autoTriggeredRef.current = true
+        await refreshHeatmap(year)
+      }
     } catch {
       setHeatmapError('网络错误')
     } finally {

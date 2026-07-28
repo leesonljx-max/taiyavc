@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import DashboardLayout from '@/components/DashboardLayout'
 import AILeadsTab from '@/components/AILeadsTab'
+import Pagination from '@/components/Pagination'
 import { followStageLabels, followStageColors, type FollowStage } from './types'
 
 interface Project {
@@ -141,6 +142,14 @@ export default function ProjectListPage() {
   // Tab 切换：项目库 / 我的项目 / 项目线索
   const [tab, setTab] = useState<TabKey>(isManagerOnly ? 'mine' : 'library')
 
+  // 分页状态
+  const PROJECT_PAGE_SIZE = 50  // 项目库每页 50 条
+  const MINE_PAGE_SIZE = 20     // 我的项目每页 20 条
+  const LEAD_PAGE_SIZE = 30     // 项目线索每页 30 条
+  const [projectPage, setProjectPage] = useState(1)
+  const [minePage, setMinePage] = useState(1)
+  const [leadPage, setLeadPage] = useState(1)
+
   // 项目线索相关状态
   const [leads, setLeads] = useState<ProjectLead[]>([])
   const [leadsLoading, setLeadsLoading] = useState(false)
@@ -162,6 +171,10 @@ export default function ProjectListPage() {
       setTab('mine')
     }
   }, [userRole])
+
+  // 筛选条件变化时重置分页
+  useEffect(() => { setProjectPage(1) }, [searchTerm, selectedStage, selectedIndustry, selectedYear])
+  useEffect(() => { setLeadPage(1) }, [leadSearchTerm])
 
   // Tab 切换时触发请求（使用 AbortController 防竞态）
   useEffect(() => {
@@ -371,6 +384,21 @@ export default function ProjectListPage() {
     )
   })
 
+  // 分页计算
+  const currentProjectPageSize = tab === 'library' ? PROJECT_PAGE_SIZE : MINE_PAGE_SIZE
+  const currentProjectPage = tab === 'library' ? projectPage : minePage
+  const setCurrentProjectPage = tab === 'library' ? setProjectPage : setMinePage
+  const totalProjectPages = Math.ceil(filteredProjects.length / currentProjectPageSize)
+  const pagedProjects = filteredProjects.slice(
+    (currentProjectPage - 1) * currentProjectPageSize,
+    currentProjectPage * currentProjectPageSize
+  )
+  const totalLeadPages = Math.ceil(filteredLeads.length / LEAD_PAGE_SIZE)
+  const pagedLeads = filteredLeads.slice(
+    (leadPage - 1) * LEAD_PAGE_SIZE,
+    leadPage * LEAD_PAGE_SIZE
+  )
+
   return (
     <DashboardLayout
       title="项目管理"
@@ -509,8 +537,18 @@ export default function ProjectListPage() {
               <p className="text-gray-500">点击右上角按钮新增项目线索</p>
             </div>
           ) : (
+            <>
+            <div className="flex justify-end mb-3">
+              <Pagination
+                currentPage={leadPage}
+                totalPages={totalLeadPages}
+                onPageChange={setLeadPage}
+                total={filteredLeads.length}
+                pageSize={LEAD_PAGE_SIZE}
+              />
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredLeads.map(lead => (
+              {pagedLeads.map(lead => (
                 <button
                   key={lead.id}
                   onClick={() => setViewingLead(lead)}
@@ -558,6 +596,7 @@ export default function ProjectListPage() {
                 </button>
               ))}
             </div>
+            </>
           )}
         </>
       )}
@@ -687,8 +726,18 @@ export default function ProjectListPage() {
               <p className="text-gray-500">点击右上角按钮创建第一个投资项目</p>
             </div>
           ) : (
+            <>
+            <div className="flex justify-end mb-3">
+              <Pagination
+                currentPage={currentProjectPage}
+                totalPages={totalProjectPages}
+                onPageChange={setCurrentProjectPage}
+                total={filteredProjects.length}
+                pageSize={currentProjectPageSize}
+              />
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredProjects.map(project => {
+              {pagedProjects.map(project => {
                 return (
                   <Link
                     key={project.id}
@@ -749,6 +798,7 @@ export default function ProjectListPage() {
                 )
               })}
             </div>
+            </>
           )}
         </>
       )}

@@ -68,6 +68,29 @@ interface ProjectDocument {
   uploadedBy: { id: string; name: string | null } | null
 }
 
+interface ProjectMember {
+  id: string
+  name: string | null
+  email: string
+  username: string | null
+}
+
+interface TakeoverRequestItem {
+  id: string
+  requesterId: string
+  requesterName: string
+  requesterEmail: string
+  comment: string | null
+  createdAt: string
+}
+
+interface AvailableManager {
+  id: string
+  name: string | null
+  email: string
+  username: string | null
+}
+
 interface Project {
   id: string
   name: string
@@ -102,6 +125,14 @@ interface Project {
   createdBy: { id: string; name: string | null; email: string | null } | null
   createdById: string
   protectionExpiresAt: string | null
+  // 辅助维护人列表
+  members: ProjectMember[]
+  // 待处理的接手申请
+  pendingTakeoverRequests: TakeoverRequestItem[]
+  // 可添加为辅助维护人的投资经理列表
+  availableManagers: AvailableManager[]
+  // 是否可管理维护人（变更主维护人 / 添加删除辅助维护人 / 审批接手申请）
+  canManageMaintainers: boolean
 }
 
 /**
@@ -164,6 +195,20 @@ export default function ProjectDetailPage() {
   const [canApprove, setCanApprove] = useState(false)
   const [approvalComment, setApprovalComment] = useState('')
   const [isSubmittingApproval, setIsSubmittingApproval] = useState(false)
+
+  // 阶段下拉菜单
+  const [stageDropdownOpen, setStageDropdownOpen] = useState(false)
+  const [stageUpdating, setStageUpdating] = useState(false)
+  const [stageMsg, setStageMsg] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null)
+
+  // 维护人管理
+  const [ownerDropdownOpen, setOwnerDropdownOpen] = useState(false)
+  const [memberDropdownOpen, setMemberDropdownOpen] = useState(false)
+  const [maintainerActionLoading, setMaintainerActionLoading] = useState(false)
+  const [maintainerMsg, setMaintainerMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [confirmChangeOwner, setConfirmChangeOwner] = useState<string | null>(null)  // 待确认变更的新维护人 ID
+  const [confirmRemoveMember, setConfirmRemoveMember] = useState<string | null>(null)  // 待移除的辅助维护人 ID
+  const [confirmTakeover, setConfirmTakeover] = useState<{ requestId: string; action: 'approve' | 'reject' } | null>(null)
 
   useEffect(() => {
     fetchProject()
@@ -434,6 +479,153 @@ export default function ProjectDetailPage() {
     }
   }
 
+  // 阶段变更（直接在下拉菜单中选择，触发 API 更新）
+  const handleStageChange = async (newStage: FollowStage) => {
+    if (!project || newStage === project.followStage) {
+      setStageDropdownOpen(false)
+      return
+    }
+    setStageDropdownOpen(false)
+    setStageUpdating(true)
+    setStageMsg(null)
+    try {
+      const response = await fetch(`/api/projects/${params.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ followStage: newStage }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setStageMsg({ type: 'error', text: data.error || '阶段变更失败' })
+        return
+      }
+      // 检查是否需要审批
+      if (data.stageChangeRequest) {
+        setStageMsg({
+          type: 'info',
+          text: `${data.message || '阶段变更请求已提交，等待投资合伙人审批'}（${data.stageChangeRequest.fromStage} → ${data.stageChangeRequest.toStage}）`,
+        })
+      } else {
+        setStageMsg({ type: 'success', text: `阶段已更新` })
+      }
+      await fetchProject()
+      // 3秒后清除成功提示
+      setTimeout(() => setStageMsg(null), 3000)
+    } catch (error) {
+      console.error('Stage change error:', error)
+      setStageMsg({ type: 'error', text: '网络错误，阶段变更失败' })
+    } finally {
+      setStageUpdating(false)
+    }
+  }
+
+  // 主动变更主维护人
+  const handleChangeOwner = async (newOwnerId: string) => {
+    setConfirmChangeOwner(null)
+    setOwnerDropdownOpen(false)
+    setMaintainerActionLoading(true)
+    setMaintainerMsg(null)
+    try {
+      const response = await fetch(`/api/projects/${params.id}/owner`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newOwnerId }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setMaintainerMsg({ type: 'error', text: data.error || '变更主维护人失败' })
+        return
+      }
+      setMaintainerMsg({ type: 'success', text: data.message || '主维护人变更成功' })
+      await fetchProject()
+      setTimeout(() => setMaintainerMsg(null), 3000)
+    } catch (error) {
+      console.error('Change owner error:', error)
+      setMaintainerMsg({ type: 'error', text: '网络错误，变更主维护人失败' })
+    } finally {
+      setMaintainerActionLoading(false)
+    }
+  }
+
+  // 添加辅助维护人
+  const handleAddMember = async (userId: string) => {
+    setMemberDropdownOpen(false)
+    setMaintainerActionLoading(true)
+    setMaintainerMsg(null)
+    try {
+      const response = await fetch(`/api/projects/${params.id}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setMaintainerMsg({ type: 'error', text: data.error || '添加辅助维护人失败' })
+        return
+      }
+      setMaintainerMsg({ type: 'success', text: data.message || '辅助维护人添加成功' })
+      await fetchProject()
+      setTimeout(() => setMaintainerMsg(null), 3000)
+    } catch (error) {
+      console.error('Add member error:', error)
+      setMaintainerMsg({ type: 'error', text: '网络错误，添加辅助维护人失败' })
+    } finally {
+      setMaintainerActionLoading(false)
+    }
+  }
+
+  // 移除辅助维护人
+  const handleRemoveMember = async (userId: string) => {
+    setConfirmRemoveMember(null)
+    setMaintainerActionLoading(true)
+    setMaintainerMsg(null)
+    try {
+      const response = await fetch(`/api/projects/${params.id}/members/${userId}`, {
+        method: 'DELETE',
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setMaintainerMsg({ type: 'error', text: data.error || '移除辅助维护人失败' })
+        return
+      }
+      setMaintainerMsg({ type: 'success', text: data.message || '辅助维护人已移除' })
+      await fetchProject()
+      setTimeout(() => setMaintainerMsg(null), 3000)
+    } catch (error) {
+      console.error('Remove member error:', error)
+      setMaintainerMsg({ type: 'error', text: '网络错误，移除辅助维护人失败' })
+    } finally {
+      setMaintainerActionLoading(false)
+    }
+  }
+
+  // 审批接手申请
+  const handleTakeoverAction = async (requestId: string, action: 'approve' | 'reject') => {
+    setConfirmTakeover(null)
+    setMaintainerActionLoading(true)
+    setMaintainerMsg(null)
+    try {
+      const response = await fetch(`/api/projects/${params.id}/takeover/${requestId}/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setMaintainerMsg({ type: 'error', text: data.error || '审批接手申请失败' })
+        return
+      }
+      setMaintainerMsg({ type: 'success', text: data.message || '操作成功' })
+      await fetchProject()
+      setTimeout(() => setMaintainerMsg(null), 3000)
+    } catch (error) {
+      console.error('Takeover action error:', error)
+      setMaintainerMsg({ type: 'error', text: '网络错误，审批接手申请失败' })
+    } finally {
+      setMaintainerActionLoading(false)
+    }
+  }
+
   if (loading) {
     return (
       <DashboardLayout>
@@ -528,10 +720,19 @@ export default function ProjectDetailPage() {
       </div>
 
       {/* 阶段标签徽章 */}
-      <div className="mb-6">
+      <div className="mb-6 flex items-center gap-3 flex-wrap">
         <span className={`px-3 py-1 rounded-full text-xs font-medium ${followStageColors[project.followStage]}`}>
           {followStageLabels[project.followStage]}
         </span>
+        {stageMsg && (
+          <span className={`text-xs px-2 py-1 rounded-md ${
+            stageMsg.type === 'success' ? 'bg-success-50 text-success-700' :
+            stageMsg.type === 'info' ? 'bg-blue-50 text-blue-700' :
+            'bg-danger-50 text-danger-700'
+          }`}>
+            {stageMsg.text}
+          </span>
+        )}
       </div>
 
       {/* AI 错误提示 */}
@@ -618,12 +819,77 @@ export default function ProjectDetailPage() {
         <div className="space-y-6">
           {/* 项目概览 */}
           <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              项目概览
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                项目概览
+              </h2>
+              {/* 阶段变更下拉菜单 - 右上角 */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStageDropdownOpen(!stageDropdownOpen)
+                    setOwnerDropdownOpen(false)
+                    setMemberDropdownOpen(false)
+                  }}
+                  disabled={stageUpdating || !project.canEdit}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all-smooth border ${
+                    project.canEdit
+                      ? `${followStageColors[project.followStage]} border-transparent hover:shadow-sm cursor-pointer`
+                      : `${followStageColors[project.followStage]} border-transparent cursor-default opacity-90`
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  title={project.canEdit ? '点击变更跟进阶段' : '无权变更阶段'}
+                >
+                  {stageUpdating ? (
+                    <svg className="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : (
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                    </svg>
+                  )}
+                  {followStageLabels[project.followStage]}
+                  {project.canEdit && (
+                    <svg className={`w-3 h-3 transition-transform ${stageDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  )}
+                </button>
+                {stageDropdownOpen && project.canEdit && (
+                  <>
+                    {/* 点击外部关闭 */}
+                    <div className="fixed inset-0 z-10" onClick={() => setStageDropdownOpen(false)} />
+                    <div className="absolute right-0 top-full mt-1 z-20 bg-white rounded-xl shadow-lg border border-gray-200 py-1 min-w-[140px] max-h-[320px] overflow-y-auto">
+                      {Object.entries(followStageLabels).map(([value, label]) => {
+                        const isActive = value === project.followStage
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => handleStageChange(value as FollowStage)}
+                            className={`w-full text-left px-3 py-2 text-xs hover:bg-primary-50 transition-colors flex items-center justify-between gap-2 ${
+                              isActive ? 'bg-primary-50/50 font-medium text-primary-700' : 'text-gray-700'
+                            }`}
+                          >
+                            <span>{label}</span>
+                            {isActive && (
+                              <svg className="w-3.5 h-3.5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-white/70 rounded-xl p-4 border border-primary-50">
                 <div className="text-xs text-gray-500 mb-1">公司全称</div>
@@ -1264,36 +1530,243 @@ export default function ProjectDetailPage() {
             )}
           </div>
 
-          {/* 维护人 */}
+          {/* 维护人卡片：主维护人 + 接手申请 + 辅助维护人 */}
           <div className="bg-gradient-card rounded-2xl p-5 border border-primary-100">
-            <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-              当前维护人
-            </div>
-            <div className="text-gray-900 text-sm font-medium">
-              {project.createdBy?.name || project.createdBy?.email || '未知用户'}
-            </div>
-            {project.protectionExpiresAt && (
-              <div className="mt-2 text-xs">
-                {new Date(project.protectionExpiresAt) > new Date() ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-warning-50 text-warning-700 border border-warning-200">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                    </svg>
-                    保护期内 · 至 {new Date(project.protectionExpiresAt).toLocaleDateString('zh-CN')}
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-success-50 text-success-700 border border-success-200">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    保护期已过期 · {new Date(project.protectionExpiresAt).toLocaleDateString('zh-CN')}
-                  </span>
-                )}
+            {/* 顶部消息提示 */}
+            {maintainerMsg && (
+              <div className={`mb-3 px-3 py-2 rounded-lg text-xs ${
+                maintainerMsg.type === 'success' ? 'bg-success-50 text-success-700 border border-success-200' :
+                'bg-danger-50 text-danger-700 border border-danger-200'
+              }`}>
+                {maintainerMsg.text}
               </div>
             )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {/* 左侧：主维护人 + 接手申请 */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  当前维护人
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-gray-900 text-sm font-medium flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-medium text-xs">
+                      {(project.createdBy?.name || project.createdBy?.email || '?').charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div>{project.createdBy?.name || project.createdBy?.email || '未知用户'}</div>
+                      <div className="text-xs text-gray-400 font-normal">主维护人</div>
+                    </div>
+                  </div>
+                  {/* 主动变更主维护人下拉 */}
+                  {project.canManageMaintainers && (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOwnerDropdownOpen(!ownerDropdownOpen)
+                          setStageDropdownOpen(false)
+                          setMemberDropdownOpen(false)
+                        }}
+                        disabled={maintainerActionLoading}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs text-primary-700 bg-primary-50 hover:bg-primary-100 rounded-lg transition-colors disabled:opacity-50"
+                        title="变更主维护人"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                        </svg>
+                        变更
+                        <svg className={`w-3 h-3 transition-transform ${ownerDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      {ownerDropdownOpen && (
+                        <>
+                          <div className="fixed inset-0 z-10" onClick={() => setOwnerDropdownOpen(false)} />
+                          <div className="absolute right-0 top-full mt-1 z-20 bg-white rounded-xl shadow-lg border border-gray-200 py-1 min-w-[200px] max-h-[280px] overflow-y-auto">
+                            <div className="px-3 py-1.5 text-xs text-gray-400 border-b border-gray-100">
+                              选择新的主维护人
+                            </div>
+                            {project.availableManagers.length === 0 ? (
+                              <div className="px-3 py-2 text-xs text-gray-400">无可选投资经理</div>
+                            ) : (
+                              project.availableManagers.map(m => (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setConfirmChangeOwner(m.id)
+                                    setOwnerDropdownOpen(false)
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-xs hover:bg-primary-50 transition-colors flex items-center gap-2 text-gray-700"
+                                >
+                                  <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 text-[10px] font-medium">
+                                    {(m.name || m.email || '?').charAt(0).toUpperCase()}
+                                  </div>
+                                  <span>{m.name || m.username || m.email}</span>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {project.protectionExpiresAt && (
+                  <div className="text-xs">
+                    {new Date(project.protectionExpiresAt) > new Date() ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-warning-50 text-warning-700 border border-warning-200">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                        保护期内 · 至 {new Date(project.protectionExpiresAt).toLocaleDateString('zh-CN')}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-success-50 text-success-700 border border-success-200">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        保护期已过期 · {new Date(project.protectionExpiresAt).toLocaleDateString('zh-CN')}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* 接手申请列表（仅主维护人/管理员/合伙人可见） */}
+                {project.canManageMaintainers && project.pendingTakeoverRequests.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-primary-100">
+                    <div className="flex items-center gap-1.5 text-xs text-amber-700 mb-2">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                      </svg>
+                      <span className="font-medium">接手申请 ({project.pendingTakeoverRequests.length})</span>
+                    </div>
+                    <div className="space-y-2">
+                      {project.pendingTakeoverRequests.map(req => (
+                        <div key={req.id} className="bg-amber-50/60 border border-amber-200 rounded-lg p-2.5">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-medium text-gray-900">{req.requesterName}</span>
+                            <span className="text-[10px] text-gray-400">{new Date(req.createdAt).toLocaleDateString('zh-CN')}</span>
+                          </div>
+                          {req.comment && (
+                            <p className="text-[11px] text-gray-600 mb-2 line-clamp-2">{req.comment}</p>
+                          )}
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setConfirmTakeover({ requestId: req.id, action: 'approve' })}
+                              disabled={maintainerActionLoading}
+                              className="flex-1 px-2 py-1 bg-emerald-500 text-white text-[11px] rounded hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                            >
+                              同意
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmTakeover({ requestId: req.id, action: 'reject' })}
+                              disabled={maintainerActionLoading}
+                              className="flex-1 px-2 py-1 bg-white border border-gray-200 text-gray-700 text-[11px] rounded hover:bg-gray-50 transition-colors disabled:opacity-50"
+                            >
+                              拒绝
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 右侧：辅助维护人 */}
+              <div className="space-y-3 md:border-l md:border-primary-100 md:pl-5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    辅助维护人
+                  </div>
+                  {project.canManageMaintainers && (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMemberDropdownOpen(!memberDropdownOpen)
+                          setStageDropdownOpen(false)
+                          setOwnerDropdownOpen(false)
+                        }}
+                        disabled={maintainerActionLoading || project.availableManagers.length === 0}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs text-primary-700 bg-primary-50 hover:bg-primary-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={project.availableManagers.length === 0 ? '无更多可添加的投资经理' : '添加辅助维护人'}
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        添加
+                      </button>
+                      {memberDropdownOpen && (
+                        <>
+                          <div className="fixed inset-0 z-10" onClick={() => setMemberDropdownOpen(false)} />
+                          <div className="absolute right-0 top-full mt-1 z-20 bg-white rounded-xl shadow-lg border border-gray-200 py-1 min-w-[200px] max-h-[280px] overflow-y-auto">
+                            <div className="px-3 py-1.5 text-xs text-gray-400 border-b border-gray-100">
+                              选择投资经理添加为辅助维护人
+                            </div>
+                            {project.availableManagers.map(m => (
+                              <button
+                                key={m.id}
+                                type="button"
+                                onClick={() => handleAddMember(m.id)}
+                                className="w-full text-left px-3 py-2 text-xs hover:bg-primary-50 transition-colors flex items-center gap-2 text-gray-700"
+                              >
+                                <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 text-[10px] font-medium">
+                                  {(m.name || m.email || '?').charAt(0).toUpperCase()}
+                                </div>
+                                <span>{m.name || m.username || m.email}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {project.members.length === 0 ? (
+                  <div className="text-xs text-gray-400 py-2">暂无辅助维护人</div>
+                ) : (
+                  <div className="space-y-2">
+                    {project.members.map(m => (
+                      <div key={m.id} className="flex items-center justify-between gap-2 bg-white/70 rounded-lg p-2 border border-primary-50">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-medium text-[10px] flex-shrink-0">
+                            {(m.name || m.email || '?').charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-medium text-gray-900 truncate">{m.name || m.username || m.email}</div>
+                            <div className="text-[10px] text-gray-400">辅助维护人</div>
+                          </div>
+                        </div>
+                        {project.canManageMaintainers && (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmRemoveMember(m.id)}
+                            disabled={maintainerActionLoading}
+                            className="p-1 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded transition-colors disabled:opacity-50"
+                            title="移除辅助维护人"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* 创建时间 */}
@@ -1334,6 +1807,147 @@ export default function ProjectDetailPage() {
                 className="px-4 py-2 bg-gradient-to-r from-danger-500 to-danger-600 text-white rounded-xl hover:from-danger-600 hover:to-danger-700 transition-all-smooth shadow-md shadow-danger-500/30"
               >
                 删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 变更主维护人确认弹窗 */}
+      {confirmChangeOwner && project && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-gradient-card rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl border border-primary-100">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-warning-50 flex items-center justify-center">
+                <svg className="w-5 h-5 text-warning-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">确认变更主维护人</h3>
+            </div>
+            <p className="text-gray-600 mb-2">
+              确定要将项目「{project.name}」的主维护人变更为：
+              <span className="font-medium text-gray-900">
+                {project.availableManagers.find(m => m.id === confirmChangeOwner)?.name
+                  || project.availableManagers.find(m => m.id === confirmChangeOwner)?.username
+                  || project.availableManagers.find(m => m.id === confirmChangeOwner)?.email
+                  || '未知用户'}
+              </span> 吗？
+            </p>
+            <p className="text-xs text-gray-500 mb-5">
+              · 变更后保护期将重置为 3 个月<br/>
+              · 您将不再是该项目的主维护人（但仍可由新维护人添加为辅助维护人）<br/>
+              · 该操作将被记录用于审计
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => setConfirmChangeOwner(null)}
+                disabled={maintainerActionLoading}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all-smooth disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => handleChangeOwner(confirmChangeOwner)}
+                disabled={maintainerActionLoading}
+                className="px-4 py-2 bg-gradient-to-r from-warning-500 to-warning-600 text-white rounded-xl hover:from-warning-600 hover:to-warning-700 transition-all-smooth shadow-md shadow-warning-500/30 disabled:opacity-50"
+              >
+                {maintainerActionLoading ? '变更中...' : '确认变更'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 移除辅助维护人确认弹窗 */}
+      {confirmRemoveMember && project && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-gradient-card rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl border border-primary-100">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-danger-50 flex items-center justify-center">
+                <svg className="w-5 h-5 text-danger-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">确认移除辅助维护人</h3>
+            </div>
+            <p className="text-gray-600 mb-5">
+              确定要移除辅助维护人
+              <span className="font-medium text-gray-900">
+                {' '}{project.members.find(m => m.id === confirmRemoveMember)?.name
+                  || project.members.find(m => m.id === confirmRemoveMember)?.username
+                  || project.members.find(m => m.id === confirmRemoveMember)?.email
+                  || '未知用户'}{' '}
+              </span>
+              吗？该用户将不再能编辑此项目。
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => setConfirmRemoveMember(null)}
+                disabled={maintainerActionLoading}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all-smooth disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => handleRemoveMember(confirmRemoveMember)}
+                disabled={maintainerActionLoading}
+                className="px-4 py-2 bg-gradient-to-r from-danger-500 to-danger-600 text-white rounded-xl hover:from-danger-600 hover:to-danger-700 transition-all-smooth shadow-md shadow-danger-500/30 disabled:opacity-50"
+              >
+                {maintainerActionLoading ? '移除中...' : '确认移除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 接手申请审批确认弹窗 */}
+      {confirmTakeover && project && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-gradient-card rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl border border-primary-100">
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                confirmTakeover.action === 'approve' ? 'bg-emerald-50' : 'bg-danger-50'
+              }`}>
+                <svg className={`w-5 h-5 ${
+                  confirmTakeover.action === 'approve' ? 'text-emerald-600' : 'text-danger-500'
+                }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {confirmTakeover.action === 'approve' ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  )}
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                {confirmTakeover.action === 'approve' ? '确认同意接手' : '确认拒绝接手'}
+              </h3>
+            </div>
+            <p className="text-gray-600 mb-5">
+              {confirmTakeover.action === 'approve'
+                ? '确定要同意该接手申请吗？同意后项目主维护人将变更为申请人，保护期重置为 3 个月。'
+                : '确定要拒绝该接手申请吗？拒绝后申请人将无法接手此项目。'}
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => setConfirmTakeover(null)}
+                disabled={maintainerActionLoading}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all-smooth disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => handleTakeoverAction(confirmTakeover.requestId, confirmTakeover.action)}
+                disabled={maintainerActionLoading}
+                className={`px-4 py-2 text-white rounded-xl transition-all-smooth shadow-md disabled:opacity-50 ${
+                  confirmTakeover.action === 'approve'
+                    ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-emerald-500/30'
+                    : 'bg-gradient-to-r from-danger-500 to-danger-600 hover:from-danger-600 hover:to-danger-700 shadow-danger-500/30'
+                }`}
+              >
+                {maintainerActionLoading
+                  ? '处理中...'
+                  : confirmTakeover.action === 'approve' ? '确认同意' : '确认拒绝'}
               </button>
             </div>
           </div>

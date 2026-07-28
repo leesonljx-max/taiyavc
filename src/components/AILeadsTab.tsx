@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
+import Pagination from './Pagination'
 
 /**
  * AI 线索 Tab
@@ -68,6 +69,10 @@ export default function AILeadsTab() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filter, setFilter] = useState<'all' | 'released' | 'locked' | 'converted'>('all')
 
+  // 分页：每页 30 条
+  const AI_LEAD_PAGE_SIZE = 30
+  const [page, setPage] = useState(1)
+
   // 检索状态
   const [retrieving, setRetrieving] = useState(false)
   const [retrievalResult, setRetrievalResult] = useState<{
@@ -110,9 +115,9 @@ export default function AILeadsTab() {
       const response = await fetch('/api/ai-leads?scope=all', {
         signal: controller.signal,
       })
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || '获取失败')
+      const contentType = response.headers.get('content-type') || ''
+      if (!response.ok || !contentType.includes('application/json')) {
+        throw new Error(`服务器返回错误 (${response.status})`)
       }
       const data = await response.json()
       setLeads(data.leads || [])
@@ -264,6 +269,16 @@ export default function AILeadsTab() {
     converted: leads.filter(l => l.status === 'CONVERTED').length,
   }
 
+  // 筛选条件变化时重置分页
+  useEffect(() => { setPage(1) }, [searchTerm, filter])
+
+  // 分页计算
+  const totalPages = Math.ceil(filteredLeads.length / AI_LEAD_PAGE_SIZE)
+  const pagedLeads = filteredLeads.slice(
+    (page - 1) * AI_LEAD_PAGE_SIZE,
+    page * AI_LEAD_PAGE_SIZE
+  )
+
   return (
     <>
       {/* 说明 + 搜索 + 检索按钮 */}
@@ -387,8 +402,18 @@ export default function AILeadsTab() {
           </p>
         </div>
       ) : (
+        <>
+        <div className="flex justify-end mb-3">
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            total={filteredLeads.length}
+            pageSize={AI_LEAD_PAGE_SIZE}
+          />
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredLeads.map(lead => (
+          {pagedLeads.map(lead => (
             <button
               key={lead.id}
               onClick={() => setViewingLead(lead)}
@@ -478,6 +503,7 @@ export default function AILeadsTab() {
             </button>
           ))}
         </div>
+        </>
       )}
 
       {/* ════════════ 详情弹窗 ════════════ */}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import DashboardLayout from '@/components/DashboardLayout'
 
@@ -42,13 +42,63 @@ export default function NewsPage() {
   const [keywordSaving, setKeywordSaving] = useState(false)
   const [sourceSaving, setSourceSaving] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const autoTriggeredRef = useRef(false)  // 防止重复自动触发检索
 
   useEffect(() => {
     if (status !== 'authenticated') return
-    fetchNews()
+    // 首次加载：读取缓存，无缓存时自动触发检索
+    // 后续筛选变化：从数据库查询带筛选条件的新闻
+    if (!autoTriggeredRef.current) {
+      fetchNewsWithCache()
+    } else {
+      fetchNewsFiltered()
+    }
   }, [status, selectedIndustry, selectedSource])
 
-  const fetchNews = async () => {
+  // 首次加载：读取缓存（GET /api/news/search），无缓存时自动触发 POST 检索
+  const fetchNewsWithCache = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      // 1. 先检查缓存
+      const currentYear = new Date().getFullYear()
+      const cacheRes = await fetch(`/api/news/search?year=${currentYear}`)
+      const cacheData = await cacheRes.json()
+
+      if (cacheData.articles && cacheData.articles.length > 0) {
+        // 有缓存，直接显示
+        setArticles(cacheData.articles)
+        setIndustries(cacheData.industries || [])
+        setSources(
+          Array.from(new Set(cacheData.articles.map((a: NewsArticle) => a.source))).sort()
+        )
+        setLoading(false)
+        return
+      }
+
+      // 2. 无缓存，查询数据库现有新闻
+      const newsData = await fetchNewsFiltered()
+
+      // 3. 如果数据库也没有新闻，自动触发检索（仅一次）
+      if (
+        (!newsData || newsData.length === 0) &&
+        !autoTriggeredRef.current
+      ) {
+        autoTriggeredRef.current = true
+        setLoading(false)
+        await handleSearch()
+      } else {
+        autoTriggeredRef.current = true
+        setLoading(false)
+      }
+    } catch {
+      setError('网络错误')
+      setLoading(false)
+    }
+  }
+
+  // 按筛选条件查询数据库新闻
+  const fetchNewsFiltered = async () => {
     setLoading(true)
     setError('')
     try {
@@ -59,13 +109,15 @@ export default function NewsPage() {
       const data = await res.json()
       if (!res.ok) {
         setError(data.error || '获取新闻失败')
-        return
+        return []
       }
       setArticles(data.articles || [])
       setIndustries(data.industries || [])
       setSources(data.sources || [])
+      return data.articles || []
     } catch {
       setError('网络错误')
+      return []
     } finally {
       setLoading(false)
     }
@@ -88,7 +140,12 @@ export default function NewsPage() {
         return
       }
       setSearchMessage(data.message || '检索完成')
-      await fetchNews()
+      // 直接使用 POST 返回的数据（已包含缓存的文章列表）
+      setArticles(data.articles || [])
+      setIndustries(data.industries || [])
+      setSources(
+        Array.from(new Set((data.articles || []).map((a: NewsArticle) => a.source))).sort()
+      )
     } catch {
       setError('网络错误')
     } finally {

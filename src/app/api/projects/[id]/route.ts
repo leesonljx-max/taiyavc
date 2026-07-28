@@ -25,8 +25,13 @@ export async function GET(
           select: { id: true, amount: true, date: true, investorId: true },
           orderBy: { date: 'desc' },
         },
-        members: { select: { userId: true } },
-        createdBy: { select: { id: true, name: true } },
+        members: {
+          select: {
+            userId: true,
+            user: { select: { id: true, name: true, email: true, username: true } },
+          },
+        },
+        createdBy: { select: { id: true, name: true, email: true } },
         partnerReviews: {
           orderBy: { createdAt: 'desc' },
         },
@@ -34,6 +39,13 @@ export async function GET(
           orderBy: { createdAt: 'desc' },
         },
         stageApprovals: {
+          orderBy: { createdAt: 'desc' },
+        },
+        takeoverRequests: {
+          where: { status: 'PENDING' },
+          include: {
+            requester: { select: { id: true, name: true, email: true, username: true } },
+          },
           orderBy: { createdAt: 'desc' },
         },
       },
@@ -59,8 +71,35 @@ export async function GET(
       )
     }
 
+    // 判断当前用户是否可管理维护人（主动变更主维护人 / 添加删除辅助维护人 / 审批接手申请）
+    // 仅主维护人、ADMIN、INVESTMENT_PARTNER 可管理
+    const canManageMaintainers = !!currentUser && (
+      currentUser.role === 'ADMIN' ||
+      currentUser.role === 'INVESTMENT_PARTNER' ||
+      project.createdById === currentUser.id
+    )
+
+    // 可添加的辅助维护人候选列表：所有 ACTIVE 状态的投资经理，排除当前主维护人和已是辅助维护人的用户
+    let availableManagers: Array<{ id: string; name: string | null; email: string; username: string | null }> = []
+    if (canManageMaintainers) {
+      const excludeIds = new Set<string>([project.createdById, ...memberIds])
+      const managers = await prisma.user.findMany({
+        where: {
+          role: 'INVESTMENT_MANAGER',
+          status: 'ACTIVE',
+          id: { notIn: Array.from(excludeIds) },
+        },
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true, email: true, username: true },
+      })
+      availableManagers = managers
+    }
+
+    // 去除敏感字段：takeoverRequests 原始记录不直接暴露，仅通过 pendingTakeoverRequests 暴露必要字段
+    const { takeoverRequests: _takeoverRequests, ...projectWithoutTakeover } = project
+
     const result = {
-      ...project,
+      ...projectWithoutTakeover,
       totalAmount: project.totalAmount,
       raisedAmount: project.raisedAmount,  // 字符串类型
       investmentValuation: project.investmentValuation ? Number(project.investmentValuation) : null,
@@ -69,6 +108,21 @@ export async function GET(
         amount: Number(i.amount),
       })),
       memberIds,
+      // 辅助维护人列表（含用户详情）
+      members: project.members.map(m => m.user),
+      // 待处理的接手申请（仅维护人/管理员/合伙人可见）
+      pendingTakeoverRequests: canManageMaintainers
+        ? project.takeoverRequests.map(r => ({
+            id: r.id,
+            requesterId: r.requesterId,
+            requesterName: r.requester?.name || r.requester?.email || '未知用户',
+            requesterEmail: r.requester?.email || '',
+            comment: r.comment,
+            createdAt: r.createdAt,
+          }))
+        : [],
+      availableManagers,
+      canManageMaintainers,
       aiCardJson: project.aiCardJson,
       canEdit: canEditProject(currentUser, {
         followStage: project.followStage,
