@@ -127,10 +127,8 @@ const stageCardStyles: Record<FollowStage | 'all', string> = {
 type TabKey = 'library' | 'mine' | 'leads' | 'ai-leads'
 
 export default function ProjectListPage() {
-  const { data: session } = useSession()
+  const { data: session, status: sessionStatus } = useSession()
   const userRole = session?.user?.role as string | undefined
-  // 投资经理默认进入"我的项目"，其他角色默认"项目库"
-  const isManagerOnly = userRole === 'INVESTMENT_MANAGER'
 
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
@@ -140,7 +138,8 @@ export default function ProjectListPage() {
   const [selectedYear, setSelectedYear] = useState<number | 'all'>('all')
 
   // Tab 切换：项目库 / 我的项目 / 项目线索
-  const [tab, setTab] = useState<TabKey>(isManagerOnly ? 'mine' : 'library')
+  // 初始为 null，等 session 加载后再确定默认 tab，避免投资经理先加载 all 再切换 mine 的双重请求
+  const [tab, setTab] = useState<TabKey | null>(null)
 
   // 分页状态
   const PROJECT_PAGE_SIZE = 50  // 项目库每页 50 条
@@ -165,19 +164,22 @@ export default function ProjectListPage() {
   const fetchProjectsAbort = useRef<AbortController | null>(null)
   const fetchLeadsAbort = useRef<AbortController | null>(null)
 
-  // 当用户 session 加载完成后，如果是投资经理，默认切换到"我的项目"
+  // session 加载完成后，根据角色设置默认 tab（只执行一次）
   useEffect(() => {
-    if (userRole === 'INVESTMENT_MANAGER' && tab === 'library') {
-      setTab('mine')
+    if (sessionStatus === 'authenticated' && tab === null) {
+      // 投资经理默认进入"我的项目"，其他角色默认"项目库"
+      setTab(userRole === 'INVESTMENT_MANAGER' ? 'mine' : 'library')
     }
-  }, [userRole])
+  }, [sessionStatus, userRole, tab])
 
   // 筛选条件变化时重置分页
   useEffect(() => { setProjectPage(1) }, [searchTerm, selectedStage, selectedIndustry, selectedYear])
   useEffect(() => { setLeadPage(1) }, [leadSearchTerm])
 
   // Tab 切换时触发请求（使用 AbortController 防竞态）
+  // tab 为 null 时不发起请求（等待 session 加载完成）
   useEffect(() => {
+    if (tab === null) return
     if (tab === 'leads') {
       fetchLeads()
     } else {
@@ -388,6 +390,17 @@ export default function ProjectListPage() {
   const currentProjectPageSize = tab === 'library' ? PROJECT_PAGE_SIZE : MINE_PAGE_SIZE
   const currentProjectPage = tab === 'library' ? projectPage : minePage
   const setCurrentProjectPage = tab === 'library' ? setProjectPage : setMinePage
+
+  // session 加载中或 tab 未确定时显示骨架屏
+  if (tab === null || sessionStatus === 'loading') {
+    return (
+      <DashboardLayout title="项目管理" subtitle="管理和追踪您的投资项目">
+        <div className="flex justify-center py-20">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
+        </div>
+      </DashboardLayout>
+    )
+  }
   const totalProjectPages = Math.ceil(filteredProjects.length / currentProjectPageSize)
   const pagedProjects = filteredProjects.slice(
     (currentProjectPage - 1) * currentProjectPageSize,

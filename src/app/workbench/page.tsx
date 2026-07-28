@@ -165,6 +165,7 @@ export default function WorkbenchPage() {
     }
   }, [status, router])
 
+  // session 加载完成后才发起数据请求，避免 isPartner 未就绪时的无效请求
   useEffect(() => {
     if (status === 'authenticated') {
       fetchProjects()
@@ -173,7 +174,8 @@ export default function WorkbenchPage() {
         fetchManagers()
       }
     }
-  }, [status, isPartner])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status])
 
   const fetchManagers = async () => {
     try {

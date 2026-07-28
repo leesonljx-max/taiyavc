@@ -19,16 +19,68 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const scope = searchParams.get('scope') === 'mine' ? 'mine' : 'all'
 
+    // 性能优化：只查询列表页需要的字段，避免返回 description/coreTeam 等大文本字段
+    // 同时根据角色在数据库层面过滤，减少内存处理
+    let whereClause: any = {}
+
+    if (scope === 'mine' && currentUser) {
+      // scope=mine：只查询自己维护的项目（作为创建者或辅助维护人）
+      whereClause = {
+        OR: [
+          { createdById: currentUser.id },
+          { members: { some: { userId: currentUser.id } } },
+        ],
+      }
+    } else if (currentUser && currentUser.role !== 'ADMIN' && currentUser.role !== 'INVESTMENT_PARTNER') {
+      // scope=all 但非管理员/合伙人：只查询可见项目（自己维护的 + 已进入立项及之后阶段的）
+      whereClause = {
+        OR: [
+          { createdById: currentUser.id },
+          { members: { some: { userId: currentUser.id } } },
+          {
+            followStage: {
+              in: ['PROJECT_INITIATION', 'DUE_DILIGENCE', 'AGREEMENT', 'CLOSING', 'POST_INVESTMENT'],
+            },
+          },
+        ],
+      }
+    }
+
     const projects = await prisma.project.findMany({
+      where: whereClause,
       orderBy: { createdAt: 'desc' },
-      include: {
-        investors: { select: { id: true, name: true } },
-        investments: { select: { id: true, amount: true, date: true } },
+      // 只查询列表页需要的字段，避免返回大文本字段
+      select: {
+        id: true,
+        name: true,
+        companyFullName: true,
+        industry: true,
+        companyPosition: true,
+        financingRound: true,
+        financingPlan: true,
+        followStage: true,
+        status: true,
+        totalAmount: true,
+        raisedAmount: true,
+        investmentValuation: true,
+        targetDate: true,
+        createdAt: true,
+        updatedAt: true,
+        createdById: true,
+        passedStages: true,
+        // 关联只查询计数需要的字段
+        _count: {
+          select: {
+            investors: true,
+            investments: true,
+          },
+        },
         members: { select: { userId: true } },
         createdBy: { select: { id: true, name: true } },
       },
     })
 
+    // 对 scope=all 的非管理员/合伙人，进一步过滤（数据库层面已处理大部分，这里做权限兜底）
     const filteredProjects = projects.filter(project => {
       const memberIds = project.members.map(m => m.userId)
       const permProject = {
@@ -37,10 +89,8 @@ export async function GET(request: Request) {
         memberIds,
       }
 
-      // 1. 必须能查看该项目
       if (!canViewProject(currentUser, permProject)) return false
 
-      // 2. scope=mine 时仅返回自己维护的项目
       if (scope === 'mine') {
         if (!currentUser) return false
         if (!isMaintainedByUser(currentUser, permProject)) return false
@@ -50,12 +100,27 @@ export async function GET(request: Request) {
     })
 
     const result = filteredProjects.map(p => ({
-      ...p,
+      id: p.id,
+      name: p.name,
+      companyFullName: p.companyFullName,
+      industry: p.industry,
+      companyPosition: p.companyPosition,
+      financingRound: p.financingRound,
+      financingPlan: p.financingPlan,
+      followStage: p.followStage,
+      status: p.status,
       totalAmount: p.totalAmount,
-      raisedAmount: p.raisedAmount,  // 字符串类型，不再 Number() 转换
-      investmentCount: p.investments.length,
-      investorCount: p.investors.length,
+      raisedAmount: p.raisedAmount,
+      investmentValuation: p.investmentValuation,
+      targetDate: p.targetDate,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+      createdById: p.createdById,
+      passedStages: p.passedStages,
+      investmentCount: p._count.investments,
+      investorCount: p._count.investors,
       memberIds: p.members.map(m => m.userId),
+      createdBy: p.createdBy,
     }))
 
     return NextResponse.json({ projects: result, scope })
