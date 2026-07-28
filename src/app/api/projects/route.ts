@@ -31,8 +31,9 @@ export async function GET(request: Request) {
           { members: { some: { userId: currentUser.id } } },
         ],
       }
-    } else if (currentUser && currentUser.role !== 'ADMIN' && currentUser.role !== 'INVESTMENT_PARTNER') {
-      // scope=all 但非管理员/合伙人：只查询可见项目（自己维护的 + 已进入立项及之后阶段的）
+    } else if (currentUser && currentUser.role !== 'ADMIN' && currentUser.role !== 'INVESTMENT_PARTNER' && currentUser.role !== 'INVESTMENT_MANAGER') {
+      // scope=all 但非管理员/合伙人/投资经理：只查询可见项目（自己维护的 + 已进入立项及之后阶段的）
+      // 投资经理在项目库可查看所有项目（canViewProject 返回 true），不加 where 过滤
       whereClause = {
         OR: [
           { createdById: currentUser.id },
