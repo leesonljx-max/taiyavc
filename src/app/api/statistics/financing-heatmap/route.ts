@@ -88,17 +88,26 @@ export async function GET(request: Request) {
       })
     }
 
-    // 检查缓存
+    // 检查缓存（1 个月内不重新调用 API）
     const cacheKey = `heatmap:${validYear}`
     const cached = await prisma.aICache.findUnique({ where: { cacheKey } })
 
     if (cached) {
       const cachedData = JSON.parse(cached.data)
+      const cacheAge = Date.now() - cached.updatedAt.getTime()
+      const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000
+      const isCacheValid = cacheAge < ONE_MONTH_MS
+
       return NextResponse.json({
         year: validYear,
         years,
         ...cachedData,
         cachedAt: cached.updatedAt,
+        cacheAge: Math.floor(cacheAge / (24 * 60 * 60 * 1000)), // 缓存天数
+        isCacheValid,
+        message: isCacheValid
+          ? undefined
+          : '缓存已超过 1 个月，建议点击刷新按钮更新数据',
       })
     }
 
@@ -149,6 +158,30 @@ export async function POST(request: Request) {
         heatData: [],
         message: '该年份暂无行业数据',
       })
+    }
+
+    // 检查缓存是否在 1 个月内（force 参数可强制刷新）
+    const body = await request.json().catch(() => ({}))
+    const forceRefresh = body.force === true
+    const cacheKey = `heatmap:${validYear}`
+
+    if (!forceRefresh) {
+      const existingCache = await prisma.aICache.findUnique({ where: { cacheKey } })
+      if (existingCache) {
+        const cacheAge = Date.now() - existingCache.updatedAt.getTime()
+        const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000
+        if (cacheAge < ONE_MONTH_MS) {
+          const cachedData = JSON.parse(existingCache.data)
+          return NextResponse.json({
+            year: validYear,
+            years,
+            ...cachedData,
+            cachedAt: existingCache.updatedAt,
+            cacheAge: Math.floor(cacheAge / (24 * 60 * 60 * 1000)),
+            message: `缓存仍在有效期内（${Math.floor(cacheAge / (24 * 60 * 60 * 1000))} 天前生成），1 个月内不会重新调用 API。如需强制刷新，请传 force: true`,
+          })
+        }
+      }
     }
 
     // 1. 用 Tavily 并发搜索各行业融资信息
@@ -283,8 +316,7 @@ ${industrySearchInfo}
 
     heatData.sort((a, b) => b.heatLevel - a.heatLevel)
 
-    // 3. 缓存结果
-    const cacheKey = `heatmap:${validYear}`
+    // 3. 缓存结果（cacheKey 已在前面定义）
     const cacheData = JSON.stringify({ heatData, totalIndustries: industries.length })
 
     await prisma.aICache.upsert({
