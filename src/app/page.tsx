@@ -1,9 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import DashboardLayout from '@/components/DashboardLayout'
 import { followStageLabels, followStageColors, type FollowStage } from './projects/types'
+import { fetchWithCache, getCachedData, subscribeCache, setupFocusRefresh, invalidateCache } from '@/lib/cache'
+
+// 缓存键
+const DASHBOARD_CACHE_KEY = 'dashboard'
 
 interface AICardData {
   projectName: string
@@ -52,20 +56,55 @@ interface DashboardData {
   maintainerStats: MaintainerStat[]
 }
 
-export default function HomePage() {
-  const [data, setData] = useState<DashboardData | null>(null)
-  const [loading, setLoading] = useState(true)
+// 数据获取函数（独立于组件，供缓存模块使用）
+async function fetchDashboardData(): Promise<DashboardData> {
+  const response = await fetch('/api/dashboard')
+  const result = await response.json()
+  return result as DashboardData
+}
 
+export default function HomePage() {
+  // 初始数据：优先从缓存读取（瞬时显示，无 loading）
+  const [data, setData] = useState<DashboardData | null>(() => getCachedData<DashboardData>(DASHBOARD_CACHE_KEY))
+  // 是否有缓存数据（有缓存则不显示 loading，后台静默刷新）
+  const [loading, setLoading] = useState(!getCachedData<DashboardData>(DASHBOARD_CACHE_KEY))
+
+  // 订阅缓存变化（后台刷新完成后自动更新 UI）
+  useEffect(() => {
+    const unsubscribe = subscribeCache(DASHBOARD_CACHE_KEY, () => {
+      const cached = getCachedData<DashboardData>(DASHBOARD_CACHE_KEY)
+      if (cached) {
+        setData(cached)
+        setLoading(false)
+      }
+    })
+    return unsubscribe
+  }, [])
+
+  // 首次加载 / 获取数据
   useEffect(() => {
     fetchDashboard()
   }, [])
 
+  // 窗口获焦时自动刷新（数据过期时）
+  useEffect(() => {
+    return setupFocusRefresh(
+      [DASHBOARD_CACHE_KEY],
+      [fetchDashboardData],
+      30 * 1000
+    )
+  }, [])
+
   const fetchDashboard = async () => {
-    setLoading(true)
+    // 有缓存则不显示 loading（后台静默刷新）
+    if (getCachedData<DashboardData>(DASHBOARD_CACHE_KEY)) {
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
     try {
-      const response = await fetch(`/api/dashboard`)
-      const result = await response.json()
-      if (result.stats) {
+      const result = await fetchWithCache(DASHBOARD_CACHE_KEY, fetchDashboardData, 30 * 1000)
+      if (result?.stats) {
         setData(result)
       }
     } catch (error) {

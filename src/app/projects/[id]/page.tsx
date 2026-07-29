@@ -7,6 +7,7 @@ import { useSession } from 'next-auth/react'
 import DashboardLayout from '@/components/DashboardLayout'
 import DocumentPreviewModal from '@/components/DocumentPreviewModal'
 import { followStageLabels, followStageColors, type FollowStage } from '../types'
+import { invalidateCache } from '@/lib/cache'
 
 interface PartnerReview {
   id: string
@@ -376,6 +377,10 @@ export default function ProjectDetailPage() {
         method: 'DELETE',
       })
       if (response.ok) {
+        // 项目删除成功后失效所有项目列表缓存和首页缓存
+        invalidateCache('projects:*')
+        invalidateCache('workbench:*')
+        invalidateCache('dashboard')
         router.push('/projects')
       }
     } catch (error) {
@@ -507,6 +512,10 @@ export default function ProjectDetailPage() {
         })
       } else {
         setStageMsg({ type: 'success', text: `阶段已更新` })
+        // 阶段变更成功后失效项目列表缓存和首页缓存
+        invalidateCache('projects:*')
+        invalidateCache('workbench:*')
+        invalidateCache('dashboard')
       }
       await fetchProject()
       // 3秒后清除成功提示
@@ -537,6 +546,10 @@ export default function ProjectDetailPage() {
         return
       }
       setMaintainerMsg({ type: 'success', text: data.message || '主维护人变更成功' })
+      // 维护人变更后失效项目列表缓存和首页缓存
+      invalidateCache('projects:*')
+      invalidateCache('workbench:*')
+      invalidateCache('dashboard')
       await fetchProject()
       setTimeout(() => setMaintainerMsg(null), 3000)
     } catch (error) {
@@ -564,6 +577,9 @@ export default function ProjectDetailPage() {
         return
       }
       setMaintainerMsg({ type: 'success', text: data.message || '辅助维护人添加成功' })
+      // 辅助维护人变更后失效项目列表缓存
+      invalidateCache('projects:*')
+      invalidateCache('workbench:*')
       await fetchProject()
       setTimeout(() => setMaintainerMsg(null), 3000)
     } catch (error) {
@@ -589,6 +605,9 @@ export default function ProjectDetailPage() {
         return
       }
       setMaintainerMsg({ type: 'success', text: data.message || '辅助维护人已移除' })
+      // 辅助维护人变更后失效项目列表缓存
+      invalidateCache('projects:*')
+      invalidateCache('workbench:*')
       await fetchProject()
       setTimeout(() => setMaintainerMsg(null), 3000)
     } catch (error) {
@@ -616,6 +635,10 @@ export default function ProjectDetailPage() {
         return
       }
       setMaintainerMsg({ type: 'success', text: data.message || '操作成功' })
+      // 接手申请审批后失效项目列表缓存和首页缓存
+      invalidateCache('projects:*')
+      invalidateCache('workbench:*')
+      invalidateCache('dashboard')
       await fetchProject()
       setTimeout(() => setMaintainerMsg(null), 3000)
     } catch (error) {

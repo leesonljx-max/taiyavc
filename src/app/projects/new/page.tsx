@@ -7,6 +7,7 @@ import { useSession } from 'next-auth/react'
 import DashboardLayout from '@/components/DashboardLayout'
 import RichTextEditor from '@/components/RichTextEditor'
 import { followStageLabels, type FollowStage } from '../types'
+import { invalidateCache } from '@/lib/cache'
 
 // 行业预设选项（支持下拉选择 + 自定义输入）
 const INDUSTRY_OPTIONS = [
@@ -473,6 +474,10 @@ export default function NewProjectPage() {
       if (result.mergedLead) {
         alert(`已自动合并项目线索「${result.mergedLead.name}」的信息，该线索已删除。`)
       }
+      // 项目创建成功后失效所有项目列表缓存和首页缓存
+      invalidateCache('projects:*')
+      invalidateCache('workbench:*')
+      invalidateCache('dashboard')
       router.push(`/projects/${result.project.id}`)
     } catch (error) {
       console.error('Create project error:', error)

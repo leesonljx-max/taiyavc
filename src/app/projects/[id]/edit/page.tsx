@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation'
 import DashboardLayout from '@/components/DashboardLayout'
 import RichTextEditor from '@/components/RichTextEditor'
 import { type FollowStage } from '../../types'
+import { invalidateCache } from '@/lib/cache'
 
 // 行业预设选项（支持下拉选择 + 自定义输入）
 const INDUSTRY_OPTIONS = [
@@ -215,6 +216,10 @@ export default function EditProjectPage() {
         return
       }
 
+      // 项目编辑成功后失效所有项目列表缓存和首页缓存
+      invalidateCache('projects:*')
+      invalidateCache('workbench:*')
+      invalidateCache('dashboard')
       router.push(`/projects/${params.id}`)
     } catch (error) {
       setError('更新项目失败')

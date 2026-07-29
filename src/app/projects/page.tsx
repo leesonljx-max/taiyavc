@@ -7,6 +7,7 @@ import DashboardLayout from '@/components/DashboardLayout'
 import AILeadsTab from '@/components/AILeadsTab'
 import Pagination from '@/components/Pagination'
 import { followStageLabels, followStageColors, type FollowStage } from './types'
+import { fetchWithCache, getCachedData, subscribeCache, setupFocusRefresh, invalidateCache } from '@/lib/cache'
 
 interface Project {
   id: string
@@ -176,6 +177,35 @@ export default function ProjectListPage() {
   useEffect(() => { setProjectPage(1) }, [searchTerm, selectedStage, selectedIndustry, selectedYear])
   useEffect(() => { setLeadPage(1) }, [leadSearchTerm])
 
+  // 订阅缓存变化（后台刷新完成后自动更新 UI）
+  useEffect(() => {
+    const unsubAll = subscribeCache('projects:all', () => {
+      const cached = getCachedData<Project[]>('projects:all')
+      if (cached && tab === 'library') setProjects(cached)
+    })
+    const unsubMine = subscribeCache('projects:mine', () => {
+      const cached = getCachedData<Project[]>('projects:mine')
+      if (cached && tab === 'mine') setProjects(cached)
+    })
+    return () => { unsubAll(); unsubMine() }
+  }, [tab])
+
+  // 窗口获焦时自动刷新当前 tab 的数据（数据过期时）
+  useEffect(() => {
+    if (tab !== 'library' && tab !== 'mine') return
+    const scope = tab === 'library' ? 'all' : 'mine'
+    const cacheKey = `projects:${scope}`
+    return setupFocusRefresh<Project[]>(
+      [cacheKey],
+      [async () => {
+        const response = await fetch(`/api/projects?scope=${scope}`)
+        const result = await response.json()
+        return result.projects || []
+      }],
+      30 * 1000
+    )
+  }, [tab])
+
   // Tab 切换时触发请求（使用 AbortController 防竞态）
   // tab 为 null 时不发起请求（等待 session 加载完成）
   useEffect(() => {
@@ -184,6 +214,13 @@ export default function ProjectListPage() {
       fetchLeads()
     } else {
       const currentScope = tab === 'library' ? 'all' : 'mine'
+      // 初始数据：优先从缓存读取（瞬时显示，无 loading）
+      const cacheKey = `projects:${currentScope}`
+      const cached = getCachedData<Project[]>(cacheKey)
+      if (cached) {
+        setProjects(cached)
+        setLoading(false)
+      }
       fetchProjects(currentScope)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -197,21 +234,37 @@ export default function ProjectListPage() {
     const controller = new AbortController()
     fetchProjectsAbort.current = controller
 
-    setLoading(true)
+    const cacheKey = `projects:${currentScope}`
+
+    // 有缓存则不显示 loading（瞬时显示缓存数据）
+    if (getCachedData<Project[]>(cacheKey)) {
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
+
     try {
-      const response = await fetch(`/api/projects?scope=${currentScope}`, {
-        signal: controller.signal,
-      })
-      const data = await response.json()
-      setProjects(data.projects || [])
+      const data = await fetchWithCache(
+        cacheKey,
+        async () => {
+          const response = await fetch(`/api/projects?scope=${currentScope}`, {
+            signal: controller.signal,
+          })
+          const result = await response.json()
+          return result.projects || []
+        },
+        30 * 1000
+      )
+      // 仅在当前请求未被取消时才更新状态
+      if (fetchProjectsAbort.current === controller) {
+        setProjects(data)
+      }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
-        // 请求被取消（正常行为，用户快速切换 Tab），不显示错误
         return
       }
       console.error('Failed to fetch projects:', error)
     }
-    // 仅在当前请求未被取消时才更新 loading 状态
     if (fetchProjectsAbort.current === controller) {
       setLoading(false)
     }

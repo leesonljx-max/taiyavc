@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import DashboardLayout from '@/components/DashboardLayout'
 import Pagination from '@/components/Pagination'
 import { followStageLabels, followStageColors, type FollowStage } from '../projects/types'
+import { fetchWithCache, getCachedData, subscribeCache, setupFocusRefresh } from '@/lib/cache'
 
 interface Project {
   id: string
@@ -168,6 +169,14 @@ export default function WorkbenchPage() {
   // session 加载完成后才发起数据请求，避免 isPartner 未就绪时的无效请求
   useEffect(() => {
     if (status === 'authenticated') {
+      // 初始数据：优先从缓存读取（瞬时显示，无 loading）
+      const scope = isPartner ? 'all' : 'mine'
+      const cacheKey = `workbench:projects:${scope}`
+      const cached = getCachedData<Project[]>(cacheKey)
+      if (cached) {
+        setProjects(cached)
+        setLoading(false)
+      }
       fetchProjects()
       if (isPartner) {
         fetchStageRequests()
@@ -176,6 +185,34 @@ export default function WorkbenchPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status])
+
+  // 订阅缓存变化（后台刷新完成后自动更新 UI）
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    const scope = isPartner ? 'all' : 'mine'
+    const cacheKey = `workbench:projects:${scope}`
+    const unsubscribe = subscribeCache(cacheKey, () => {
+      const cached = getCachedData<Project[]>(cacheKey)
+      if (cached) setProjects(cached)
+    })
+    return unsubscribe
+  }, [status, isPartner])
+
+  // 窗口获焦时自动刷新（数据过期时）
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    const scope = isPartner ? 'all' : 'mine'
+    const cacheKey = `workbench:projects:${scope}`
+    return setupFocusRefresh<Project[]>(
+      [cacheKey],
+      [async () => {
+        const response = await fetch(`/api/projects?scope=${scope}`)
+        const result = await response.json()
+        return result.projects || []
+      }],
+      30 * 1000
+    )
+  }, [status, isPartner])
 
   const fetchManagers = async () => {
     try {
@@ -190,13 +227,28 @@ export default function WorkbenchPage() {
   }
 
   const fetchProjects = async () => {
-    setLoading(true)
+    // 投资合伙人/管理员看所有项目；其他角色看个人维护的项目
+    const scope = isPartner ? 'all' : 'mine'
+    const cacheKey = `workbench:projects:${scope}`
+
+    // 有缓存则不显示 loading（瞬时显示缓存数据）
+    if (getCachedData<Project[]>(cacheKey)) {
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
+
     try {
-      // 投资合伙人/管理员看所有项目；其他角色看个人维护的项目
-      const scope = isPartner ? 'all' : 'mine'
-      const response = await fetch(`/api/projects?scope=${scope}`)
-      const data = await response.json()
-      setProjects(data.projects || [])
+      const data = await fetchWithCache(
+        cacheKey,
+        async () => {
+          const response = await fetch(`/api/projects?scope=${scope}`)
+          const result = await response.json()
+          return result.projects || []
+        },
+        30 * 1000
+      )
+      setProjects(data)
     } catch (error) {
       console.error('Failed to fetch projects:', error)
     }
