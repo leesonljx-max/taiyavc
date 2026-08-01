@@ -3,8 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import prisma from '@/lib/prisma'
-import { authOptions, type UserRole } from '@/lib/auth'
-import { canViewProject, canEditProject, type PermissionUser } from '@/lib/permissions'
+import { authOptions } from '@/lib/auth'
 import { searchWeb } from '@/lib/tavily-search'
 
 /**
@@ -15,60 +14,11 @@ import { searchWeb } from '@/lib/tavily-search'
  * 刷新：Tavily 搜索各行业融资信息 → DeepSeek 分析 → 缓存
  */
 
-/** 获取可见项目的行业列表和年份 */
-async function getVisibleIndustries(currentUser: PermissionUser, year: number) {
-  const allProjects = await prisma.project.findMany({
-    select: {
-      industry: true,
-      targetDate: true,
-      followStage: true,
-      createdById: true,
-      members: { select: { userId: true } },
-    },
-  })
-
-  const visibleProjects = allProjects.filter(project => {
-    const memberIds = project.members.map(m => m.userId)
-    return canViewProject(currentUser, {
-      followStage: project.followStage,
-      createdById: project.createdById,
-      memberIds,
-    })
-  })
-
-  // 可用年份
-  const yearsSet = new Set<number>()
-  visibleProjects.forEach(p => {
-    if (p.targetDate) yearsSet.add(new Date(p.targetDate).getFullYear())
-  })
-  yearsSet.add(new Date().getFullYear())
-  const years = Array.from(yearsSet).sort((a, b) => b - a)
-
-  // 按年份筛选
-  const yearFiltered = visibleProjects.filter(
-    p => p.targetDate && new Date(p.targetDate).getFullYear() === year
-  )
-
-  // 提取行业
-  const industriesSet = new Set<string>()
-  yearFiltered.forEach(p => {
-    const ind = p.industry?.trim()
-    if (ind) industriesSet.add(ind)
-  })
-
-  return { industries: Array.from(industriesSet), years }
-}
-
 export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user) {
       return NextResponse.json({ error: '未登录' }, { status: 401 })
-    }
-
-    const currentUser: PermissionUser = {
-      id: session.user.id,
-      role: session.user.role as UserRole,
     }
 
     const { searchParams } = new URL(request.url)
@@ -77,18 +27,18 @@ export async function GET(request: Request) {
     const year = yearParam ? parseInt(yearParam, 10) : currentYear
     const validYear = isNaN(year) ? currentYear : year
 
-    const { industries, years } = await getVisibleIndustries(currentUser, validYear)
+    // 可用年份（从所有项目中提取，不按用户权限过滤）
+    const allProjects = await prisma.project.findMany({
+      select: { targetDate: true },
+    })
+    const yearsSet = new Set<number>()
+    allProjects.forEach(p => {
+      if (p.targetDate) yearsSet.add(new Date(p.targetDate).getFullYear())
+    })
+    yearsSet.add(currentYear)
+    const years = Array.from(yearsSet).sort((a, b) => b - a)
 
-    if (industries.length === 0) {
-      return NextResponse.json({
-        year: validYear,
-        years,
-        heatData: [],
-        message: '该年份暂无行业数据',
-      })
-    }
-
-    // 检查缓存（1 个月内不重新调用 API）
+    // 先读缓存（缓存是所有用户共享的，cron 自动刷新）
     const cacheKey = `heatmap:${validYear}`
     const cached = await prisma.aICache.findUnique({ where: { cacheKey } })
 
@@ -103,7 +53,7 @@ export async function GET(request: Request) {
         years,
         ...cachedData,
         cachedAt: cached.updatedAt,
-        cacheAge: Math.floor(cacheAge / (24 * 60 * 60 * 1000)), // 缓存天数
+        cacheAge: Math.floor(cacheAge / (24 * 60 * 60 * 1000)),
         isCacheValid,
         message: isCacheValid
           ? undefined
@@ -116,7 +66,6 @@ export async function GET(request: Request) {
       year: validYear,
       years,
       heatData: [],
-      totalIndustries: industries.length,
       message: '暂无融资热点数据，请点击刷新按钮生成',
     })
   } catch (error) {
@@ -138,18 +87,32 @@ export async function POST(request: Request) {
       )
     }
 
-    const currentUser: PermissionUser = {
-      id: session.user.id,
-      role: session.user.role as UserRole,
-    }
-
     const { searchParams } = new URL(request.url)
     const currentYear = new Date().getFullYear()
     const yearParam = searchParams.get('year')
     const year = yearParam ? parseInt(yearParam, 10) : currentYear
     const validYear = isNaN(year) ? currentYear : year
 
-    const { industries, years } = await getVisibleIndustries(currentUser, validYear)
+    // 获取所有项目的行业（不按用户权限过滤，与 cron 一致）
+    const allProjects = await prisma.project.findMany({
+      select: { targetDate: true, industry: true },
+    })
+    const yearsSet = new Set<number>()
+    allProjects.forEach(p => {
+      if (p.targetDate) yearsSet.add(new Date(p.targetDate).getFullYear())
+    })
+    yearsSet.add(currentYear)
+    const years = Array.from(yearsSet).sort((a, b) => b - a)
+
+    const yearFiltered = allProjects.filter(
+      p => p.targetDate && new Date(p.targetDate).getFullYear() === validYear
+    )
+    const industriesSet = new Set<string>()
+    yearFiltered.forEach(p => {
+      const ind = p.industry?.trim()
+      if (ind) industriesSet.add(ind)
+    })
+    const industries = Array.from(industriesSet)
 
     if (industries.length === 0) {
       return NextResponse.json({

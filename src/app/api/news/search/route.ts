@@ -3,8 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import prisma from '@/lib/prisma'
-import { authOptions, type UserRole } from '@/lib/auth'
-import { canViewProject, type PermissionUser } from '@/lib/permissions'
+import { authOptions } from '@/lib/auth'
 import { getWeekStart } from '@/lib/datetime'
 import { searchWeb } from '@/lib/tavily-search'
 
@@ -28,40 +27,6 @@ function getISOWeekKey(date: Date): string {
   const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1))
   const weekNo = Math.ceil(((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
   return `${tmp.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`
-}
-
-/** 获取当前用户可见项目涉及的行业 */
-async function getVisibleIndustries(currentUser: PermissionUser, year: number) {
-  const allProjects = await prisma.project.findMany({
-    select: {
-      industry: true,
-      targetDate: true,
-      followStage: true,
-      createdById: true,
-      members: { select: { userId: true } },
-    },
-  })
-
-  const visibleProjects = allProjects.filter(project => {
-    const memberIds = project.members.map(m => m.userId)
-    return canViewProject(currentUser, {
-      followStage: project.followStage,
-      createdById: project.createdById,
-      memberIds,
-    })
-  })
-
-  const yearFiltered = visibleProjects.filter(
-    p => p.targetDate && new Date(p.targetDate).getFullYear() === year
-  )
-
-  const industriesSet = new Set<string>()
-  yearFiltered.forEach(p => {
-    const ind = p.industry?.trim()
-    if (ind) industriesSet.add(ind)
-  })
-
-  return Array.from(industriesSet)
 }
 
 /** JSON 修复：处理 DeepSeek 返回的常见格式问题 */
@@ -128,18 +93,24 @@ export async function POST(request: Request) {
       )
     }
 
-    const currentUser: PermissionUser = {
-      id: session.user.id,
-      role: session.user.role as UserRole,
-    }
-
     const body = await request.json().catch(() => ({}))
     const currentYear = new Date().getFullYear()
     const year = body.year ? parseInt(body.year, 10) : currentYear
     const validYear = isNaN(year) ? currentYear : year
 
-    // 1. 获取行业列表
-    const industries = await getVisibleIndustries(currentUser, validYear)
+    // 1. 获取所有项目的行业（不按用户权限过滤，与 cron 一致）
+    const allProjects = await prisma.project.findMany({
+      select: { targetDate: true, industry: true },
+    })
+    const yearFiltered = allProjects.filter(
+      p => p.targetDate && new Date(p.targetDate).getFullYear() === validYear
+    )
+    const industriesSet = new Set<string>()
+    yearFiltered.forEach(p => {
+      const ind = p.industry?.trim()
+      if (ind) industriesSet.add(ind)
+    })
+    const industries = Array.from(industriesSet)
 
     // 2. 获取自定义关键字和来源
     const [customKeywords, customSources] = await Promise.all([
