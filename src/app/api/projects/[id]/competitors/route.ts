@@ -176,7 +176,8 @@ ${externalInfo || '未找到相关外网信息'}
           ],
           response_format: { type: 'json_object' },
           temperature: 0.4,
-          max_tokens: 3000,
+          max_tokens: 8000,
+          thinking: { type: 'disabled' },
         }),
         signal: controller.signal,
       })

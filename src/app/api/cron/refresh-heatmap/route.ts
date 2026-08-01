@@ -122,7 +122,8 @@ ${industrySearchInfo}
           },
         ],
         temperature: 0.3,
-        max_tokens: 2000,
+        max_tokens: 8000,
+        thinking: { type: 'disabled' },
       }),
       signal: controller.signal,
     })
@@ -148,6 +149,7 @@ ${industrySearchInfo}
 
   try {
     const repaired = content
+      .replace(/<think>[\s\S]*?<\/think>/g, '')  // 移除 DeepSeek 思考标签
       .replace(/```json/g, '')
       .replace(/```/g, '')
       .replace(/,(\s*[}\]])/g, '$1')
@@ -159,8 +161,11 @@ ${industrySearchInfo}
       const parsed = JSON.parse(jsonMatch[0])
       heatData = parsed.heatData || []
     }
+    if (heatData.length === 0) {
+      console.error('[Cron refresh-heatmap] DeepSeek 返回内容前500字符:', content.substring(0, 500))
+    }
   } catch {
-    console.error('[Cron refresh-heatmap] Failed to parse DeepSeek response:', content)
+    console.error('[Cron refresh-heatmap] Failed to parse DeepSeek response, 前500字符:', content.substring(0, 500))
   }
 
   // 补全缺失行业

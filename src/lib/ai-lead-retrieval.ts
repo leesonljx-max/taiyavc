@@ -156,7 +156,8 @@ async function generateSearchKeywords(
         }
       ],
       temperature: 0.3,
-      max_tokens: 500,
+      max_tokens: 2000,
+      thinking: { type: 'disabled' },
     }),
   })
 
@@ -282,10 +283,14 @@ async function extractFullContent(
 /** 修复 DeepSeek 返回的常见 JSON 格式问题（尾随逗号、未转义引号等） */
 function repairJson(text: string): string {
   let s = text.trim()
+  // 移除 DeepSeek 思考标签
+  s = s.replace(/<think>[\s\S]*?<\/think>/g, '')
   // 去除 markdown 代码块包裹
   s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
   // 去除尾随逗号（],} 前的逗号）
   s = s.replace(/,\s*([}\]])/g, '$1')
+  // 替换中文引号
+  s = s.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'")
   return s
 }
 
@@ -380,7 +385,8 @@ ${JSON.stringify(input, null, 2)}
             }
           ],
           temperature: 0.1,
-          max_tokens: 2000,
+          max_tokens: 4000,
+          thinking: { type: 'disabled' },
         }),
         signal: controller.signal,
       })

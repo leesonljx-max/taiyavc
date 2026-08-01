@@ -39,6 +39,7 @@ function getISOWeekKey(date: Date): string {
 /** JSON 修复：处理 DeepSeek 返回的常见格式问题 */
 function repairJson(text: string): string {
   return text
+    .replace(/<think>[\s\S]*?<\/think>/g, '')  // 移除 DeepSeek 思考标签
     .replace(/```json/g, '')
     .replace(/```/g, '')
     .replace(/,(\s*[}\]])/g, '$1')
@@ -249,7 +250,8 @@ ${searchInfoText}
           },
         ],
         temperature: 0.4,
-        max_tokens: 4000,
+        max_tokens: 8000,
+        thinking: { type: 'disabled' },
       }),
       signal: controller.signal,
     })
@@ -290,8 +292,11 @@ ${searchInfoText}
       const parsed = JSON.parse(jsonMatch[0])
       articles = parsed.articles || []
     }
+    if (articles.length === 0) {
+      console.error('[Cron news-search] DeepSeek 返回内容前500字符:', content.substring(0, 500))
+    }
   } catch {
-    console.error('[Cron news-search] Failed to parse DeepSeek response:', content)
+    console.error('[Cron news-search] Failed to parse DeepSeek response, 前500字符:', content.substring(0, 500))
   }
 
   // 5. 过滤并入库（仅保存最近7天内发布的文章）
