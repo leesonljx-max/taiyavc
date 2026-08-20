@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import DashboardLayout from '@/components/DashboardLayout'
 import DocumentPreviewModal from '@/components/DocumentPreviewModal'
+import DDReportPanel from '@/components/research/DDReportPanel'
 
 // ── 类型定义 ──
 
@@ -99,7 +100,7 @@ const RECOMMENDATION_FIELDS = [
 export default function ResearchDetailPage() {
   const params = useParams<{ projectId: string }>()
   const router = useRouter()
-  const { status } = useSession()
+  const { data: session, status } = useSession()
 
   const [project, setProject] = useState<ResearchProject | null>(null)
   const [modules, setModules] = useState<ResearchModule[]>([])
@@ -175,6 +176,17 @@ export default function ResearchDetailPage() {
       }
     >
       <div className="space-y-6">
+        {/* 尽调报告（Harness 架构：进入尽调阶段自动分析） */}
+        <DDReportPanel
+          projectId={params.projectId}
+          canEdit={
+            (session?.user?.role as string) === 'ADMIN' ||
+            (session?.user?.role as string) === 'INVESTMENT_PARTNER' ||
+            project.createdById === (session?.user?.id as string) ||
+            project.members.some(m => m.userId === (session?.user?.id as string))
+          }
+        />
+
         {/* 项目基本信息 */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">项目基本信息</h2>

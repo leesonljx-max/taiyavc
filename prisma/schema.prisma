@@ -52,6 +52,7 @@ model Project {
   stageChangeRequests StageChangeRequest[]
   documents        ProjectDocument[]
   researchModules  ResearchModule[]
+  ddReport         DDReport?
   createdBy        User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   @@index([name])
@@ -467,4 +468,46 @@ model ResearchComment {
   @@index([moduleId])
   @@index([userId])
   @@index([parentId])
+}
+
+// ═══════════════════════════════════════════════════════════
+// 尽调报告（DeepSeek Harness 架构）
+// 项目进入尽调阶段自动触发：框架生成 → 并行子Agent模块分析 → 缺口清单
+// ═══════════════════════════════════════════════════════════
+model DDReport {
+  id            String   @id @default(cuid())
+  projectId     String   @unique
+  frameworkJson String?  // 定制化尽调框架 JSON（7大必选模块 + AI定制项 + 关注点）
+  status        String   @default("PENDING") // PENDING / RUNNING / COMPLETED / FAILED
+  gapsJson      String?  // 缺口清单汇总 JSON：[{moduleKey, moduleName, missing}]
+  lastRunAt     DateTime?
+  error         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  moduleResults DDModuleResult[]
+}
+
+// 尽调模块分析结果（每个模块一个子Agent的产出）
+model DDModuleResult {
+  id            String   @id @default(cuid())
+  reportId      String
+  moduleKey     String   // 模块标识：mainProducts / coreTeam / custom:xxx
+  moduleName    String   // 中文名称
+  required      Boolean  @default(true) // 是否7大必选模块
+  status        String   @default("PENDING") // PENDING / RUNNING / COMPLETED / INSUFFICIENT_DATA / FAILED
+  conclusion    String?  // 分析结论
+  citationsJson String?  // 引用来源 JSON：[{label, url}]（来自子Agent的web_search会话日志，已交叉验证）
+  missing       String?  // 缺少的资料说明（INSUFFICIENT_DATA 时，供维护人补充）
+  inputHash     String?  // 输入指纹（增量重跑：输入未变且已完成则跳过）
+  analyzedAt    DateTime?
+  error         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  report        DDReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, moduleKey])
+  @@index([reportId])
 }

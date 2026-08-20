@@ -6,6 +6,7 @@ import prisma from '@/lib/prisma'
 import { authOptions, type UserRole } from '@/lib/auth'
 import { canApproveStage } from '@/lib/permissions'
 import { parsePassedStages, computePassedStages } from '@/lib/stage-utils'
+import { triggerDueDiligenceOnStage } from '@/lib/dd-harness/runner'
 
 /**
  * POST /api/stage-change-requests/[id]/action
@@ -73,6 +74,13 @@ export async function POST(
           },
         }),
       ])
+
+      // 项目进入「尽调」阶段 → 后台自动触发尽调分析（Harness 架构，不阻塞审批响应）
+      triggerDueDiligenceOnStage(
+        stageRequest.projectId,
+        newStage,
+        `stage-change:${session.user.id}`
+      )
     } else {
       // 拒绝，仅更新请求状态
       await prisma.stageChangeRequest.update({
