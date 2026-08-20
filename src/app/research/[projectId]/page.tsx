@@ -198,7 +198,7 @@ export default function ResearchDetailPage() {
             <div><span className="text-gray-500">所处行业:</span> <span className="font-medium">{project.industry || '-'}</span></div>
             <div><span className="text-gray-500">公司定位:</span> <span className="font-medium">{project.companyPosition || '-'}</span></div>
             <div><span className="text-gray-500">融资金额:</span> <span className="font-medium text-primary-700">{project.totalAmount}</span></div>
-            <div><span className="text-gray-500">已筹金额:</span> <span className="font-medium">{project.raisedAmount || '-'}</span></div>
+            <div><span className="text-gray-500">累计融资金额:</span> <span className="font-medium">{project.raisedAmount || '-'}</span></div>
             <div><span className="text-gray-500">主要产品:</span> <span className="font-medium">{project.mainProducts || '-'}</span></div>
             <div><span className="text-gray-500">核心优势:</span> <span className="font-medium">{project.coreAdvantage || '-'}</span></div>
           </div>

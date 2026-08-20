@@ -172,7 +172,7 @@ ${documentText ? `上传文档内容（业务尽调材料）：\n${documentText}
 
 项目名称：${p.name}
 融资金额：${p.totalAmount}
-已筹金额：${p.raisedAmount || '未填写'}
+累计融资金额：${p.raisedAmount || '未填写'}
 
 ${documentText ? `上传文档内容（财务尽调材料）：\n${documentText}\n\n` : '【未上传文档】'}${manualContent ? `用户补充信息：\n${manualContent}\n\n` : ''}请从上传文档中提取以下财务数据，严格按 JSON 格式输出：
 {

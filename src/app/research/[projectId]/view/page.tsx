@@ -426,7 +426,7 @@ export default function ResearchViewPage() {
                 {/* 核心数据大卡片 */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
                   <HeroStat label="融资金额" value={project.totalAmount || '-'} accent />
-                  <HeroStat label="已筹金额" value={project.raisedAmount || '暂无'} />
+                  <HeroStat label="累计融资金额" value={project.raisedAmount || '暂无'} />
                   <HeroStat label="核心优势" value={project.coreAdvantage || '待补充'} small />
                   <HeroStat label="主要产品" value={project.mainProducts || '待补充'} small />
                 </div>

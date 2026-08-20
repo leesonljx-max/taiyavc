@@ -158,7 +158,7 @@ export default function ResearchPage() {
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-gray-400 text-xs flex-shrink-0">已筹金额</span>
+                      <span className="text-gray-400 text-xs flex-shrink-0">累计融资金额</span>
                       <span className="text-gray-900 text-right">
                         {project.raisedAmount || '-'}
                       </span>
