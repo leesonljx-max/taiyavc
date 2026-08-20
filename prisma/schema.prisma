@@ -447,12 +447,15 @@ model ResearchDocument {
 // 投研分析模块点评（含回复）
 // - 一级点评：parentId 为空，直接对模块内容进行标注点评
 // - 回复：parentId 指向一级点评，仅主维护人/辅助维护人可回复
+// - quoteText/quoteField：可视化报告页框选提问的锚点（被选中的原文 + 所属字段标识）
 model ResearchComment {
   id          String   @id @default(cuid())
   moduleId    String   // 关联的 ResearchModule
   userId      String   // 发布人
   parentId    String?  // 父点评 ID（为空表示一级点评；非空表示回复）
   content     String   // 点评/回复内容
+  quoteText   String?  // 框选提问：被选中的原文内容
+  quoteField  String?  // 框选提问：内容所属字段标识（如 "INDUSTRY.summary"）
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

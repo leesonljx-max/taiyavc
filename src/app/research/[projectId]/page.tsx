@@ -158,12 +158,20 @@ export default function ResearchDetailPage() {
       title={`投研分析 - ${project.name}`}
       subtitle={project.companyFullName || project.industry || ''}
       actions={
-        <button
-          onClick={() => router.back()}
-          className="px-3 py-1.5 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200"
-        >
-          ← 返回
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => router.push(`/research/${params.projectId}/view`)}
+            className="px-3 py-1.5 bg-primary-500 text-white text-sm rounded-lg hover:bg-primary-600 font-medium"
+          >
+            可视化报告
+          </button>
+          <button
+            onClick={() => router.back()}
+            className="px-3 py-1.5 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200"
+          >
+            ← 返回
+          </button>
+        </div>
       }
     >
       <div className="space-y-6">

@@ -175,9 +175,20 @@ export default function ResearchPage() {
                   <div className="mt-4 pt-3 border-t border-primary-50">
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-xs text-gray-500">模块进度</span>
-                      <span className="text-xs text-gray-700 font-medium">
-                        已分析 {project.moduleProgress?.analyzed ?? 0} / 已创建 {project.moduleProgress?.created ?? 0} / 共 {project.moduleProgress?.total ?? 9} 个
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            router.push(`/research/${project.id}/view`)
+                          }}
+                          className="text-xs text-primary-600 hover:text-primary-800 font-medium cursor-pointer px-1.5 py-0.5 rounded hover:bg-primary-50 transition-colors"
+                        >
+                          可视化报告 →
+                        </span>
+                        <span className="text-xs text-gray-700 font-medium">
+                          已分析 {project.moduleProgress?.analyzed ?? 0} / 已创建 {project.moduleProgress?.created ?? 0} / 共 {project.moduleProgress?.total ?? 9} 个
+                        </span>
+                      </div>
                     </div>
                     <div className="w-full h-2 bg-primary-50 rounded-full overflow-hidden">
                       <div

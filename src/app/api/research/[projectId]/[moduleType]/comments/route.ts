@@ -104,6 +104,8 @@ export async function GET(
     const tree = topLevel.map(c => ({
       id: c.id,
       content: c.content,
+      quoteText: c.quoteText,
+      quoteField: c.quoteField,
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,
       user: c.user,
@@ -191,6 +193,14 @@ export async function POST(
       return NextResponse.json({ error: '点评内容不能超过 2000 字' }, { status: 400 })
     }
 
+    // 框选提问锚点（可视化报告页）
+    const quoteText = typeof body.quoteText === 'string' && body.quoteText.trim()
+      ? body.quoteText.trim().substring(0, 500)
+      : null
+    const quoteField = typeof body.quoteField === 'string' && body.quoteField.trim()
+      ? body.quoteField.trim().substring(0, 200)
+      : null
+
     // 获取或创建模块
     const module = await prisma.researchModule.upsert({
       where: { projectId_moduleType: { projectId, moduleType } },
@@ -204,6 +214,8 @@ export async function POST(
         moduleId: module.id,
         userId: session.user.id,
         content,
+        quoteText,
+        quoteField,
       },
       include: {
         user: { select: { id: true, name: true, email: true } },
@@ -215,6 +227,8 @@ export async function POST(
         comment: {
           id: comment.id,
           content: comment.content,
+          quoteText: comment.quoteText,
+          quoteField: comment.quoteField,
           createdAt: comment.createdAt,
           updatedAt: comment.updatedAt,
           user: comment.user,
