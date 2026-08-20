@@ -25,6 +25,8 @@ interface ResearchProject {
   followStage: string
   createdById: string
   members: { userId: string }[]
+  /** 服务端计算：当前用户是否维护人（主维护人/辅助维护人） */
+  isMaintainer?: boolean
 }
 
 interface ResearchDocument {
@@ -183,7 +185,7 @@ export default function ResearchDetailPage() {
             (session?.user?.role as string) === 'ADMIN' ||
             (session?.user?.role as string) === 'INVESTMENT_PARTNER' ||
             project.createdById === (session?.user?.id as string) ||
-            project.members.some(m => m.userId === (session?.user?.id as string))
+            project.isMaintainer === true
           }
         />
 

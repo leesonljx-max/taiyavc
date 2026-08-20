@@ -125,10 +125,15 @@ export async function GET(
     const moduleOrder = ALL_MODULE_TYPES
     existingModules.sort((a, b) => moduleOrder.indexOf(a.moduleType as ResearchModuleType) - moduleOrder.indexOf(b.moduleType as ResearchModuleType))
 
+    // 服务端计算当前用户是否维护人（不暴露成员ID列表）
+    const isMaintainer =
+      project.createdById === session.user.id || memberIds.includes(session.user.id)
+
     return NextResponse.json({
       project: {
         ...project,
         members: undefined, // 不暴露 memberIds
+        isMaintainer,
       },
       modules: existingModules,
     })

@@ -40,6 +40,8 @@ interface ViewProject {
   financingRound: string | null
   createdById: string
   members: { userId: string }[]
+  /** 服务端计算：当前用户是否维护人（主维护人/辅助维护人） */
+  isMaintainer?: boolean
 }
 
 interface ViewModule {
@@ -103,9 +105,9 @@ export default function ResearchViewPage() {
   const canAsk = userRole === 'ADMIN' || userRole === 'INVESTMENT_PARTNER'
   const canAnswer = useMemo(() => {
     if (!project) return false
-    const memberIds = project.members.map(m => m.userId)
+    // 服务端已计算 isMaintainer（API 不返回成员列表）；createdById 兜底判断
     return userRole === 'ADMIN' || userRole === 'INVESTMENT_PARTNER' ||
-      project.createdById === currentUserId || memberIds.includes(currentUserId || '')
+      project.isMaintainer === true || project.createdById === currentUserId
   }, [project, userRole, currentUserId])
 
   // ── 数据加载 ──
