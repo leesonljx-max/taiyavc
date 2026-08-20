@@ -5,7 +5,7 @@ import { getServerSession } from 'next-auth'
 import prisma from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { getWeekStart } from '@/lib/datetime'
-import { searchWeb } from '@/lib/tavily-search'
+import { searchWebDual } from '@/lib/tavily-search'
 
 /**
  * GET /api/news/search?year=2026
@@ -138,10 +138,10 @@ export async function POST(request: Request) {
       })
     }
 
-    // 3. 用 Tavily 并发检索各主题的本周新闻
+    // 3. 双源并发检索各主题的本周新闻（Tavily + DeepSeek web_search 比较 + 归纳）
     const searchTopics = [...industries, ...customKeywordsList]
     const searchPromises = searchTopics.map(topic =>
-      searchWeb(`${topic} 融资 投资本周`, {
+      searchWebDual(`${topic} 融资 投资本周`, {
         maxResults: 5,
         topic: 'news',
         days: 7,

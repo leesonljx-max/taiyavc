@@ -1,11 +1,13 @@
 /**
  * 尽调 Harness 工具注册表（一切皆插件）
  *
- * web_search 工具当前实现：Tavily Search
- * （接口不变，后续可无缝替换为 DeepSeek Harness 的 web_search 或其他搜索源）
+ * web_search 工具实现：双源搜索（Tavily + DeepSeek 官方 web_search）
+ * - 并行双源 → 比较信息完整度 → 合并去重 → DeepSeek 归纳总结
+ * - 只有一边可用时（如 Tavily 配额耗尽）自动降级为单一来源
+ * - 返回给子Agent 的内容为归纳后的清洁结果，URL 均来自真实搜索
  */
 
-import { searchWeb } from '@/lib/tavily-search'
+import { searchWebDual } from '@/lib/tavily-search'
 import type { HarnessTool, SessionLog } from './types'
 
 /** web_search 工具：子Agent 联网检索补充资料 */
@@ -32,7 +34,8 @@ export const webSearchTool: HarnessTool = {
     if (!query) return '错误：query 不能为空'
     const maxResults = Math.min(Math.max(Number(args.max_results) || 5, 1), 8)
 
-    const results = await searchWeb(query, { maxResults })
+    // 双源搜索：Tavily + DeepSeek web_search 比较 + 归纳
+    const results = await searchWebDual(query, { maxResults })
     const urls = results.map(r => r.url)
     // 记录真实返回的 URL（tool_call 由 Harness 层记录；此处记录结果供引用交叉验证）
     sessionLog.append({ type: 'tool_result', name: 'web_search', urls })

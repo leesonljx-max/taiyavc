@@ -5,7 +5,7 @@ import { getServerSession } from 'next-auth'
 import prisma from '@/lib/prisma'
 import { authOptions, type UserRole } from '@/lib/auth'
 import { canViewProject, canEditProject, type PermissionUser } from '@/lib/permissions'
-import { searchWeb } from '@/lib/tavily-search'
+import { searchWebDual } from '@/lib/tavily-search'
 
 interface AICardData {
   projectName: string
@@ -77,13 +77,13 @@ export async function POST(
       financialData = { raw: financialDataStr }
     }
 
-    // 用 Tavily 搜索项目的外网信息（融资、产品、行业地位等）
+    // 双源搜索项目的外网信息（Tavily + DeepSeek web_search 比较 + 归纳：融资、产品、行业地位等）
     const searchQueries = [
       `${project.name} 融资 投资`,
       project.industry ? `${project.name} ${project.industry}` : `${project.companyFullName || project.name} 公司介绍`,
     ]
     const searchResults = await Promise.all(
-      searchQueries.map(q => searchWeb(q, { maxResults: 3 }))
+      searchQueries.map(q => searchWebDual(q, { maxResults: 3 }))
     )
     const externalInfo = searchResults.flat()
       .map((r, i) => `[${i + 1}] ${r.title}\n${r.content.substring(0, 500)}`)

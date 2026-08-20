@@ -31,6 +31,13 @@ import {
   aggregateGaps,
   needsAnalysis,
 } from '../src/lib/dd-harness/framework'
+import {
+  parseAgentJson,
+  repairJson,
+  stripJsonNoise,
+  extractJsonBlock,
+  escapeInnerQuotes,
+} from '../src/lib/dd-harness/agent'
 
 const ROOT = path.join(__dirname, '..')
 let passed = 0
@@ -166,6 +173,95 @@ console.log('\n[A5] needsAnalysis：增量重跑判断')
   check('资料不足 → 需要（输入可能已补充）', needsAnalysis({ status: 'INSUFFICIENT_DATA', inputHash: hash }, hash) === true)
   check('已完成且输入未变 → 跳过', needsAnalysis({ status: 'COMPLETED', inputHash: hash }, hash) === false)
   check('已完成但输入变化 → 重新分析', needsAnalysis({ status: 'COMPLETED', inputHash: 'old' }, hash) === true)
+}
+
+console.log('\n[A6] parseAgentJson：多层容错解析（本次修复的核心）')
+{
+  // 场景1：标准 JSON（模型完全遵守格式）
+  const ok = parseAgentJson<{ status: string; conclusion: string }>(
+    '{"status":"COMPLETED","conclusion":"结论内容"}'
+  )
+  check('标准 JSON 解析成功', ok?.conclusion === '结论内容')
+
+  // 场景2：JSON 前后带说明文字（模型违反"不要其他文字"要求）
+  const withPrefix = parseAgentJson<{ status: string; conclusion: string }>(
+    '所有搜索均未返回结果。基于现有资料分析：\n\n{"status":"COMPLETED","conclusion":"结论"}\n以上为最终结论。'
+  )
+  check('JSON 前后带说明文字仍可解析', withPrefix?.conclusion === '结论')
+
+  // 场景3【回归用例·实际抓到的失败样本】：字符串值内部含中文弯引号
+  // 旧 repairJson 盲目把 “” 替换为英文引号，破坏 JSON 结构导致解析失败
+  const cnQuote = parseAgentJson<{ status: string; conclusion: string }>(
+    '{"status":"INSUFFICIENT_DATA","conclusion":"搜索关键词“苏州光枢科技 脑机接口”未返回结果，公司“极佳视界”资料缺失。","missing":"补充资料"}'
+  )
+  check('值内含中文弯引号不破坏解析（旧bug回归）', cnQuote?.status === 'INSUFFICIENT_DATA' && cnQuote.conclusion.includes('苏州光枢科技'))
+
+  // 场景4：JSON 结构本身使用中文弯引号（另一类模型输出问题）
+  const structQuote = parseAgentJson<{ status: string; conclusion: string }>(
+    '{“status”:“COMPLETED”,“conclusion”:“结论内容”}'
+  )
+  check('结构使用中文引号可修复解析', structQuote?.conclusion === '结论内容')
+
+  // 场景5：字符串值内部含未转义英文双引号
+  const innerQuote = parseAgentJson<{ conclusion: string }>(
+    '{"conclusion":"搜索“脑机接口 竞品”时发现关键词 "Neuralink" 无结果"}'
+  )
+  check('值内未转义英文引号可启发式修复', innerQuote?.conclusion.includes('Neuralink') === true)
+
+  // 场景6：<think> 思考标签 + 代码块围栏
+  const noisy = parseAgentJson<{ status: string }>(
+    '<think>让我思考一下…</think>\n```json\n{"status":"COMPLETED"}\n```'
+  )
+  check('think 标签与代码块围栏被清洗', noisy?.status === 'COMPLETED')
+
+  // 场景7：尾逗号容错
+  const trailing = parseAgentJson<{ a: string }>('{"a":"x",}')
+  check('尾逗号容错', trailing?.a === 'x')
+
+  // 场景8：完全无 JSON → 返回 null（不抛异常）
+  check('无 JSON 内容返回 null', parseAgentJson('纯文本回答，没有结构化输出') === null)
+  check('空字符串返回 null', parseAgentJson('') === null)
+
+  // 场景9：嵌套对象/数组正常解析
+  const nested = parseAgentJson<{ status: string; citations: Array<{ label: string; url: string }> }>(
+    '{"status":"COMPLETED","citations":[{"label":"来源A","url":"https://a.com"},{"label":"来源B","url":"https://b.com"}]}'
+  )
+  check('嵌套数组结构正常解析', nested?.citations?.length === 2 && nested.citations[0].url === 'https://a.com')
+
+  // 场景10：真实失败样本完整复刻（值内大量中文引号 + 前置说明文字）
+  const realWorld = parseAgentJson<{ status: string; conclusion: string; missing: string }>(
+    '所有4次搜索均未返回有效结果。\n\n{\n  "status": "INSUFFICIENT_DATA",\n  "conclusion": "通过4次联网搜索（关键词涵盖“苏州光枢科技 脑机接口 光电极”、“光电极脑机接口 技术 公司 竞品”等），均未检索到该公司相关公开信息。",\n  "citations": [],\n  "missing": "缺少以下关键资料：1）公司“工商注册信息”"\n}'
+  )
+  check(
+    '真实失败样本（前置文字+值内中文引号）完整修复',
+    realWorld?.status === 'INSUFFICIENT_DATA' && realWorld.conclusion.includes('光电极') && realWorld.missing.includes('工商注册')
+  )
+}
+
+console.log('\n[A6b] 解析辅助函数')
+{
+  // stripJsonNoise：保留中文引号（与 repairJson 的关键区别）
+  check(
+    'stripJsonNoise 保留中文弯引号',
+    stripJsonNoise('“保留”').includes('“') && !stripJsonNoise('“保留”').includes('"')
+  )
+  check(
+    'repairJson 将中文弯引号替换为英文引号',
+    repairJson('“替换”') === '"替换"'
+  )
+  check('stripJsonNoise 移除 think 标签', stripJsonNoise('<think>x</think>{"a":1}') === '{"a":1}')
+
+  // extractJsonBlock：平衡块提取
+  check('extractJsonBlock 提取平衡对象', extractJsonBlock('前置文字 {"a":{"b":1}} 后置文字') === '{"a":{"b":1}}')
+  check('extractJsonBlock 忽略字符串内的大括号', extractJsonBlock('{"a":"文本{嵌套}内容"}') === '{"a":"文本{嵌套}内容"}')
+  check('extractJsonBlock 无左括号返回 null', extractJsonBlock('无JSON') === null)
+  check('extractJsonBlock 不平衡返回 null', extractJsonBlock('{"a":1') === null)
+
+  // escapeInnerQuotes：启发式转义
+  check(
+    'escapeInnerQuotes 转义值内引号但保留结构引号',
+    escapeInnerQuotes('{"a":"他说 "x" 之后"}') === '{"a":"他说 \\"x\\" 之后"}'
+  )
 }
 
 // ═══════════════════════════════════════

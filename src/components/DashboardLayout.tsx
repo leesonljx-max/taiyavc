@@ -47,9 +47,9 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
   const allNavItems = isAdmin ? [...navItems, ...adminNavItems] : navItems
 
   return (
-    <div className="min-h-screen bg-gradient-primary flex">
-      {/* Sidebar */}
-      <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-gradient-sidebar border-r border-primary-100 transform transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+    <div className="min-h-screen bg-gradient-primary">
+      {/* Sidebar - 固定冻结，不随页面滚动而变动 */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-gradient-sidebar border-r border-primary-100 shadow-[6px_0_16px_rgba(26,111,245,0.08)] transform transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full">
           {/* Logo */}
           <div className="flex items-center gap-3 px-6 py-5 border-b border-primary-100">
@@ -75,8 +75,8 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
             </div>
           </div>
 
-          {/* Navigation */}
-          <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+          {/* Navigation - 3D 栏目框样式（等高、带阴影、切换动画） */}
+          <nav className="flex-1 px-3 py-4 flex flex-col gap-2.5 overflow-y-auto">
             {allNavItems.map((item) => {
               const active = isActive(item.href)
               return (
@@ -84,16 +84,15 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
                   key={item.href}
                   href={item.href}
                   onClick={() => setSidebarOpen(false)}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all-smooth ${
-                    active
-                      ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md shadow-primary-500/30'
-                      : 'text-gray-600 hover:bg-primary-50 hover:text-primary-700'
-                  }`}
+                  className={`nav-block group flex items-center gap-3 px-4 h-[52px] rounded-xl select-none ${active ? 'nav-block-active' : ''}`}
                 >
-                  <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className={`w-5 h-5 flex-shrink-0 transition-transform duration-300 group-hover:scale-110 ${active ? 'text-white' : 'text-primary-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
                   </svg>
-                  <span className="text-sm font-medium">{item.label}</span>
+                  <span className="text-sm font-medium flex-1">{item.label}</span>
+                  {active && (
+                    <span className="w-2 h-2 rounded-full bg-white/95 shadow-[0_0_8px_rgba(255,255,255,0.9)] animate-pulse" />
+                  )}
                 </Link>
               )
             })}
@@ -155,8 +154,8 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
         />
       )}
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* Main content（桌面端左侧留出侧边栏宽度，侧边栏冻结不滚动） */}
+      <div className="flex flex-col min-h-screen min-w-0 lg:pl-64">
         {/* Top bar */}
         <header className="sticky top-0 z-30 glass border-b border-primary-100">
           <div className="flex items-center justify-between px-6 py-3">
@@ -178,8 +177,8 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
           </div>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 p-6">
+        {/* Page content（key 触发路由切换时的淡入上移动画） */}
+        <main key={pathname} className="flex-1 p-6 page-enter">
           {children}
         </main>
       </div>

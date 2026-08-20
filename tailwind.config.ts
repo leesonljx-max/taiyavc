@@ -58,9 +58,11 @@ module.exports = {
         },
       },
       backgroundImage: {
-        'gradient-primary': 'linear-gradient(135deg, #eef6ff 0%, #d9ecff 100%)',
-        'gradient-sidebar': 'linear-gradient(180deg, #ffffff 0%, #f0f7ff 100%)',
-        'gradient-card': 'linear-gradient(135deg, #ffffff 0%, #f5faff 100%)',
+        // 右侧内容区：稍深的浅蓝绿色
+        'gradient-primary': 'linear-gradient(135deg, #e9f3ef 0%, #d7e9e2 100%)',
+        // 侧边栏：浅灰白 → 浅灰蓝（衬托栏目框）
+        'gradient-sidebar': 'linear-gradient(180deg, #f5f7fa 0%, #eaeff6 100%)',
+        'gradient-card': 'linear-gradient(135deg, #ffffff 0%, #f4faf7 100%)',
       },
     },
   },

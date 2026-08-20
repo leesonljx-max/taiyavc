@@ -1,14 +1,24 @@
 /**
- * Tavily 搜索共享工具库
+ * 双源搜索共享工具库（Tavily + DeepSeek web_search）
  *
- * 供 AI画板、竞争态势、融资热点图、新闻监控等功能共用
+ * 供 AI画板、竞争态势、融资热点图、新闻监控、AI线索、投研模块分析、DD Harness 共用
+ *
+ * 核心逻辑（searchWebDual）：
+ * 1. 并行调用 Tavily Search 与 DeepSeek Responses API web_search（官方托管搜索）
+ * 2. 比较两边返回的信息完整度（唯一URL数 + 内容总量）
+ * 3. 两边都有结果 → 合并去重（以更完整的一边为主）→ 调用 DeepSeek 归纳总结
+ * 4. 只有一边返回结果 → 直接以单一来源的信息为准
+ * 5. 都失败 → 返回空数组（调用方自行降级）
  *
  * 功能：
- * - searchWeb: 通用 Tavily 搜索，返回清洁正文
- * - searchAndSummarize: 搜索 + DeepSeek 归纳总结
+ * - searchWeb: Tavily 单源搜索（保留，供降级与对比测试）
+ * - searchWebDual: 双源搜索 + 比较 + 归纳（主入口）
+ * - searchAndSummarize: 双源搜索 + DeepSeek 归纳总结（一体化封装）
  */
 
 import { tavily } from '@tavily/core'
+import { deepseekWebSearch } from '@/lib/deepseek-websearch'
+import { parseAgentJson } from '@/lib/dd-harness/agent'
 
 // Tavily 客户端（延迟初始化）
 let _client: ReturnType<typeof tavily> | null = null
@@ -28,7 +38,7 @@ export interface SearchResult {
 }
 
 /**
- * 通用 Tavily 搜索
+ * 通用 Tavily 搜索（单源，返回清洁正文）
  *
  * @param query 搜索关键词
  * @param options 搜索选项
@@ -66,10 +76,315 @@ export async function searchWeb(
   }
 }
 
+// ═══════════════════════════════════════════
+// 双源搜索：纯函数（可单测）
+// ═══════════════════════════════════════════
+
 /**
- * 搜索 + DeepSeek 归纳总结
+ * 信息完整度评分：
+ * - 唯一 URL 数（信息覆盖面，权重高）
+ * - 内容总长度（信息量）
+ */
+export function scoreCompleteness(results: Array<{ url: string; content: string }>): number {
+  if (!Array.isArray(results) || results.length === 0) return 0
+  const uniqueUrls = new Set(results.map(r => r.url).filter(Boolean)).size
+  const totalLen = results.reduce((s, r) => s + (typeof r.content === 'string' ? r.content.length : 0), 0)
+  return uniqueUrls * 1000 + totalLen
+}
+
+/**
+ * 判断两边搜索结果来源状态
+ * - 'both': 两边都有结果（需比较完整度并归纳）
+ * - 'tavily' / 'deepseek': 仅单边有结果（以单一来源为准）
+ * - 'none': 两边都无结果
+ */
+export function decideWinner(
+  tavilyResults: SearchResult[],
+  deepseekResults: SearchResult[]
+): 'both' | 'tavily' | 'deepseek' | 'none' {
+  const hasT = tavilyResults.length > 0
+  const hasD = deepseekResults.length > 0
+  if (hasT && hasD) return 'both'
+  if (hasT) return 'tavily'
+  if (hasD) return 'deepseek'
+  return 'none'
+}
+
+/**
+ * 合并两源结果（URL 去重）：
+ * - primary（更完整的一边）在前，保持其顺序
+ * - secondary 中 primary 未覆盖的 URL 追加在后
+ */
+export function mergeSearchResults(
+  primary: SearchResult[],
+  secondary: SearchResult[]
+): SearchResult[] {
+  const seen = new Set(primary.map(r => r.url))
+  const extra = secondary.filter(r => r.url && !seen.has(r.url))
+  return [...primary, ...extra]
+}
+
+/**
+ * DeepSeek 归纳总结（Harness 式分析）：
+ * 把双源合并的原始结果去噪、去重、提炼为标准结果列表。
+ * 失败时返回 null（调用方回退使用原始合并结果，不阻断流程）。
+ */
+export async function summarizeMergedResults(
+  query: string,
+  merged: SearchResult[],
+  maxResults: number,
+  timeoutMs = 90000
+): Promise<SearchResult[] | null> {
+  if (merged.length === 0) return null
+
+  const apiKey = process.env.DEEPSEEK_API_KEY
+  if (!apiKey) return null
+
+  // 控制输入长度（每条截断，总量控制在 3.2 万字符内）
+  const inputResults = merged.map(r => ({
+    title: r.title,
+    url: r.url,
+    content: r.content.length > 2000 ? r.content.substring(0, 2000) : r.content,
+  }))
+
+  const systemPrompt =
+    '你是搜索结果归纳助手。你会收到关于同一查询、来自两个搜索源合并后的原始结果。' +
+    '请归纳总结：合并同一事件/主题的信息、去除重复与无关噪声、保留关键数据（金额/日期/机构名等原样保留），' +
+    '输出按信息价值排序的结果列表。只返回 JSON，不要任何其他文字。'
+
+  const userPrompt = `搜索查询：${query}
+
+合并后的原始搜索结果：
+${JSON.stringify(inputResults, null, 2)}
+
+请归纳总结为最多 ${maxResults} 条结果，严格按以下 JSON 格式输出：
+{"results": [{"title": "标题", "url": "对应来源URL", "content": "归纳后的关键内容（150-500字）"}]}
+
+要求：
+1. url 必须从原始结果的 url 中选取，禁止编造
+2. 同一事件多个来源时，合并为一条并在 content 中注明综合了多个来源
+3. 无有效内容时返回 {"results": []}`
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-v4-flash',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.3,
+        max_tokens: 6000,
+        thinking: { type: 'disabled' },
+      }),
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '')
+      console.warn(`双源归纳 DeepSeek 调用失败 [${query}]: ${response.status} ${errText.substring(0, 200)}`)
+      return null
+    }
+
+    const data = await response.json()
+    const content = data.choices?.[0]?.message?.content || ''
+    const parsed = parseAgentJson<{ results?: Array<Record<string, unknown>> }>(content)
+    if (!parsed || !Array.isArray(parsed.results)) return null
+
+    // URL 白名单校验：归纳结果的 url 必须来自原始结果（防编造）
+    const validUrls = new Set(merged.map(r => r.url))
+    const out: SearchResult[] = []
+    for (const r of parsed.results) {
+      const url = typeof r?.url === 'string' ? r.url.trim() : ''
+      const title = typeof r?.title === 'string' ? r.title.trim() : ''
+      const c = typeof r?.content === 'string' ? r.content.trim() : ''
+      if (!validUrls.has(url) || (!title && !c)) continue
+      out.push({ title: title || url, url, content: c })
+    }
+    return out.length > 0 ? out : null
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    if (!msg.includes('abort')) {
+      console.warn(`双源归纳失败 [${query}]:`, msg)
+    }
+    return null
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+// ═══════════════════════════════════════════
+// 双源搜索：主入口
+// ═══════════════════════════════════════════
+
+export interface DualSearchOptions {
+  /** 每个源各自最多返回结果数（默认 5） */
+  maxResults?: number
+  /** 搜索主题：news 时 Tavily 用新闻搜索、DeepSeek 强调新闻 */
+  topic?: 'news' | 'general'
+  /** 仅关注近 N 天（传给 Tavily days；DeepSeek 侧转化为时效性提示） */
+  days?: number
+  /** DeepSeek 侧超时（ms），搜索较慢，默认 90 秒 */
+  timeoutMs?: number
+  /** 归纳后最大条数（默认 maxResults 的 2 倍，保留双源增量信息） */
+  finalMaxResults?: number
+  /** 是否跳过双源归纳（测试/降级用，默认 false） */
+  skipSummarize?: boolean
+}
+
+/** 双源搜索元信息（日志/测试观测用） */
+export interface DualSearchMeta {
+  tavilyCount: number
+  deepseekCount: number
+  winner: 'both' | 'tavily' | 'deepseek' | 'none'
+  /** 双源都有时的完整度胜出方 */
+  moreComplete: 'tavily' | 'deepseek' | 'equal' | null
+  /** 是否经过 DeepSeek 归纳总结 */
+  summarized: boolean
+  finalCount: number
+}
+
+/** 最近一次 searchWebDual 的元信息（观测用；并发场景仅作参考） */
+let _lastDualMeta: DualSearchMeta | null = null
+export function getLastDualSearchMeta(): DualSearchMeta | null {
+  return _lastDualMeta
+}
+
+/**
+ * 双源搜索决策（纯函数，可单测）：
+ * 根据两源结果决定胜出方、合并策略与是否需要归纳总结
  *
- * 1. 用 Tavily 搜索相关内容
+ * - 两边都有 → winner='both'：比较完整度，完整方在前合并去重，需归纳总结
+ * - 仅单边   → winner=该边：以单一来源为准，不归纳
+ * - 都无结果 → winner='none'：空结果
+ */
+export function resolveDualSearch(
+  tavilyResults: SearchResult[],
+  deepseekResults: SearchResult[],
+  options?: { skipSummarize?: boolean }
+): {
+  winner: 'both' | 'tavily' | 'deepseek' | 'none'
+  /** 双源都有时的完整度胜出方 */
+  moreComplete: 'tavily' | 'deepseek' | 'equal' | null
+  /** 单边时直接返回该边结果；双边时为合并去重后的结果 */
+  results: SearchResult[]
+  /** 是否需要 DeepSeek 归纳总结（双边且未跳过时 true） */
+  needsSummarize: boolean
+} {
+  const winner = decideWinner(tavilyResults, deepseekResults)
+
+  if (winner === 'none') {
+    return { winner, moreComplete: null, results: [], needsSummarize: false }
+  }
+  if (winner === 'tavily' || winner === 'deepseek') {
+    return {
+      winner,
+      moreComplete: winner,
+      results: winner === 'tavily' ? tavilyResults : deepseekResults,
+      needsSummarize: false,
+    }
+  }
+
+  // 双边都有：比较完整度
+  const tavilyScore = scoreCompleteness(tavilyResults)
+  const deepseekScore = scoreCompleteness(deepseekResults)
+  const moreComplete: 'tavily' | 'deepseek' | 'equal' =
+    tavilyScore > deepseekScore ? 'tavily' : deepseekScore > tavilyScore ? 'deepseek' : 'equal'
+
+  const merged =
+    moreComplete === 'deepseek'
+      ? mergeSearchResults(deepseekResults, tavilyResults)
+      : mergeSearchResults(tavilyResults, deepseekResults)
+
+  return {
+    winner: 'both',
+    moreComplete,
+    results: merged,
+    needsSummarize: !options?.skipSummarize,
+  }
+}
+
+/**
+ * 双源搜索（Tavily + DeepSeek web_search）：
+ * 并行双源 → 比较完整度 → 合并去重 → DeepSeek 归纳总结 → 标准结果列表
+ *
+ * - 两边都有：合并（完整度高的源在前）后归纳总结
+ * - 只有单边：直接以单一来源结果为准（不再归纳）
+ * - 都失败：返回 []
+ */
+export async function searchWebDual(
+  query: string,
+  options?: DualSearchOptions
+): Promise<SearchResult[]> {
+  const maxResults = options?.maxResults || 5
+  const finalMaxResults = options?.finalMaxResults || maxResults * 2
+
+  // 1. 并行双源搜索（各自容错，失败返回 []）
+  const [tavilyResults, deepseekResults] = await Promise.all([
+    searchWeb(query, {
+      maxResults,
+      topic: options?.topic,
+      days: options?.days,
+    }).catch(() => [] as SearchResult[]),
+    deepseekWebSearch(query, {
+      maxResults,
+      recencyDays: options?.days,
+      topic: options?.topic,
+      timeoutMs: options?.timeoutMs,
+    }).catch(() => [] as SearchResult[]),
+  ])
+
+  // 2. 决策：单边降级 / 双边合并
+  const decision = resolveDualSearch(tavilyResults, deepseekResults, {
+    skipSummarize: options?.skipSummarize,
+  })
+
+  if (decision.winner === 'none') {
+    _lastDualMeta = {
+      tavilyCount: 0,
+      deepseekCount: 0,
+      winner: 'none',
+      moreComplete: null,
+      summarized: false,
+      finalCount: 0,
+    }
+    return []
+  }
+
+  // 3. 双源都有：DeepSeek 归纳总结（Harness 式分析）；失败回退原始合并结果
+  let summarized = false
+  let finalResults = decision.results
+  if (decision.needsSummarize) {
+    const summarizedResults = await summarizeMergedResults(query, decision.results, finalMaxResults)
+    if (summarizedResults) {
+      finalResults = summarizedResults
+      summarized = true
+    }
+  }
+
+  _lastDualMeta = {
+    tavilyCount: tavilyResults.length,
+    deepseekCount: deepseekResults.length,
+    winner: decision.winner,
+    moreComplete: decision.moreComplete,
+    summarized,
+    finalCount: finalResults.length,
+  }
+  return finalResults
+}
+
+/**
+ * 双源搜索 + DeepSeek 归纳总结（一体化封装）
+ *
+ * 1. 用双源搜索（Tavily + DeepSeek web_search 比较取优）获取相关内容
  * 2. 将搜索结果喂给 DeepSeek 进行归纳总结
  * 3. 返回 DeepSeek 的结构化输出
  *
@@ -87,14 +402,17 @@ export async function searchAndSummarize(
     topic?: 'news' | 'general'
     days?: number
     timeoutMs?: number
+    skipSummarize?: boolean
   }
 ): Promise<{ data: string | null; searchResultsCount: number; error?: string }> {
-  // 1. 并发搜索
+  // 1. 并发双源搜索
   const searchPromises = queries.map(q =>
-    searchWeb(q, {
+    searchWebDual(q, {
       maxResults: options?.maxResultsPerQuery || 5,
       topic: options?.topic,
       days: options?.days,
+      timeoutMs: options?.timeoutMs,
+      skipSummarize: options?.skipSummarize,
     })
   )
   const searchArrays = await Promise.all(searchPromises)

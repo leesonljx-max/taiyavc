@@ -4,7 +4,7 @@
  * 流程：
  * 1. 读取近 3 个月初聊项目的行业标签
  * 2. 用 DeepSeek 生成检索关键词
- * 3. 用 Tavily Search API 搜索融资 PR 新闻（AI 原生搜索，返回清洁正文）
+ * 3. 用双源搜索（Tavily + DeepSeek web_search 比较取优）搜索融资 PR 新闻
  * 4. 用 DeepSeek 从搜索结果中筛选并抽取结构化信息
  * 5. 匹配初聊项目和维护人
  * 6. 保存线索到数据库
@@ -13,10 +13,11 @@
 import { tavily } from '@tavily/core'
 import prisma from '@/lib/prisma'
 import { similarity, isHighlyOverlapping } from '@/lib/lead-match'
+import { searchWebDual } from '@/lib/tavily-search'
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
 
-// Tavily 客户端（延迟初始化，避免无 API Key 时启动报错）
+// Tavily 客户端（延迟初始化，避免无 API Key 时启动报错；仅 Extract 全文时使用）
 let _tavilyClient: ReturnType<typeof tavily> | null = null
 function getTavilyClient() {
   if (!_tavilyClient) {
@@ -177,34 +178,31 @@ async function generateSearchKeywords(
 }
 
 // ────────────────────────────────────────────────────────────
-// 3. Tavily 搜索融资新闻（AI 原生搜索 API）
+// 3. 双源搜索融资新闻（Tavily + DeepSeek web_search 比较 + 归纳）
 // ────────────────────────────────────────────────────────────
 
 async function searchTavily(query: string, count = 10): Promise<SearchResultItem[]> {
+  // 双源搜索：Tavily 与 DeepSeek 官方 web_search 并行 → 比较完整度 → 合并归纳
+  // 单边可用时（如 Tavily 配额耗尽）自动以单一来源为准
+  let results: Array<{ title: string; url: string; content: string }>
   try {
-    const client = getTavilyClient()
-    const res = await client.search(query, {
-      topic: 'news',          // 新闻搜索，返回融资PR相关内容
+    results = await searchWebDual(query, {
       maxResults: count,
-      searchDepth: 'basic',   // 基础搜索，快速响应
-      days: 3,                // 只取近3天的新新闻（避免重复处理已处理的新闻）
-      // Tavily SDK 内置超时，但作为兜底也设置 AbortController
+      topic: 'news',        // 新闻搜索，返回融资PR相关内容
+      days: 3,              // 只取近3天的新新闻（避免重复处理已处理的新闻）
     })
-
-    // Tavily 返回的 content 是清洁正文，远优于 Bing 的 snippet
-    return res.results.map(r => ({
-      title: r.title,
-      url: r.url,
-      snippet: r.content,     // Tavily content 映射到 snippet，供 DeepSeek 抽取
-    }))
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
-    // 超时不记录为错误（网络波动正常）
-    if (!msg.includes('timed out') && !msg.includes('timeout')) {
-      console.warn(`Tavily 搜索失败 [${query}]:`, msg)
-    }
-    return []
+    console.warn(`双源搜索失败 [${query}]:`, msg)
+    results = []
   }
+
+  // content 即清洁正文（Tavily 单源或双源归纳后的结果），映射到 snippet 供 DeepSeek 抽取
+  return results.map(r => ({
+    title: r.title,
+    url: r.url,
+    snippet: r.content,
+  }))
 }
 
 /**

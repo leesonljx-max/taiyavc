@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import prisma from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
-import { searchWeb } from '@/lib/tavily-search'
+import { searchWebDual } from '@/lib/tavily-search'
 
 /**
  * GET /api/statistics/financing-heatmap?year=2026
@@ -147,9 +147,9 @@ export async function POST(request: Request) {
       }
     }
 
-    // 1. 用 Tavily 并发搜索各行业融资信息
+    // 1. 双源并发搜索各行业融资信息（Tavily + DeepSeek web_search 比较 + 归纳）
     const searchPromises = industries.map(ind =>
-      searchWeb(`${ind} 融资 ${validYear} 年`, { maxResults: 3 })
+      searchWebDual(`${ind} 融资 ${validYear} 年`, { maxResults: 3 })
     )
     const searchArrays = await Promise.all(searchPromises)
     const searchByIndustry = industries.map((ind, i) => ({

@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { authorizeCronRequest, unauthorizedResponse } from '@/lib/cron-auth'
-import { searchWeb } from '@/lib/tavily-search'
+import { searchWebDual } from '@/lib/tavily-search'
 
 /**
  * 定时刷新融资热点图数据
@@ -55,9 +55,9 @@ async function refreshHeatmap(year: number): Promise<{ success: boolean; heatDat
     return { success: false, heatDataCount: 0, message: `${year} 年暂无行业数据` }
   }
 
-  // 1. 用 Tavily 并发搜索各行业融资信息
+  // 1. 双源并发搜索各行业融资信息（Tavily + DeepSeek web_search 比较 + 归纳）
   const searchPromises = industries.map(ind =>
-    searchWeb(`${ind} 融资 ${year} 年`, { maxResults: 3 })
+    searchWebDual(`${ind} 融资 ${year} 年`, { maxResults: 3 })
   )
   const searchArrays = await Promise.all(searchPromises)
   const searchByIndustry = industries.map((ind, i) => ({

@@ -5,7 +5,7 @@ import { getServerSession } from 'next-auth'
 import prisma from '@/lib/prisma'
 import { authOptions, type UserRole } from '@/lib/auth'
 import type { PermissionUser } from '@/lib/permissions'
-import { searchWeb } from '@/lib/tavily-search'
+import { searchWebDual } from '@/lib/tavily-search'
 import {
   canEditResearchProject,
   isValidModuleType,
@@ -126,21 +126,21 @@ export async function POST(
 
     const config = MODULE_PROMPTS[moduleType as ResearchModuleType]
 
-    // 1. Tavily 搜索（如需）
+    // 1. 双源搜索（Tavily + DeepSeek web_search 比较 + 归纳，如需）
     let externalInfo = ''
     if (needsTavilySearch(moduleType as ResearchModuleType)) {
       const queries = config.searchQueries(project)
       if (queries.length > 0) {
         try {
           const searchResults = await Promise.all(
-            queries.map(q => searchWeb(q, { maxResults: 3 }))
+            queries.map(q => searchWebDual(q, { maxResults: 3 }))
           )
           externalInfo = searchResults
             .flat()
             .map((r, i) => `[${i + 1}] ${r.title}\n来源: ${r.url}\n${r.content.substring(0, 500)}`)
             .join('\n\n')
         } catch (error) {
-          console.error('Tavily search failed:', error)
+          console.error('双源搜索失败:', error)
           externalInfo = '外网搜索失败，请稍后重试'
         }
       }

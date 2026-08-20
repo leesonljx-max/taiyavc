@@ -5,7 +5,7 @@ import { getServerSession } from 'next-auth'
 import prisma from '@/lib/prisma'
 import { authOptions, type UserRole } from '@/lib/auth'
 import { canViewProject, type PermissionUser } from '@/lib/permissions'
-import { searchWeb } from '@/lib/tavily-search'
+import { searchWebDual } from '@/lib/tavily-search'
 
 /**
  * 竞争态势分析（从产品、技术路线、团队背景、融资进展等维度）
@@ -90,7 +90,7 @@ export async function POST(
       )
     }
 
-    // 1. 用 Tavily 并发搜索竞品的多维度信息（产品/技术/团队/融资）
+    // 1. 双源并发搜索竞品的多维度信息（Tavily + DeepSeek web_search 比较 + 归纳：产品/技术/团队/融资）
     const searchQueries = [
       `${project.name} 竞品 竞争对手 产品`,
       project.mainProducts
@@ -100,7 +100,7 @@ export async function POST(
       `${project.name} 融资 投资方 轮次`,
     ]
     const searchResults = await Promise.all(
-      searchQueries.map(q => searchWeb(q, { maxResults: 4 }))
+      searchQueries.map(q => searchWebDual(q, { maxResults: 4 }))
     )
     const externalInfo = searchResults.flat()
       .map((r, i) => `[${i + 1}] ${r.title}\n来源: ${r.url}\n${r.content.substring(0, 500)}`)

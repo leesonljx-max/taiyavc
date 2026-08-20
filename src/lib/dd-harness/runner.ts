@@ -21,7 +21,7 @@ import {
   aggregateGaps,
   needsAnalysis,
 } from './framework'
-import { runAgent, runSingleCall, parseAgentJson } from './agent'
+import { runAgent, runSingleCall, parseAgentJson, stripJsonNoise } from './agent'
 import { ddTools } from './tools'
 import {
   FRAMEWORK_SYSTEM_PROMPT,
@@ -209,8 +209,14 @@ async function analyzeModule(
     })
 
     const parsed = parseAgentJson<ModuleAnalysisOutput>(content)
-    if (!parsed || !parsed.conclusion) {
-      return { output: null, error: '子Agent输出无法解析为有效结论' }
+    if (!parsed) {
+      return {
+        output: null,
+        error: `子Agent输出无法解析为JSON（原文前200字符：${stripJsonNoise(content).substring(0, 200)}）`,
+      }
+    }
+    if (!parsed.conclusion) {
+      return { output: null, error: '子Agent输出缺少 conclusion 字段' }
     }
 
     // 引用交叉验证：只保留真实出现在 web_search 会话日志中的 URL

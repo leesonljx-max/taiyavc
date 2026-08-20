@@ -14,16 +14,83 @@ import { SessionLog as SessionLogClass } from './types'
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
 
-/** JSON 修复：处理 DeepSeek 返回的常见格式问题 */
-export function repairJson(text: string): string {
+/** JSON 基础清洗：移除思考标签、代码块围栏、尾逗号（保留引号原样） */
+export function stripJsonNoise(text: string): string {
   return text
     .replace(/<think>[\s\S]*?<\/think>/g, '')
     .replace(/```json/g, '')
     .replace(/```/g, '')
     .replace(/,(\s*[}\]])/g, '$1')
+    .trim()
+}
+
+/** JSON 修复（兜底用）：在基础清洗之上，将中文弯引号替换为英文引号 */
+export function repairJson(text: string): string {
+  return stripJsonNoise(text)
     .replace(/[\u201C\u201D]/g, '"')
     .replace(/[\u2018\u2019]/g, "'")
     .trim()
+}
+
+/**
+ * 提取第一个大括号平衡的 JSON 对象块（容忍 JSON 前后的说明文字）
+ * 扫描时跳过字符串内部（不计数），未找到平衡块返回 null
+ */
+export function extractJsonBlock(text: string): string | null {
+  const start = text.indexOf('{')
+  if (start < 0) return null
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]
+    if (escaped) { escaped = false; continue }
+    if (ch === '\\') { if (inString) escaped = true; continue }
+    if (ch === '"') { inString = !inString; continue }
+    if (inString) continue
+    if (ch === '{') depth++
+    else if (ch === '}') {
+      depth--
+      if (depth === 0) return text.substring(start, i + 1)
+    }
+  }
+  return null
+}
+
+/**
+ * 修复字符串值内部未转义的英文双引号（启发式）：
+ * 引号后（跳过空白）若紧跟结构字符（: , } ]）视为字符串闭合，否则视为内容引号并转义
+ */
+export function escapeInnerQuotes(text: string): string {
+  let result = ''
+  let inString = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (ch === '\\' && inString) {
+      result += ch + (text[i + 1] ?? '')
+      i++
+      continue
+    }
+    if (ch === '"') {
+      if (!inString) {
+        inString = true
+        result += ch
+        continue
+      }
+      let j = i + 1
+      while (j < text.length && /\s/.test(text[j])) j++
+      const next = text[j]
+      if (next === ':' || next === ',' || next === '}' || next === ']') {
+        inString = false
+        result += ch
+      } else {
+        result += '\\"'
+      }
+      continue
+    }
+    result += ch
+  }
+  return result
 }
 
 export interface RunAgentOptions {
@@ -210,14 +277,25 @@ export async function runSingleCall(
   }
 }
 
-/** 解析 Agent 最终输出为 JSON（容错） */
+/**
+ * 解析 Agent 最终输出为 JSON（多层容错策略）
+ *
+ * 背景：模型输出可能存在以下问题，需逐层兜底：
+ * 1. JSON 前后带说明文字 → 平衡块提取 / 贪婪正则匹配
+ * 2. 字符串值内部含中文弯引号（“”）→ 原样保留即可解析（不能盲目替换，否则破坏 JSON）
+ * 3. JSON 结构本身用中文弯引号 → 替换为英文引号后解析
+ * 4. 字符串值内部含未转义英文双引号 → 启发式转义
+ */
 export function parseAgentJson<T>(content: string): T | null {
-  try {
-    const repaired = repairJson(content)
-    const jsonMatch = repaired.match(/\{[\s\S]*\}/)
-    if (jsonMatch) return JSON.parse(jsonMatch[0]) as T
-  } catch {
-    // 忽略，返回 null
+  // 按优先级依次尝试候选文本：基础清洗版（保留中文引号）→ 引号替换版
+  for (const text of [stripJsonNoise(content), repairJson(content)]) {
+    // 提取候选 JSON 块（优先平衡块提取，回退贪婪正则）
+    const block = extractJsonBlock(text) || text.match(/\{[\s\S]*\}/)?.[0]
+    if (!block) continue
+    // 尝试直接解析（值内含中文引号的合法 JSON 在第一轮即成功）
+    try { return JSON.parse(block) as T } catch { /* 继续尝试 */ }
+    // 尝试转义值内未转义英文双引号后重试
+    try { return JSON.parse(escapeInnerQuotes(block)) as T } catch { /* 继续尝试 */ }
   }
   return null
 }

@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { authorizeCronRequest, unauthorizedResponse } from '@/lib/cron-auth'
-import { searchWeb } from '@/lib/tavily-search'
+import { searchWebDual } from '@/lib/tavily-search'
 import { getWeekStart } from '@/lib/datetime'
 
 /**
@@ -142,9 +142,9 @@ async function searchNews(): Promise<{
 
   console.log(`[Cron news-search] 搜索主题: ${searchTopics.length} 个，近 3 个月初聊项目: ${projectCount} 个`)
 
-  // 3. 用 Tavily 并发检索各主题的本周新闻
+  // 3. 双源并发检索各主题的本周新闻（Tavily + DeepSeek web_search 比较 + 归纳）
   const searchPromises = searchTopics.map(topic =>
-    searchWeb(`${topic} 融资 投资`, {
+    searchWebDual(`${topic} 融资 投资`, {
       maxResults: 5,
       topic: 'news',
       days: 7,
