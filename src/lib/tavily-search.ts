@@ -1,7 +1,11 @@
 /**
  * 双源搜索共享工具库（Tavily + DeepSeek web_search）
  *
- * 供 AI画板、竞争态势、融资热点图、新闻监控、AI线索、投研模块分析、DD Harness 共用
+ * 供 AI画板、竞争态势、新闻监控、AI线索、投研模块分析、DD Harness 共用
+ *
+ * 任务分级（Token 成本控制）：
+ * - collect  收集型（行业动态/AI线索/新闻监控）：Tavily 主力，DeepSeek 仅降级备份，不做双源归纳
+ * - research 研究型（尽调/竞争态势/投研模块）：双源比较 + 合并 + DeepSeek 归纳
  *
  * 核心逻辑（searchWebDual）：
  * 1. 并行调用 Tavily Search 与 DeepSeek Responses API web_search（官方托管搜索）
@@ -10,15 +14,15 @@
  * 4. 只有一边返回结果 → 直接以单一来源的信息为准
  * 5. 都失败 → 返回空数组（调用方自行降级）
  *
- * 功能：
- * - searchWeb: Tavily 单源搜索（保留，供降级与对比测试）
- * - searchWebDual: 双源搜索 + 比较 + 归纳（主入口）
- * - searchAndSummarize: 双源搜索 + DeepSeek 归纳总结（一体化封装）
+ * 搜索缓存：同一 query 在 TTL 内直接命中缓存，不重复消耗 token
+ * Token 计量：每次 DeepSeek 调用的 usage 记入 AICache（AI 看板展示）
  */
 
 import { tavily } from '@tavily/core'
 import { deepseekWebSearch } from '@/lib/deepseek-websearch'
 import { parseAgentJson } from '@/lib/dd-harness/agent'
+import { recordTokenUsage } from '@/lib/token-accounting'
+import { getSearchCache, putSearchCache } from '@/lib/search-cache'
 
 // Tavily 客户端（延迟初始化）
 let _client: ReturnType<typeof tavily> | null = null
@@ -37,12 +41,27 @@ export interface SearchResult {
   content: string
 }
 
+/** 任务分级模式 */
+export type SearchMode = 'collect' | 'research'
+
+/** 模块标识（token 记账归属） */
+export type SearchModule =
+  | 'ai-card'        // AI投资分析
+  | 'competitors'    // 竞争态势分析
+  | 'ai-leads'       // AI 线索
+  | 'industry-news'  // 行业动态
+  | 'news'           // 新闻监控（现 AI 看板数据源）
+  | 'research'       // 投研模块分析
+  | 'dd-harness'     // 尽调报告
+  | 'ai-research'    // AI行研 ChatBot
+  | 'search-lib'     // 搜索库自身（归纳调用）
+
 /**
  * 通用 Tavily 搜索（单源，返回清洁正文）
  *
  * @param query 搜索关键词
  * @param options 搜索选项
- *   - maxResults: 最多返回结果数（默认 5）
+ *   - maxResults: 最多返回结果数（默认 5，上限 5 控成本）
  *   - topic: 'news' 或 'general'（默认 'general'）
  *   - days: 仅返回近 N 天的结果（仅 topic='news' 时生效，默认不限制）
  */
@@ -58,7 +77,7 @@ export async function searchWeb(
     const client = getClient()
     const res = await client.search(query, {
       topic: options?.topic || 'general',
-      maxResults: options?.maxResults || 5,
+      maxResults: Math.min(options?.maxResults || 5, 5),
       searchDepth: 'basic',
       days: options?.days,
     })
@@ -196,6 +215,10 @@ ${JSON.stringify(inputResults, null, 2)}
 
     const data = await response.json()
     const content = data.choices?.[0]?.message?.content || ''
+
+    // token 记账（AI 看板展示）
+    recordTokenUsage('search-lib', data.usage)
+
     const parsed = parseAgentJson<{ results?: Array<Record<string, unknown>> }>(content)
     if (!parsed || !Array.isArray(parsed.results)) return null
 
@@ -226,7 +249,7 @@ ${JSON.stringify(inputResults, null, 2)}
 // ═══════════════════════════════════════════
 
 export interface DualSearchOptions {
-  /** 每个源各自最多返回结果数（默认 5） */
+  /** 每个源各自最多返回结果数（默认 5，硬上限 5 控成本） */
   maxResults?: number
   /** 搜索主题：news 时 Tavily 用新闻搜索、DeepSeek 强调新闻 */
   topic?: 'news' | 'general'
@@ -238,6 +261,16 @@ export interface DualSearchOptions {
   finalMaxResults?: number
   /** 是否跳过双源归纳（测试/降级用，默认 false） */
   skipSummarize?: boolean
+  /**
+   * 任务分级（Token 成本控制）：
+   * - collect（默认）：收集型任务，Tavily 主力 + DeepSeek 降级备份，不做归纳
+   * - research：研究型任务，双源比较 + 合并 + DeepSeek 归纳
+   */
+  mode?: SearchMode
+  /** token 记账归属模块 */
+  module?: SearchModule
+  /** 缓存 TTL（小时）；0 表示禁用缓存。collect 默认 12h，research 默认 1h */
+  cacheTtlHours?: number
 }
 
 /** 双源搜索元信息（日志/测试观测用） */
@@ -250,6 +283,10 @@ export interface DualSearchMeta {
   /** 是否经过 DeepSeek 归纳总结 */
   summarized: boolean
   finalCount: number
+  /** 任务分级模式 */
+  mode: SearchMode
+  /** 是否命中缓存 */
+  cacheHit: boolean
 }
 
 /** 最近一次 searchWebDual 的元信息（观测用；并发场景仅作参考） */
@@ -314,20 +351,71 @@ export function resolveDualSearch(
 
 /**
  * 双源搜索（Tavily + DeepSeek web_search）：
- * 并行双源 → 比较完整度 → 合并去重 → DeepSeek 归纳总结 → 标准结果列表
  *
- * - 两边都有：合并（完整度高的源在前）后归纳总结
- * - 只有单边：直接以单一来源结果为准（不再归纳）
- * - 都失败：返回 []
+ * 模式分级（Token 成本控制）：
+ * - collect（收集型：行业动态/AI线索/新闻监控）：Tavily 主力；仅当 Tavily 失败/为空时
+ *   才调用 DeepSeek web_search 降级备份；不执行双源归纳（省去归纳 token）
+ * - research（研究型：尽调/竞争态势/投研模块）：并行双源 → 比较完整度 → 合并去重
+ *   → DeepSeek 归纳总结
+ *
+ * 缓存：同 query 在 TTL 内直接返回缓存（collect 12h / research 1h，可配）
  */
 export async function searchWebDual(
   query: string,
   options?: DualSearchOptions
 ): Promise<SearchResult[]> {
-  const maxResults = options?.maxResults || 5
+  const mode = options?.mode || 'collect'
+  const module = options?.module || 'search-lib'
+  const maxResults = Math.min(options?.maxResults || 5, 5)
   const finalMaxResults = options?.finalMaxResults || maxResults * 2
+  const cacheTtlHours = options?.cacheTtlHours ?? (mode === 'collect' ? 12 : 1)
 
-  // 1. 并行双源搜索（各自容错，失败返回 []）
+  const setMeta = (tavilyCount: number, deepseekCount: number, winner: DualSearchMeta['winner'], moreComplete: DualSearchMeta['moreComplete'], summarized: boolean, finalCount: number, cacheHit: boolean) => {
+    _lastDualMeta = { tavilyCount, deepseekCount, winner, moreComplete, summarized, finalCount, mode, cacheHit }
+  }
+
+  // 0. 缓存命中直接返回
+  if (cacheTtlHours > 0) {
+    const cached = await getSearchCache(query, { maxResults, topic: options?.topic, days: options?.days, mode })
+    if (cached && cached.length > 0) {
+      setMeta(cached.length, 0, 'tavily', 'tavily', false, cached.length, true)
+      return cached
+    }
+  }
+
+  // ── collect 模式：Tavily 主力，DeepSeek 仅降级备份 ──
+  if (mode === 'collect') {
+    const tavilyResults = await searchWeb(query, {
+      maxResults,
+      topic: options?.topic,
+      days: options?.days,
+    }).catch(() => [] as SearchResult[])
+
+    if (tavilyResults.length > 0) {
+      setMeta(tavilyResults.length, 0, 'tavily', 'tavily', false, tavilyResults.length, false)
+      if (cacheTtlHours > 0) {
+        await putSearchCache(query, { maxResults, topic: options?.topic, days: options?.days, mode }, tavilyResults, cacheTtlHours)
+      }
+      return tavilyResults
+    }
+
+    // Tavily 失败/为空 → DeepSeek 降级
+    const deepseekResults = await deepseekWebSearch(query, {
+      maxResults,
+      recencyDays: options?.days,
+      topic: options?.topic,
+      timeoutMs: options?.timeoutMs,
+      module,
+    }).catch(() => [] as SearchResult[])
+
+    setMeta(0, deepseekResults.length, deepseekResults.length > 0 ? 'deepseek' : 'none', 'deepseek', false, deepseekResults.length, false)
+    if (deepseekResults.length > 0 && cacheTtlHours > 0) {
+      await putSearchCache(query, { maxResults, topic: options?.topic, days: options?.days, mode }, deepseekResults, cacheTtlHours)
+    }
+    return deepseekResults
+  }
+
+  // ── research 模式：并行双源 → 决策 → 归纳 ──
   const [tavilyResults, deepseekResults] = await Promise.all([
     searchWeb(query, {
       maxResults,
@@ -339,27 +427,37 @@ export async function searchWebDual(
       recencyDays: options?.days,
       topic: options?.topic,
       timeoutMs: options?.timeoutMs,
+      module,
     }).catch(() => [] as SearchResult[]),
   ])
 
-  // 2. 决策：单边降级 / 双边合并
   const decision = resolveDualSearch(tavilyResults, deepseekResults, {
     skipSummarize: options?.skipSummarize,
   })
 
   if (decision.winner === 'none') {
-    _lastDualMeta = {
-      tavilyCount: 0,
-      deepseekCount: 0,
-      winner: 'none',
-      moreComplete: null,
-      summarized: false,
-      finalCount: 0,
-    }
+    setMeta(0, 0, 'none', null, false, 0, false)
     return []
   }
 
-  // 3. 双源都有：DeepSeek 归纳总结（Harness 式分析）；失败回退原始合并结果
+  // 单边降级：以单一来源为准（不归纳）
+  if (decision.winner !== 'both') {
+    setMeta(
+      tavilyResults.length,
+      deepseekResults.length,
+      decision.winner,
+      decision.moreComplete,
+      false,
+      decision.results.length,
+      false
+    )
+    if (decision.results.length > 0 && cacheTtlHours > 0) {
+      await putSearchCache(query, { maxResults, topic: options?.topic, days: options?.days, mode }, decision.results, cacheTtlHours)
+    }
+    return decision.results
+  }
+
+  // 双源都有：DeepSeek 归纳总结（Harness 式分析）；失败回退原始合并结果
   let summarized = false
   let finalResults = decision.results
   if (decision.needsSummarize) {
@@ -370,13 +468,17 @@ export async function searchWebDual(
     }
   }
 
-  _lastDualMeta = {
-    tavilyCount: tavilyResults.length,
-    deepseekCount: deepseekResults.length,
-    winner: decision.winner,
-    moreComplete: decision.moreComplete,
+  setMeta(
+    tavilyResults.length,
+    deepseekResults.length,
+    'both',
+    decision.moreComplete,
     summarized,
-    finalCount: finalResults.length,
+    finalResults.length,
+    false
+  )
+  if (finalResults.length > 0 && cacheTtlHours > 0) {
+    await putSearchCache(query, { maxResults, topic: options?.topic, days: options?.days, mode }, finalResults, cacheTtlHours)
   }
   return finalResults
 }
@@ -384,7 +486,7 @@ export async function searchWebDual(
 /**
  * 双源搜索 + DeepSeek 归纳总结（一体化封装）
  *
- * 1. 用双源搜索（Tavily + DeepSeek web_search 比较取优）获取相关内容
+ * 1. 用双源搜索（按 mode 分级）获取相关内容
  * 2. 将搜索结果喂给 DeepSeek 进行归纳总结
  * 3. 返回 DeepSeek 的结构化输出
  *
@@ -403,6 +505,9 @@ export async function searchAndSummarize(
     days?: number
     timeoutMs?: number
     skipSummarize?: boolean
+    mode?: SearchMode
+    module?: SearchModule
+    cacheTtlHours?: number
   }
 ): Promise<{ data: string | null; searchResultsCount: number; error?: string }> {
   // 1. 并发双源搜索
@@ -413,6 +518,9 @@ export async function searchAndSummarize(
       days: options?.days,
       timeoutMs: options?.timeoutMs,
       skipSummarize: options?.skipSummarize,
+      mode: options?.mode,
+      module: options?.module,
+      cacheTtlHours: options?.cacheTtlHours,
     })
   )
   const searchArrays = await Promise.all(searchPromises)
@@ -466,6 +574,9 @@ export async function searchAndSummarize(
 
     const data = await response.json()
     const content = data.choices?.[0]?.message?.content || null
+
+    // token 记账（AI 看板展示）
+    recordTokenUsage(options?.module || 'search-lib', data.usage)
 
     return { data: content, searchResultsCount: allResults.length }
   } catch (error) {

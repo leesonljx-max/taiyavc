@@ -126,14 +126,14 @@ export async function POST(
 
     const config = MODULE_PROMPTS[moduleType as ResearchModuleType]
 
-    // 1. 双源搜索（Tavily + DeepSeek web_search 比较 + 归纳，如需）
+    // 1. 研究型双源搜索（Tavily + DeepSeek web_search 比较 + 归纳，如需）
     let externalInfo = ''
     if (needsTavilySearch(moduleType as ResearchModuleType)) {
       const queries = config.searchQueries(project)
       if (queries.length > 0) {
         try {
           const searchResults = await Promise.all(
-            queries.map(q => searchWebDual(q, { maxResults: 3 }))
+            queries.map(q => searchWebDual(q, { maxResults: 3, mode: 'research', module: 'research' }))
           )
           externalInfo = searchResults
             .flat()

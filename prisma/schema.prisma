@@ -142,6 +142,8 @@ model User {
   researchDocuments  ResearchDocument[]
   // 投研分析模块点评
   researchComments   ResearchComment[]
+  // AI行研会话
+  aiChatSessions     AIChatSession[]
 }
 
 // 项目线索（用于在新建项目时进行重合检测和合并，也用于AI自动检索）
@@ -510,4 +512,63 @@ model DDModuleResult {
 
   @@unique([reportId, moduleKey])
   @@index([reportId])
+}
+
+// ═══════════════════════════════════════════════════════════
+// AI行研 ChatBot（Harness 架构 + 分层记忆）
+// ═══════════════════════════════════════════════════════════
+
+// AI行研会话（按用户隔离）
+model AIChatSession {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String   @default("新对话")  // 自动从首条提问生成
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  AIChatMessage[]
+
+  @@index([userId])
+  @@index([updatedAt])
+}
+
+// AI行研消息
+model AIChatMessage {
+  id            String   @id @default(cuid())
+  sessionId     String
+  role          String   // user / assistant
+  content       String
+  // 引用来源 JSON：[{label, url}]（内部项目库来源 + 联网来源）
+  sourcesJson   String?
+  // 内部命中的项目库信息 JSON：[{projectId, projectName, followStage}]（溯源用）
+  projectsJson  String?
+  createdAt     DateTime @default(now())
+  session       AIChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+// AI 分层记忆库（Mem0 式，全局共享的事实层）
+// - type=FACT    语义记忆：结构化事实（金额/日期/结论/偏好），同主体同字段新覆盖旧
+// - type=EPISODE 情景记忆：每轮对话的一句摘要（会话级，回溯用）
+model AIMemory {
+  id          String    @id @default(cuid())
+  type        String    @default("FACT")  // FACT / EPISODE
+  scope       String    @default("global") // global（全局共享）/ session:<id>
+  // 事实主体（公司名/行业/用户偏好标识等），FACT 必填
+  subject     String?
+  // 事实字段名（如 fundingRound/valuation/时间窗口判断），用于冲突覆盖
+  field       String?
+  content     String    // 记忆内容（一句话，≤200字）
+  // 召回用关键词（空格分隔，提取时由 LLM 生成或程序分词）
+  keywords    String    @default("")
+  importance  Int       @default(3) // 1-5，重要度（融资事件=5，闲聊=1）
+  superseded  Boolean   @default(false) // 被新事实覆盖后标记，不物理删除
+  sourceSessionId String? // 来源会话
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([type, superseded])
+  @@index([subject, field, superseded])
+  @@index([importance])
 }

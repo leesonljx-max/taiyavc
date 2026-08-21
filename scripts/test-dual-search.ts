@@ -357,6 +357,9 @@ console.log('\n[D9] 真实集成测试：searchWebDual 端到端（真实 API，
       maxResults: 3,
       topic: 'news',
       timeoutMs: 120000,
+      // research 模式验证双源完整链路；禁缓存避免旧数据干扰断言
+      mode: 'research',
+      cacheTtlHours: 0,
     })
     const elapsed = ((Date.now() - start) / 1000).toFixed(1)
     const meta = getLastDualSearchMeta()
@@ -367,9 +370,9 @@ console.log('\n[D9] 真实集成测试：searchWebDual 端到端（真实 API，
     check('所有 URL 为合法 http(s)', results.every(r => /^https?:\/\//.test(r.url)))
     check('每条结果有标题和内容', results.every(r => r.title && r.content))
     check('meta 记录可用（观测双源状态）', meta !== null && meta.finalCount === results.length)
-    // 当前 Tavily 配额耗尽 → 应自动降级为 DeepSeek 单源
+    // 当前 Tavily 配额耗尽 → research 模式下应降级为 DeepSeek 单源
     check(
-      `单边降级生效（winner=${meta?.winner}，Tavily配额耗尽时应为 deepseek）`,
+      `降级链路生效（winner=${meta?.winner}，Tavily配额耗尽时应为 deepseek）`,
       meta?.winner === 'deepseek' || meta?.winner === 'both'
     )
     if (results.length > 0) {
@@ -402,7 +405,7 @@ async function main() {
     check('tavily-search.ts 导出决策纯函数', tavilyLib.includes('export function resolveDualSearch'))
     check('tavily-search.ts 导出归纳函数', tavilyLib.includes('export async function summarizeMergedResults'))
     check('searchWebDual 并行双源（Promise.all）', tavilyLib.includes('searchWeb(query') && tavilyLib.includes('deepseekWebSearch(query'))
-    check('单边降级注释存在', tavilyLib.includes('以单一来源结果为准'))
+  check('单边降级逻辑存在（Tavily失败走DeepSeek）', tavilyLib.includes('DeepSeek 降级') || tavilyLib.includes('降级备份'))
     check('searchAndSummarize 已切换双源', tavilyLib.includes('searchWebDual(q, {'))
 
     const dsLib = read('src/lib/deepseek-websearch.ts')
@@ -416,16 +419,15 @@ async function main() {
   console.log('\n[C8] 十处调用方全部切换双源')
   {
     const callers: Array<{ file: string; name: string }> = [
-      { file: 'src/lib/dd-harness/tools.ts', name: 'DD Harness web_search 工具（尽调/行业动态共用）' },
-      { file: 'src/lib/ai-lead-retrieval.ts', name: 'AI 线索检索' },
-      { file: 'src/app/api/cron/news-search/route.ts', name: '新闻监控（cron）' },
-      { file: 'src/app/api/news/search/route.ts', name: '新闻监控（手动刷新）' },
-      { file: 'src/app/api/cron/refresh-heatmap/route.ts', name: '融资热点图（cron）' },
-      { file: 'src/app/api/statistics/financing-heatmap/route.ts', name: '融资热点图（手动）' },
-      { file: 'src/app/api/research/[projectId]/[moduleType]/analyze/route.ts', name: '投研模块 AI 分析' },
-      { file: 'src/app/api/projects/[id]/ai-card/route.ts', name: 'AI 画板' },
-      { file: 'src/app/api/projects/[id]/competitors/route.ts', name: '竞争态势分析' },
-    ]
+    { file: 'src/lib/dd-harness/tools.ts', name: 'DD Harness web_search 工具（尽调/行业动态共用）' },
+    { file: 'src/lib/ai-lead-retrieval.ts', name: 'AI 线索检索' },
+    { file: 'src/app/api/cron/news-search/route.ts', name: '新闻监控（cron）' },
+    { file: 'src/app/api/news/search/route.ts', name: '新闻监控（手动刷新）' },
+    // 融资热点图已下架（V1.3.1 成本控制），路由删除
+    { file: 'src/app/api/research/[projectId]/[moduleType]/analyze/route.ts', name: '投研模块 AI 分析' },
+    { file: 'src/app/api/projects/[id]/ai-card/route.ts', name: 'AI 画板' },
+    { file: 'src/app/api/projects/[id]/competitors/route.ts', name: '竞争态势分析' },
+  ]
 
     for (const c of callers) {
       const content = read(c.file)
@@ -437,7 +439,7 @@ async function main() {
 
     // 行业动态经 ddTools 复用 web_search 工具
     const runner = read('src/lib/industry-news-runner.ts')
-    check('行业动态 → 复用 ddTools（间接获得双源）', runner.includes('ddTools()'))
+    check('行业动态 → 复用 ddTools（间接获得双源）', runner.includes("ddTools('industry-news')"))
   }
 
   // D. 真实集成测试

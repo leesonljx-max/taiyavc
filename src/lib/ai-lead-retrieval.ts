@@ -178,18 +178,19 @@ async function generateSearchKeywords(
 }
 
 // ────────────────────────────────────────────────────────────
-// 3. 双源搜索融资新闻（Tavily + DeepSeek web_search 比较 + 归纳）
+// 3. 收集型搜索融资新闻（Tavily 主力 + DeepSeek web_search 降级备份）
 // ────────────────────────────────────────────────────────────
 
 async function searchTavily(query: string, count = 10): Promise<SearchResultItem[]> {
-  // 双源搜索：Tavily 与 DeepSeek 官方 web_search 并行 → 比较完整度 → 合并归纳
-  // 单边可用时（如 Tavily 配额耗尽）自动以单一来源为准
+  // 收集型搜索：Tavily 主力 + DeepSeek 降级备份（自动带缓存，控成本）
   let results: Array<{ title: string; url: string; content: string }>
   try {
     results = await searchWebDual(query, {
       maxResults: count,
       topic: 'news',        // 新闻搜索，返回融资PR相关内容
       days: 3,              // 只取近3天的新新闻（避免重复处理已处理的新闻）
+      mode: 'collect',      // 收集型：Tavily 主力，DeepSeek 降级备份（控成本）
+      module: 'ai-leads',
     })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)

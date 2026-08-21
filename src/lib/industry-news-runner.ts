@@ -164,7 +164,7 @@ async function analyzeIndustry(industry: string): Promise<IndustryNewsCard> {
   const { content, sessionLog } = await runAgent({
     systemPrompt: SYSTEM_PROMPT(industry, today),
     userPrompt: `请检索「${industry}」行业今日动态并输出 JSON。`,
-    tools: ddTools(),
+    tools: ddTools('industry-news'),
     maxTurns: 3,
     temperature: 0.4,
   })

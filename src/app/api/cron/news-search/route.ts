@@ -142,12 +142,14 @@ async function searchNews(): Promise<{
 
   console.log(`[Cron news-search] 搜索主题: ${searchTopics.length} 个，近 3 个月初聊项目: ${projectCount} 个`)
 
-  // 3. 双源并发检索各主题的本周新闻（Tavily + DeepSeek web_search 比较 + 归纳）
+  // 3. 收集型并发检索各主题的本周新闻（Tavily 主力 + DeepSeek 降级备份，自动缓存）
   const searchPromises = searchTopics.map(topic =>
     searchWebDual(`${topic} 融资 投资`, {
       maxResults: 5,
       topic: 'news',
       days: 7,
+      mode: 'collect',
+      module: 'news',
     })
   )
   const searchArrays = await Promise.all(searchPromises)

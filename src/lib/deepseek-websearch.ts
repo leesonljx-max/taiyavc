@@ -17,6 +17,7 @@
  */
 
 import { parseAgentJson } from '@/lib/dd-harness/agent'
+import { recordTokenUsage } from '@/lib/token-accounting'
 
 const RESPONSES_API_URL = 'https://api.deepseek.com/v1/responses'
 
@@ -28,7 +29,7 @@ export interface DeepSeekSearchResult {
 }
 
 export interface DeepSeekWebSearchOptions {
-  /** 最多返回结果数（默认 5） */
+  /** 最多返回结果数（默认 5，硬上限 5 控成本） */
   maxResults?: number
   /** 时效性提示：只关注近 N 天的信息（如新闻监控传 3） */
   recencyDays?: number
@@ -36,6 +37,8 @@ export interface DeepSeekWebSearchOptions {
   topic?: 'news' | 'general'
   /** 超时（ms），搜索较慢，默认 90 秒 */
   timeoutMs?: number
+  /** token 记账归属模块（AI 看板展示） */
+  module?: string
 }
 
 /** 规范化模型输出的结果列表 */
@@ -76,7 +79,7 @@ export async function deepseekWebSearch(
     return []
   }
 
-  const maxResults = options?.maxResults || 5
+  const maxResults = Math.min(options?.maxResults || 5, 5)
   const recencyHint = options?.recencyDays
     ? `只关注最近 ${options.recencyDays} 天内发布的信息。`
     : ''
@@ -86,6 +89,8 @@ export async function deepseekWebSearch(
     `请使用 web_search 工具联网搜索：${query}`,
     recencyHint,
     topicHint,
+    // 成本控制：限制搜索轮次、禁止 open_page 打开网页全文（token 大户）
+    '成本约束：最多搜索 2 次；只用搜索结果摘要，禁止 open_page 打开网页全文。',
     `搜索完成后，整理出最多 ${maxResults} 条最有价值的结果，严格按以下 JSON 格式输出，不要任何其他文字：`,
     `{"results": [{"title": "来源标题", "url": "https://...", "content": "该来源的关键内容摘要（150-500字，保留关键数据）"}]}`,
     '要求：url 必须是真实搜索到的来源链接，禁止编造；无有效结果时返回 {"results": []}。',
@@ -123,6 +128,9 @@ export async function deepseekWebSearch(
     }
 
     const data = await response.json()
+
+    // token 记账（AI 看板展示；responses API 的 usage 结构为 input_tokens/output_tokens）
+    recordTokenUsage(options?.module || 'search-lib', data.usage)
 
     // 从 output 数组提取最终 message 文本（web_search_call 之外的 message 项）
     const outputItems = (data.output || []) as Array<Record<string, unknown>>

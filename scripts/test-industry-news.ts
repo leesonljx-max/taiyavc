@@ -71,7 +71,7 @@ console.log('\n[B3] Harness Runner（industry-news-runner.ts）')
 const runner = read('src/lib/industry-news-runner.ts')
 check('Runner 文件存在', exists('src/lib/industry-news-runner.ts'))
 check('复用 dd-harness Agent（runAgent）', runner.includes("from '@/lib/dd-harness/agent'") && runner.includes('runAgent'))
-check('复用 web_search 工具（ddTools）', runner.includes("from '@/lib/dd-harness/tools'") && runner.includes('ddTools()'))
+check('复用 web_search 工具（ddTools，行业动态走 collect 降成本模式）', runner.includes("from '@/lib/dd-harness/tools'") && runner.includes("ddTools('industry-news')"))
 check('前十行业计算（getTopIndustries 按项目数排序）', runner.includes('sort((a, b) => b[1] - a[1])') && runner.includes('TOP_N'))
 check('缓存键 industry-news:YYYY-MM-DD', runner.includes('`industry-news:${date}`'))
 check('AICache upsert 读写', runner.includes('aICache.upsert') && runner.includes('aICache.findUnique'))
@@ -127,7 +127,7 @@ check('页面标题已改为「行业图谱与行业动态分析」', page.inclu
 check('融资热点图区块已移除', !page.includes('融资热点图'))
 check('heatmap 相关状态已清理', !page.includes('heatmapData') && !page.includes('refreshHeatmap'))
 check('热度等级配色已清理', !page.includes("heatColors"))
-check(' financing-heatmap API 保留（数据未删，仅前端替换）', exists('src/app/api/statistics/financing-heatmap/route.ts'))
+check('financing-heatmap API 已下架（V1.3.1 成本控制，路由删除）', !exists('src/app/api/statistics/financing-heatmap/route.ts'))
 
 // ── 结果 ──
 console.log('\n════════ 测试结果 ════════')

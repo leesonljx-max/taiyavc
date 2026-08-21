@@ -90,7 +90,7 @@ export async function POST(
       )
     }
 
-    // 1. 双源并发搜索竞品的多维度信息（Tavily + DeepSeek web_search 比较 + 归纳：产品/技术/团队/融资）
+    // 1. 研究型并发搜索竞品的多维度信息（双源比较 + 归纳：产品/技术/团队/融资）
     const searchQueries = [
       `${project.name} 竞品 竞争对手 产品`,
       project.mainProducts
@@ -100,7 +100,7 @@ export async function POST(
       `${project.name} 融资 投资方 轮次`,
     ]
     const searchResults = await Promise.all(
-      searchQueries.map(q => searchWebDual(q, { maxResults: 4 }))
+      searchQueries.map(q => searchWebDual(q, { maxResults: 4, mode: 'research', module: 'competitors' }))
     )
     const externalInfo = searchResults.flat()
       .map((r, i) => `[${i + 1}] ${r.title}\n来源: ${r.url}\n${r.content.substring(0, 500)}`)

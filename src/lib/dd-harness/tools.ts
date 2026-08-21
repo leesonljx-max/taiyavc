@@ -32,10 +32,10 @@ export const webSearchTool: HarnessTool = {
   async execute(args, sessionLog: SessionLog) {
     const query = typeof args.query === 'string' ? args.query.trim() : ''
     if (!query) return '错误：query 不能为空'
-    const maxResults = Math.min(Math.max(Number(args.max_results) || 5, 1), 8)
+    const maxResults = Math.min(Math.max(Number(args.max_results) || 5, 1), 5)
 
-    // 双源搜索：Tavily + DeepSeek web_search 比较 + 归纳
-    const results = await searchWebDual(query, { maxResults })
+    // 研究型任务：双源搜索（Tavily + DeepSeek web_search 比较 + 归纳）
+    const results = await searchWebDual(query, { maxResults, mode: 'research', module: 'dd-harness' })
     const urls = results.map(r => r.url)
     // 记录真实返回的 URL（tool_call 由 Harness 层记录；此处记录结果供引用交叉验证）
     sessionLog.append({ type: 'tool_result', name: 'web_search', urls })
@@ -49,7 +49,32 @@ export const webSearchTool: HarnessTool = {
   },
 }
 
-/** 尽调子Agent可用工具集（可插拔扩展） */
-export function ddTools(): HarnessTool[] {
+/**
+ * 尽调子Agent可用工具集（可插拔扩展）
+ * @param module token 记账归属模块（默认 dd-harness；行业动态传 industry-news，走 collect 降成本模式）
+ */
+export function ddTools(module: 'dd-harness' | 'industry-news' = 'dd-harness'): HarnessTool[] {
+  if (module === 'industry-news') {
+    return [{
+      ...webSearchTool,
+      async execute(args, sessionLog) {
+        const query = typeof args.query === 'string' ? args.query.trim() : ''
+        if (!query) return '错误：query 不能为空'
+        const maxResults = Math.min(Math.max(Number(args.max_results) || 5, 1), 5)
+
+        // 行业动态 = 收集型：Tavily 主力 + DeepSeek 降级备份（省去双源归纳 token）
+        const results = await searchWebDual(query, { maxResults, mode: 'collect', module: 'industry-news' })
+        const urls = results.map(r => r.url)
+        sessionLog.append({ type: 'tool_result', name: 'web_search', urls })
+
+        if (results.length === 0) {
+          return `未找到与「${query}」相关的搜索结果`
+        }
+        return results
+          .map((r, i) => `[${i + 1}] ${r.title}\n来源: ${r.url}\n内容: ${r.content.substring(0, 400)}`)
+          .join('\n\n')
+      },
+    }]
+  }
   return [webSearchTool]
 }

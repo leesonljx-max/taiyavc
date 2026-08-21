@@ -1,598 +1,429 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+/**
+ * AI 看板（原新闻监控页升级）
+ *
+ * 核心功能：
+ * - Token 消耗日历热力图：按颜色深浅展示每天总消耗量，点击查看当日各模块明细
+ * - 模块消耗统计：AI画板/竞争态势/AI线索/行业动态/新闻检索/投研分析/尽调报告/搜索库
+ * - 月度汇总卡片：总 token / 总调用次数 / 日均消耗
+ *
+ * 数据源：/api/token-usage（token-accounting 记账，按天聚合存 AICache）
+ */
+
+import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import DashboardLayout from '@/components/DashboardLayout'
 
-interface NewsArticle {
-  id: string
-  title: string
-  source: string
-  sourceUrl: string | null
-  industry: string
-  summary: string
-  author: string | null
-  publishedAt: string
-  weekStart: string
+// ── 类型 ──
+
+interface ModuleUsage {
+  inputTokens: number
+  outputTokens: number
+  calls: number
 }
 
-interface NewsDetail extends NewsArticle {
-  content: string
+interface DayUsage {
+  date: string
+  modules: Record<string, ModuleUsage>
+  totalInput: number
+  totalOutput: number
 }
 
-export default function NewsPage() {
+interface UsageData {
+  startDate: string
+  endDate: string
+  days: DayUsage[]
+  summary: {
+    totalInput: number
+    totalOutput: number
+    totalTokens: number
+    moduleTotals: Record<string, ModuleUsage>
+  }
+}
+
+// 模块中文名映射
+const MODULE_LABELS: Record<string, string> = {
+  'ai-card': 'AI投资分析',
+  'competitors': '竞争态势分析',
+  'ai-leads': 'AI 线索',
+  'industry-news': '行业动态',
+  'news': '新闻检索',
+  'research': '投研模块分析',
+  'dd-harness': '尽调报告',
+  'ai-research': 'AI行研',
+  'search-lib': '搜索归纳',
+  other: '其他',
+}
+
+// 模块主题色
+const MODULE_COLORS: Record<string, string> = {
+  'ai-card': 'bg-blue-500',
+  'competitors': 'bg-purple-500',
+  'ai-leads': 'bg-emerald-500',
+  'industry-news': 'bg-amber-500',
+  'news': 'bg-cyan-500',
+  'research': 'bg-indigo-500',
+  'dd-harness': 'bg-rose-500',
+  'ai-research': 'bg-fuchsia-500',
+  'search-lib': 'bg-teal-500',
+  other: 'bg-gray-400',
+}
+
+/** token 数格式化（万为单位） */
+function fmtTokens(n: number): string {
+  if (n === 0) return '0'
+  if (n < 10_000) return n.toLocaleString()
+  return `${(n / 10_000).toFixed(1)}万`
+}
+
+/** 日历热力图颜色分级（5 档，按当月最大日消耗归一化） */
+function heatLevel(total: number, max: number): number {
+  if (total <= 0) return 0
+  if (max <= 0) return 1
+  const ratio = total / max
+  if (ratio <= 0.2) return 1
+  if (ratio <= 0.4) return 2
+  if (ratio <= 0.6) return 3
+  if (ratio <= 0.8) return 4
+  return 5
+}
+
+const HEAT_STYLES = [
+  'bg-gray-100 text-gray-400',
+  'bg-emerald-100 text-emerald-700',
+  'bg-emerald-200 text-emerald-800',
+  'bg-amber-200 text-amber-800',
+  'bg-orange-300 text-orange-900',
+  'bg-red-400 text-red-50',
+]
+
+const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日']
+
+export default function AIBoardPage() {
   const { status } = useSession()
-  const [articles, setArticles] = useState<NewsArticle[]>([])
-  const [industries, setIndustries] = useState<string[]>([])
-  const [sources, setSources] = useState<string[]>([])
-  const [loading, setLoading] = useState(false)
-  const [searching, setSearching] = useState(false)
-  const [error, setError] = useState('')
-  const [searchMessage, setSearchMessage] = useState('')
-  const [selectedIndustry, setSelectedIndustry] = useState<string>('all')
-  const [selectedSource, setSelectedSource] = useState<string>('all')
-  const [viewingArticle, setViewingArticle] = useState<NewsDetail | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
+  const router = useRouter()
 
-  // 自定义关键字和来源管理
-  const [keywords, setKeywords] = useState<{ id: string; keyword: string }[]>([])
-  const [sourcesList, setSourcesList] = useState<{ id: string; name: string }[]>([])
-  const [newKeyword, setNewKeyword] = useState('')
-  const [newSource, setNewSource] = useState('')
-  const [keywordSaving, setKeywordSaving] = useState(false)
-  const [sourceSaving, setSourceSaving] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
-  const autoTriggeredRef = useRef(false)  // 防止重复自动触发检索
+  const [data, setData] = useState<UsageData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [selectedDay, setSelectedDay] = useState<DayUsage | null>(null)
+  const [viewMonth, setViewMonth] = useState<string>(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  })
 
   useEffect(() => {
-    if (status !== 'authenticated') return
-    // 首次加载：读取缓存，无缓存时自动触发检索
-    // 后续筛选变化：从数据库查询带筛选条件的新闻
-    if (!autoTriggeredRef.current) {
-      fetchNewsWithCache()
-    } else {
-      fetchNewsFiltered()
+    if (status === 'unauthenticated') {
+      router.push('/auth/login?callbackUrl=/news')
     }
-  }, [status, selectedIndustry, selectedSource])
+  }, [status, router])
 
-  // 首次加载：读取缓存（GET /api/news/search），无缓存时自动触发 POST 检索
-  const fetchNewsWithCache = async () => {
+  const fetchUsage = useCallback(async (month: string) => {
     setLoading(true)
     setError('')
     try {
-      // 1. 先检查缓存
-      const currentYear = new Date().getFullYear()
-      const cacheRes = await fetch(`/api/news/search?year=${currentYear}`)
-      const cacheData = await cacheRes.json()
+      // 月视图：当月1日 ~ 月末（或今天）
+      const [y, m] = month.split('-').map(Number)
+      const start = `${month}-01`
+      const lastDay = new Date(y, m, 0).getDate()
+      const today = new Date()
+      const isCurrentMonth = today.getFullYear() === y && today.getMonth() + 1 === m
+      const end = isCurrentMonth
+        ? `${month}-${String(today.getDate()).padStart(2, '0')}`
+        : `${month}-${String(lastDay).padStart(2, '0')}`
 
-      if (cacheData.articles && cacheData.articles.length > 0) {
-        // 有缓存，直接显示
-        setArticles(cacheData.articles)
-        setIndustries(cacheData.industries || [])
-        setSources(
-          Array.from(new Set(cacheData.articles.map((a: NewsArticle) => a.source))).sort()
-        )
-        setLoading(false)
-        return
-      }
-
-      // 2. 无缓存，查询数据库现有新闻
-      const newsData = await fetchNewsFiltered()
-
-      // 3. 如果数据库也没有新闻，自动触发检索（仅一次）
-      if (
-        (!newsData || newsData.length === 0) &&
-        !autoTriggeredRef.current
-      ) {
-        autoTriggeredRef.current = true
-        setLoading(false)
-        await handleSearch()
-      } else {
-        autoTriggeredRef.current = true
-        setLoading(false)
-      }
-    } catch {
-      setError('网络错误')
-      setLoading(false)
-    }
-  }
-
-  // 按筛选条件查询数据库新闻
-  const fetchNewsFiltered = async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const params = new URLSearchParams()
-      if (selectedIndustry !== 'all') params.set('industry', selectedIndustry)
-      if (selectedSource !== 'all') params.set('source', selectedSource)
-      const res = await fetch(`/api/news?${params}`)
-      const data = await res.json()
+      const res = await fetch(`/api/token-usage?startDate=${start}&endDate=${end}`)
+      const json = await res.json()
       if (!res.ok) {
-        setError(data.error || '获取新闻失败')
-        return []
+        setError(json.error || '获取数据失败')
+        setData(null)
+      } else {
+        setData(json as UsageData)
+        // 默认选中今天（或有数据的最近一天）
+        const withData = (json.days as DayUsage[]).filter(d => d.totalInput + d.totalOutput > 0)
+        setSelectedDay(withData.length > 0 ? withData[withData.length - 1] : (json.days as DayUsage[])[json.days.length - 1] || null)
       }
-      setArticles(data.articles || [])
-      setIndustries(data.industries || [])
-      setSources(data.sources || [])
-      return data.articles || []
     } catch {
       setError('网络错误')
-      return []
     } finally {
       setLoading(false)
     }
-  }
-
-  const handleSearch = async () => {
-    setSearching(true)
-    setError('')
-    setSearchMessage('')
-    try {
-      const currentYear = new Date().getFullYear()
-      const res = await fetch('/api/news/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year: currentYear }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error || '检索失败')
-        return
-      }
-      setSearchMessage(data.message || '检索完成')
-      // 直接使用 POST 返回的数据（已包含缓存的文章列表）
-      setArticles(data.articles || [])
-      setIndustries(data.industries || [])
-      setSources(
-        Array.from(new Set((data.articles || []).map((a: NewsArticle) => a.source))).sort()
-      )
-    } catch {
-      setError('网络错误')
-    } finally {
-      setSearching(false)
-    }
-  }
-
-  const handleViewDetail = async (id: string) => {
-    setDetailLoading(true)
-    try {
-      const res = await fetch(`/api/news/${id}`)
-      const data = await res.json()
-      if (res.ok && data.article) {
-        setViewingArticle(data.article)
-      }
-    } catch {
-      // 忽略
-    } finally {
-      setDetailLoading(false)
-    }
-  }
-
-  // 关键字和来源管理
-  const fetchKeywordsAndSources = async () => {
-    try {
-      const [kwRes, srcRes] = await Promise.all([
-        fetch('/api/news/keywords'),
-        fetch('/api/news/sources'),
-      ])
-      const kwData = await kwRes.json()
-      const srcData = await srcRes.json()
-      setKeywords(kwData.keywords || [])
-      setSourcesList(srcData.sources || [])
-    } catch {
-      // 忽略
-    }
-  }
-
-  const handleAddKeyword = async () => {
-    const kw = newKeyword.trim()
-    if (!kw) return
-    setKeywordSaving(true)
-    try {
-      const res = await fetch('/api/news/keywords', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword: kw }),
-      })
-      if (res.ok) {
-        setNewKeyword('')
-        await fetchKeywordsAndSources()
-      } else {
-        const data = await res.json()
-        setError(data.error || '添加关键字失败')
-      }
-    } catch {
-      setError('网络错误')
-    }
-    setKeywordSaving(false)
-  }
-
-  const handleDeleteKeyword = async (id: string) => {
-    try {
-      await fetch(`/api/news/keywords?id=${id}`, { method: 'DELETE' })
-      await fetchKeywordsAndSources()
-    } catch {
-      // 忽略
-    }
-  }
-
-  const handleAddSource = async () => {
-    const src = newSource.trim()
-    if (!src) return
-    setSourceSaving(true)
-    try {
-      const res = await fetch('/api/news/sources', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: src }),
-      })
-      if (res.ok) {
-        setNewSource('')
-        await fetchKeywordsAndSources()
-      } else {
-        const data = await res.json()
-        setError(data.error || '添加来源失败')
-      }
-    } catch {
-      setError('网络错误')
-    }
-    setSourceSaving(false)
-  }
-
-  const handleDeleteSource = async (id: string) => {
-    try {
-      await fetch(`/api/news/sources?id=${id}`, { method: 'DELETE' })
-      await fetchKeywordsAndSources()
-    } catch {
-      // 忽略
-    }
-  }
+  }, [])
 
   useEffect(() => {
     if (status === 'authenticated') {
-      fetchKeywordsAndSources()
+      fetchUsage(viewMonth)
     }
-  }, [status])
+  }, [status, viewMonth, fetchUsage])
 
-  if (status === 'loading') {
-    return (
-      <div className="min-h-screen bg-gradient-primary flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
-      </div>
-    )
+  // 月份切换
+  const changeMonth = (delta: number) => {
+    const [y, m] = viewMonth.split('-').map(Number)
+    const d = new Date(y, m - 1 + delta, 1)
+    setViewMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
   }
 
-  if (status !== 'authenticated') return null
+  // 日历格子：周一开头的整月网格
+  const buildCalendar = () => {
+    if (!data) return []
+    const [y, m] = viewMonth.split('-').map(Number)
+    const firstDay = new Date(y, m - 1, 1)
+    const daysInMonth = new Date(y, m, 0).getDate()
+    // 周一=0 ... 周日=6
+    const firstWeekday = (firstDay.getDay() + 6) % 7
+
+    const byDate = new Map(data.days.map(d => [d.date, d]))
+    const maxTotal = Math.max(0, ...data.days.map(d => d.totalInput + d.totalOutput))
+
+    const cells: Array<{ date: string; day: number | null; total: number; level: number; usage: DayUsage | null }> = []
+    for (let i = 0; i < firstWeekday; i++) {
+      cells.push({ date: '', day: null, total: 0, level: 0, usage: null })
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = `${viewMonth}-${String(d).padStart(2, '0')}`
+      const usage = byDate.get(date) || null
+      const total = usage ? usage.totalInput + usage.totalOutput : 0
+      cells.push({ date, day: d, total, level: heatLevel(total, maxTotal), usage })
+    }
+    return cells
+  }
+
+  const calendarCells = buildCalendar()
+
+  // 模块汇总排序（按总 token 降序）
+  const moduleRanking = data
+    ? Object.entries(data.summary.moduleTotals)
+        .map(([m, v]) => ({ module: m, ...v, total: v.inputTokens + v.outputTokens }))
+        .sort((a, b) => b.total - a.total)
+    : []
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
-        {/* 页面标题 + 检索按钮 */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">新闻监控</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              AI 检索最近7天内各行业赛道融资新闻 · 支持自定义关键字和来源
-            </p>
-          </div>
+    <DashboardLayout title="AI 看板" subtitle="各 AI 模块 Token 消耗实时监控">
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
+        </div>
+      ) : error ? (
+        <div className="bg-white rounded-2xl shadow-sm border border-primary-100 p-8 text-center">
+          <p className="text-red-500 mb-2">{error}</p>
           <button
-            onClick={handleSearch}
-            disabled={searching}
-            className="flex items-center gap-2 px-4 py-2.5 bg-primary-500 text-white text-sm font-medium rounded-xl shadow-lg shadow-primary-500/30 hover:bg-primary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => fetchUsage(viewMonth)}
+            className="px-4 py-2 bg-primary-500 text-white rounded-xl hover:bg-primary-600 text-sm font-medium"
           >
-            {searching ? (
-              <>
-                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                AI 检索中...
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                检索最近7天融资新闻
-              </>
-            )}
+            重试
           </button>
         </div>
-
-        {/* 提示消息 */}
-        {searchMessage && (
-          <div className="px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700">
-            {searchMessage}
-          </div>
-        )}
-
-        {error && (
-          <div className="px-4 py-3 bg-danger-50 border border-danger-200 rounded-xl text-sm text-danger-700">
-            {error}
-          </div>
-        )}
-
-        {/* 关键字和来源管理 */}
-        <div className="bg-gradient-card rounded-2xl shadow-sm border border-primary-100 overflow-hidden">
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className="w-full flex items-center justify-between px-5 py-3 hover:bg-primary-50/50 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              <span className="text-sm font-medium text-gray-700">检索设置：关键字和来源管理</span>
-              {keywords.length > 0 && (
-                <span className="px-2 py-0.5 bg-primary-100 text-primary-700 rounded-full text-xs">
-                  {keywords.length} 个关键字
-                </span>
-              )}
-              {sourcesList.length > 0 && (
-                <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs">
-                  {sourcesList.length} 个来源
-                </span>
-              )}
-            </div>
-            <svg className={`w-4 h-4 text-gray-400 transition-transform ${showSettings ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-
-          {showSettings && (
-            <div className="px-5 py-4 border-t border-primary-100 space-y-4">
-              {/* 关键字管理 */}
-              <div>
-                <p className="text-xs text-gray-500 mb-2">
-                  自定义关键字：AI 检索时除行业赛道外，还会检索以下关键字的融资和技术进展新闻
-                </p>
-                <div className="flex gap-2 mb-2">
-                  <input
-                    type="text"
-                    placeholder="如：可控核聚变"
-                    value={newKeyword}
-                    onChange={(e) => setNewKeyword(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddKeyword()}
-                    className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-400"
-                  />
-                  <button
-                    onClick={handleAddKeyword}
-                    disabled={keywordSaving || !newKeyword.trim()}
-                    className="px-4 py-2 bg-primary-500 text-white text-sm font-medium rounded-lg hover:bg-primary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    添加
-                  </button>
-                </div>
-                {keywords.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {keywords.map(kw => (
-                      <span key={kw.id} className="inline-flex items-center gap-1 px-3 py-1 bg-primary-50 text-primary-700 rounded-lg text-sm">
-                        {kw.keyword}
-                        <button
-                          onClick={() => handleDeleteKeyword(kw.id)}
-                          className="text-primary-400 hover:text-red-500 transition-colors"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* 来源管理 */}
-              <div>
-                <p className="text-xs text-gray-500 mb-2">
-                  自定义来源：AI 检索时除默认来源外，还会重点关注以下来源发布的文章
-                </p>
-                <div className="flex gap-2 mb-2">
-                  <input
-                    type="text"
-                    placeholder="如：中科创星"
-                    value={newSource}
-                    onChange={(e) => setNewSource(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddSource()}
-                    className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-400"
-                  />
-                  <button
-                    onClick={handleAddSource}
-                    disabled={sourceSaving || !newSource.trim()}
-                    className="px-4 py-2 bg-primary-500 text-white text-sm font-medium rounded-lg hover:bg-primary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    添加
-                  </button>
-                </div>
-                {sourcesList.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {sourcesList.map(src => (
-                      <span key={src.id} className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-sm">
-                        {src.name}
-                        <button
-                          onClick={() => handleDeleteSource(src.id)}
-                          className="text-blue-400 hover:text-red-500 transition-colors"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+      ) : !data ? (
+        <div className="bg-white rounded-2xl shadow-sm border border-primary-100 p-16 text-center">
+          <p className="text-gray-500">暂无数据</p>
         </div>
-
-        {/* 筛选器 */}
-        {articles.length > 0 && (
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">行业</span>
-              <select
-                value={selectedIndustry}
-                onChange={(e) => setSelectedIndustry(e.target.value)}
-                className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-400"
-              >
-                <option value="all">全部行业</option>
-                {industries.map(ind => (
-                  <option key={ind} value={ind}>{ind}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">来源</span>
-              <select
-                value={selectedSource}
-                onChange={(e) => setSelectedSource(e.target.value)}
-                className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-400"
-              >
-                <option value="all">全部来源</option>
-                {sources.map(src => (
-                  <option key={src} value={src}>{src}</option>
-                ))}
-              </select>
-            </div>
-            <span className="text-xs text-gray-400">共 {articles.length} 篇</span>
-          </div>
-        )}
-
-        {/* 新闻卡片网格 */}
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-            <span className="ml-3 text-sm text-gray-500">加载中...</span>
-          </div>
-        ) : searching ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
-            <span className="mt-3 text-sm text-gray-500">正在通过 AI 检索外网融资新闻...</span>
-            <span className="mt-1 text-xs text-gray-400">这可能需要 15-30 秒</span>
-          </div>
-        ) : articles.length === 0 ? (
-          <div className="text-center py-20">
-            <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
-              </svg>
-            </div>
-            <p className="text-sm text-gray-500 mb-1">最近7天暂无融资新闻</p>
-            <p className="text-xs text-gray-400">点击上方"检索最近7天融资新闻"按钮，AI 将自动检索各行业融资新闻</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {articles.map(article => (
-              <button
-                key={article.id}
-                onClick={() => handleViewDetail(article.id)}
-                disabled={detailLoading}
-                className="text-left bg-gradient-card rounded-2xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all-smooth border border-primary-100 overflow-hidden group"
-              >
-                <div className="p-5">
-                  {/* 标题 + 来源 */}
-                  <div className="flex items-center gap-2 mb-3 flex-wrap">
-                    <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-700 transition-colors line-clamp-2">
-                      {article.title}
-                    </h3>
-                  </div>
-                  {/* 来源标签 + 行业 + 日期 */}
-                  <div className="flex items-center gap-2 mb-3 flex-wrap">
-                    <span className="inline-flex items-center px-2 py-0.5 bg-primary-50 text-primary-700 text-xs rounded-md font-medium">
-                      {article.source}
-                    </span>
-                    <span className="inline-flex items-center px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-md">
-                      {article.industry}
-                    </span>
-                    <span className="text-xs text-gray-400 ml-auto">
-                      {new Date(article.publishedAt).toLocaleDateString('zh-CN')}
-                    </span>
-                  </div>
-                  {/* 摘要 */}
-                  <p className="text-sm text-gray-600 line-clamp-3">
-                    {article.summary}
-                  </p>
-                  {/* 作者 */}
-                  {article.author && (
-                    <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-1 text-xs text-gray-400">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                      </svg>
-                      {article.author}
-                    </div>
-                  )}
+      ) : (
+        <div className="space-y-6">
+          {/* ── 汇总卡片 ── */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-gradient-card rounded-2xl p-5 shadow-sm border border-primary-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-primary-400 to-primary-600 rounded-xl flex items-center justify-center shadow-md shadow-primary-500/30">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
                 </div>
-              </button>
-            ))}
+                <div>
+                  <div className="text-2xl font-bold text-gray-900">{fmtTokens(data.summary.totalTokens)}</div>
+                  <div className="text-xs text-gray-500">{viewMonth} 总 Token</div>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gradient-card rounded-2xl p-5 shadow-sm border border-primary-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-blue-600 rounded-xl flex items-center justify-center shadow-md shadow-blue-500/30">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-gray-900">{fmtTokens(data.summary.totalInput)}</div>
+                  <div className="text-xs text-gray-500">输入 Token（网页阅读等）</div>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gradient-card rounded-2xl p-5 shadow-sm border border-primary-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-amber-600 rounded-xl flex items-center justify-center shadow-md shadow-amber-500/30">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-gray-900">{fmtTokens(data.summary.totalOutput)}</div>
+                  <div className="text-xs text-gray-500">输出 Token（AI 生成）</div>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gradient-card rounded-2xl p-5 shadow-sm border border-primary-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-xl flex items-center justify-center shadow-md shadow-emerald-500/30">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-gray-900">
+                    {Object.values(data.summary.moduleTotals).reduce((s, m) => s + m.calls, 0)}
+                  </div>
+                  <div className="text-xs text-gray-500">AI 调用次数</div>
+                </div>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
 
-      {/* ═══ 新闻详情弹窗 ═══ */}
-      {viewingArticle && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setViewingArticle(null)}>
-          <div
-            className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[85vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* 头部 */}
-            <div className="px-6 py-4 border-b border-gray-100">
-              <div className="flex items-start justify-between gap-4">
-                <h2 className="text-xl font-bold text-gray-900 flex-1">
-                  {viewingArticle.title}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* ── 左：日历热力图 ── */}
+            <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-primary-100 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-base font-bold text-gray-900">消耗日历</h2>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => changeMonth(-1)}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg border border-primary-100 hover:bg-primary-50 text-gray-600"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <span className="text-sm font-semibold text-gray-700 min-w-[72px] text-center">{viewMonth}</span>
+                  <button
+                    onClick={() => changeMonth(1)}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg border border-primary-100 hover:bg-primary-50 text-gray-600"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* 星期标题 */}
+              <div className="grid grid-cols-7 gap-1.5 mb-1.5">
+                {WEEKDAYS.map(w => (
+                  <div key={w} className="text-center text-xs text-gray-400 font-medium py-1">{w}</div>
+                ))}
+              </div>
+
+              {/* 日历格子 */}
+              <div className="grid grid-cols-7 gap-1.5">
+                {calendarCells.map((cell, i) => {
+                  if (cell.day === null) {
+                    return <div key={`empty-${i}`} className="aspect-square" />
+                  }
+                  const isSelected = selectedDay?.date === cell.date
+                  return (
+                    <button
+                      key={cell.date}
+                      onClick={() => setSelectedDay(cell.usage)}
+                      title={cell.date + (cell.total > 0 ? ` · ${fmtTokens(cell.total)} tokens` : '')}
+                      className={`aspect-square rounded-lg flex flex-col items-center justify-center transition-all cursor-pointer select-none
+                        ${HEAT_STYLES[cell.level]}
+                        ${isSelected ? 'ring-2 ring-primary-500 ring-offset-1 scale-105' : 'hover:scale-105'}`}
+                    >
+                      <span className="text-xs font-semibold leading-none">{cell.day}</span>
+                      {cell.total > 0 && (
+                        <span className="text-[9px] leading-tight mt-0.5 opacity-80">{fmtTokens(cell.total)}</span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* 图例 */}
+              <div className="flex items-center justify-between mt-4">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-gray-400">少</span>
+                  {HEAT_STYLES.map((s, i) => (
+                    <span key={i} className={`w-4 h-4 rounded ${s}`} />
+                  ))}
+                  <span className="text-xs text-gray-400">多</span>
+                </div>
+                <p className="text-xs text-gray-400">点击日期查看当日各模块明细</p>
+              </div>
+            </div>
+
+            {/* ── 右：选中日明细 + 模块排行 ── */}
+            <div className="space-y-6">
+              {/* 当日明细 */}
+              <div className="bg-white rounded-2xl shadow-sm border border-primary-100 p-5">
+                <h2 className="text-sm font-bold text-gray-900 mb-3">
+                  {selectedDay ? `${selectedDay.date} 明细` : '当日明细'}
                 </h2>
-                <button
-                  onClick={() => setViewingArticle(null)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+                {!selectedDay || selectedDay.totalInput + selectedDay.totalOutput === 0 ? (
+                  <p className="text-sm text-gray-400 py-4 text-center">当日无 AI 调用</p>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">输入</span>
+                      <span className="font-semibold text-blue-600">{fmtTokens(selectedDay.totalInput)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">输出</span>
+                      <span className="font-semibold text-amber-600">{fmtTokens(selectedDay.totalOutput)}</span>
+                    </div>
+                    <div className="border-t border-gray-100 pt-2 mt-2 space-y-2">
+                      {Object.entries(selectedDay.modules)
+                        .sort((a, b) => (b[1].inputTokens + b[1].outputTokens) - (a[1].inputTokens + a[1].outputTokens))
+                        .map(([m, v]) => (
+                          <div key={m} className="flex items-center justify-between text-xs">
+                            <span className="flex items-center gap-1.5 text-gray-600">
+                              <span className={`w-2 h-2 rounded-full ${MODULE_COLORS[m] || MODULE_COLORS.other}`} />
+                              {MODULE_LABELS[m] || m}
+                            </span>
+                            <span className="font-medium text-gray-800">
+                              {fmtTokens(v.inputTokens + v.outputTokens)}
+                              <span className="text-gray-400 ml-1">({v.calls}次)</span>
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-3 mt-3 flex-wrap">
-                <span className="inline-flex items-center px-2.5 py-1 bg-primary-50 text-primary-700 text-xs rounded-md font-medium">
-                  {viewingArticle.source}
-                </span>
-                <span className="inline-flex items-center px-2.5 py-1 bg-blue-50 text-blue-700 text-xs rounded-md">
-                  {viewingArticle.industry}
-                </span>
-                <span className="text-xs text-gray-400">
-                  {new Date(viewingArticle.publishedAt).toLocaleDateString('zh-CN')}
-                </span>
-                {viewingArticle.author && (
-                  <span className="text-xs text-gray-400">作者：{viewingArticle.author}</span>
+
+              {/* 模块排行 */}
+              <div className="bg-white rounded-2xl shadow-sm border border-primary-100 p-5">
+                <h2 className="text-sm font-bold text-gray-900 mb-3">{viewMonth} 模块消耗排行</h2>
+                {moduleRanking.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-4 text-center">暂无消耗记录</p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {moduleRanking.map(r => {
+                      const maxTotal = moduleRanking[0].total
+                      const pct = maxTotal > 0 ? Math.max(4, Math.round((r.total / maxTotal) * 100)) : 0
+                      return (
+                        <div key={r.module}>
+                          <div className="flex items-center justify-between text-xs mb-1">
+                            <span className="flex items-center gap-1.5 text-gray-600">
+                              <span className={`w-2 h-2 rounded-full ${MODULE_COLORS[r.module] || MODULE_COLORS.other}`} />
+                              {MODULE_LABELS[r.module] || r.module}
+                            </span>
+                            <span className="font-medium text-gray-800">
+                              {fmtTokens(r.total)}
+                              <span className="text-gray-400 ml-1">({r.calls}次)</span>
+                            </span>
+                          </div>
+                          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${MODULE_COLORS[r.module] || MODULE_COLORS.other} transition-all`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 )}
               </div>
             </div>
-
-            {/* 内容 */}
-            <div className="px-6 py-5">
-              <div className="prose prose-sm max-w-none">
-                <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
-                  {viewingArticle.content}
-                </p>
-              </div>
-            </div>
-
-            {/* 底部 */}
-            {viewingArticle.sourceUrl && (
-              <div className="px-6 py-4 border-t border-gray-100">
-                <a
-                  href={viewingArticle.sourceUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sm text-primary-600 hover:text-primary-700"
-                >
-                  查看原文
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </a>
-              </div>
-            )}
           </div>
         </div>
       )}
