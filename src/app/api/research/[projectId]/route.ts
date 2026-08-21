@@ -52,6 +52,8 @@ export async function GET(
         raisedAmount: true,
         followStage: true,
         createdById: true,
+        manualHighlights: true,
+        aiHighlightsJson: true,
         members: { select: { userId: true } },
       },
     })

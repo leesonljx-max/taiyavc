@@ -34,6 +34,10 @@ model Project {
   createdById      String
   aiCardJson       String?
   keywords         String?
+  // 投资亮点：维护人手动填写（文本，可含 markdown）
+  manualHighlights String?
+  // 投资亮点：AI 结合所有模块总结（JSON：{ highlights: string[], analyzedAt }）
+  aiHighlightsJson String?
   // 维护人保护期到期时间：创建时 = createdAt + 3个月；接手后重置
   protectionExpiresAt DateTime?
   // 项目经过的所有阶段（JSON 数组字符串，如 ["INITIAL_TALK","PRE_DD"]）

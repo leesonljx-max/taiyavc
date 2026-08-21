@@ -24,6 +24,8 @@ interface ResearchProject {
   raisedAmount: string | null
   followStage: string
   createdById: string
+  manualHighlights: string | null
+  aiHighlightsJson: string | null
   members: { userId: string }[]
   /** 服务端计算：当前用户是否维护人（主维护人/辅助维护人） */
   isMaintainer?: boolean
@@ -189,20 +191,21 @@ export default function ResearchDetailPage() {
           }
         />
 
-        {/* 项目基本信息 */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        {/* 项目基本信息（不含主要产品/核心优势，已移至各尽调模块） */}
+        <div className="dd-card rounded-2xl shadow-sm border p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">项目基本信息</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
             <div><span className="text-gray-500">项目名称:</span> <span className="font-medium">{project.name}</span></div>
             <div><span className="text-gray-500">公司全称:</span> <span className="font-medium">{project.companyFullName || '-'}</span></div>
             <div><span className="text-gray-500">所处行业:</span> <span className="font-medium">{project.industry || '-'}</span></div>
             <div><span className="text-gray-500">公司定位:</span> <span className="font-medium">{project.companyPosition || '-'}</span></div>
-            <div><span className="text-gray-500">融资金额:</span> <span className="font-medium text-primary-700">{project.totalAmount}</span></div>
+            <div><span className="text-gray-500">融资金额:</span> <span className="font-medium text-[#6f63c9]">{project.totalAmount}</span></div>
             <div><span className="text-gray-500">累计融资金额:</span> <span className="font-medium">{project.raisedAmount || '-'}</span></div>
-            <div><span className="text-gray-500">主要产品:</span> <span className="font-medium">{project.mainProducts || '-'}</span></div>
-            <div><span className="text-gray-500">核心优势:</span> <span className="font-medium">{project.coreAdvantage || '-'}</span></div>
           </div>
         </div>
+
+        {/* 投资亮点（手动填写 + AI 总结） */}
+        <HighlightsCard project={project} onDataUpdate={fetchData} />
 
         {/* 9 个模块 */}
         {MODULE_ORDER.map(moduleType => (
@@ -217,6 +220,221 @@ export default function ResearchDetailPage() {
         ))}
       </div>
     </DashboardLayout>
+  )
+}
+
+// ── 投资亮点卡片 ──
+
+interface AIHighlights {
+  highlights: string[]
+  analyzedAt: string
+}
+
+function HighlightsCard({ project, onDataUpdate }: { project: ResearchProject; onDataUpdate: () => void }) {
+  const { data: session } = useSession()
+  const userRole = session?.user?.role as string | undefined
+  const currentUserId = session?.user?.id as string | undefined
+  const memberIds = project.members?.map(m => m.userId) || []
+  const canEdit = userRole === 'ADMIN' || userRole === 'INVESTMENT_PARTNER' ||
+                  project.createdById === currentUserId || memberIds.includes(currentUserId || '')
+
+  const [manualText, setManualText] = useState(project.manualHighlights || '')
+  const [saving, setSaving] = useState(false)
+  const [savedAt, setSavedAt] = useState<string>('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState('')
+
+  let aiHighlights: AIHighlights | null = null
+  if (project.aiHighlightsJson) {
+    try {
+      const parsed = JSON.parse(project.aiHighlightsJson)
+      if (Array.isArray(parsed?.highlights)) {
+        aiHighlights = parsed as AIHighlights
+      }
+    } catch { /* 忽略 */ }
+  }
+
+  // 保存手动投资亮点
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/research/${project.id}/highlights`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ manualHighlights: manualText }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data.error || '保存失败')
+        return
+      }
+      setSavedAt(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }))
+      // 不立即 onDataUpdate（避免重挂载丢失保存提示）；数据已在服务端持久化
+      setTimeout(() => onDataUpdate(), 800)
+    } catch {
+      alert('网络错误')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // AI 总结投资亮点
+  const handleAISummarize = async () => {
+    setAiLoading(true)
+    setAiError('')
+    try {
+      const res = await fetch(`/api/research/${project.id}/highlights`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        setAiError(data.error || 'AI 总结失败')
+        return
+      }
+      onDataUpdate()
+    } catch {
+      setAiError('网络错误')
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  // 图片粘贴上传
+  const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault()
+        const file = item.getAsFile()
+        if (!file) continue
+        try {
+          const formData = new FormData()
+          formData.append('file', file)
+          const res = await fetch('/api/upload/image', { method: 'POST', body: formData })
+          const data = await res.json()
+          if (res.ok && data.url) {
+            setManualText(prev => (prev ? prev + '\n' : '') + `![图片](${data.url})`)
+          } else {
+            alert(data.error || '图片上传失败')
+          }
+        } catch {
+          alert('图片上传失败')
+        }
+        return
+      }
+    }
+  }
+
+  return (
+    <div className="dd-card rounded-2xl shadow-sm border p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#b6b1ee] to-[#8d84e0] flex items-center justify-center">
+            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+            </svg>
+          </span>
+          <h2 className="text-lg font-semibold text-gray-900">投资亮点</h2>
+        </div>
+        {savedAt && <span className="text-xs text-gray-400">已保存于 {savedAt}</span>}
+      </div>
+
+      <div className="space-y-5">
+        {/* 上：维护人手动填写 */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-gray-600">维护人填写</span>
+            {canEdit && (
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="px-3 py-1 bg-[#efedfb] text-[#6f63c9] text-xs font-medium rounded-lg hover:bg-[#e2ddf8] disabled:opacity-50 transition-colors"
+              >
+                {saving ? '保存中...' : '保存'}
+              </button>
+            )}
+          </div>
+          {canEdit ? (
+            <textarea
+              value={manualText}
+              onChange={e => setManualText(e.target.value)}
+              onPaste={handlePaste}
+              placeholder={'填写该项目的投资亮点...\n支持粘贴图片（截图后直接 Ctrl+V / Cmd+V）\n如：\n1. 光电极技术全球领先，已获XX专利\n2. 团队来自清华神经工程实验室\n3. 下游XX医院已签意向订单'}
+              rows={5}
+              className="w-full px-3 py-2.5 text-sm border border-[#ddd7f2] rounded-xl bg-white/80 focus:outline-none focus:border-[#b6b1ee] focus:ring-2 focus:ring-[#b6b1ee]/30 resize-y"
+            />
+          ) : manualText ? (
+            <div className="px-3 py-2.5 text-sm text-gray-700 whitespace-pre-wrap bg-white/60 rounded-xl border border-[#efedfb]">
+              {manualText.replace(/!\[图片\]\([^)]+\)/g, '[图片]')}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400 px-3 py-2.5">维护人尚未填写</p>
+          )}
+        </div>
+
+        {/* 下：AI 结合所有模块总结 */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5 text-[#8d84e0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              AI 投资亮点（结合所有模块）
+            </span>
+            {canEdit && (
+              <button
+                onClick={handleAISummarize}
+                disabled={aiLoading}
+                className="px-3 py-1 bg-gradient-to-r from-[#b6b1ee] to-[#8d84e0] text-white text-xs font-medium rounded-lg hover:from-[#a8a2e8] hover:to-[#7d73d8] disabled:opacity-50 flex items-center gap-1.5 transition-all"
+              >
+                {aiLoading ? (
+                  <>
+                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    总结中
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    {aiHighlights ? '重新总结' : 'AI 总结'}
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+          {aiError && (
+            <div className="p-2.5 bg-red-50 text-red-600 text-xs rounded-lg mb-2">{aiError}</div>
+          )}
+          {aiLoading ? (
+            <div className="px-3 py-4 bg-white/60 rounded-xl border border-[#efedfb] flex items-center gap-2 text-sm text-gray-400">
+              <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#8d84e0]"></span>
+              正在结合各模块内容总结投资亮点...
+            </div>
+          ) : aiHighlights ? (
+            <div className="px-3 py-3 bg-gradient-to-br from-[#efedfb] to-[#f7f5fd] rounded-xl border border-[#ddd7f2]">
+              <ul className="space-y-2">
+                {aiHighlights.highlights.map((h, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                    <span className="w-5 h-5 rounded-md bg-gradient-to-br from-[#b6b1ee] to-[#8d84e0] text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                      {i + 1}
+                    </span>
+                    <span className="flex-1">{h}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[10px] text-gray-400 mt-2.5 text-right">
+                总结于 {new Date(aiHighlights.analyzedAt).toLocaleString('zh-CN')}
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400 px-3 py-2.5">尚未生成，点击「AI 总结」结合各模块内容自动生成</p>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -254,8 +472,11 @@ function ModuleSection({ projectId, module, moduleType, project, onDataUpdate }:
   const [analyzing, setAnalyzing] = useState(false)
   const [analyzeError, setAnalyzeError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [savingFreeText, setSavingFreeText] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [manualContent, setManualContent] = useState<Record<string, string>>({})
+  // 通用自由文本框（所有模块可用，支持粘贴图片）
+  const [freeText, setFreeText] = useState('')
 
   // 文档预览
   const [previewDoc, setPreviewDoc] = useState<{ fileName: string; fileUrl: string; fileType: string } | null>(null)
@@ -269,14 +490,67 @@ function ModuleSection({ projectId, module, moduleType, project, onDataUpdate }:
   useEffect(() => {
     if (module?.content) {
       try {
-        setManualContent(JSON.parse(module.content))
+        const parsed = JSON.parse(module.content)
+        setManualContent(parsed)
+        setFreeText(typeof parsed.freeText === 'string' ? parsed.freeText : '')
       } catch {
         setManualContent({})
+        setFreeText('')
       }
     } else {
       setManualContent({})
+      setFreeText('')
     }
   }, [module?.content])
+
+  // 保存通用自由文本（与手动字段合并在同一 content JSON 中）
+  const handleSaveFreeText = async () => {
+    setSavingFreeText(true)
+    try {
+      const res = await fetch(`/api/research/${projectId}/${moduleType}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: { ...manualContent, freeText } }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        alert(data.error || '保存失败')
+        return
+      }
+      onDataUpdate()
+    } catch {
+      alert('网络错误')
+    } finally {
+      setSavingFreeText(false)
+    }
+  }
+
+  // 自由文本框粘贴图片上传
+  const handleFreeTextPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault()
+        const file = item.getAsFile()
+        if (!file) continue
+        try {
+          const formData = new FormData()
+          formData.append('file', file)
+          const res = await fetch('/api/upload/image', { method: 'POST', body: formData })
+          const data = await res.json()
+          if (res.ok && data.url) {
+            setFreeText(prev => (prev ? prev + '\n' : '') + `![图片](${data.url})`)
+          } else {
+            alert(data.error || '图片上传失败')
+          }
+        } catch {
+          alert('图片上传失败')
+        }
+        return
+      }
+    }
+  }
 
   // AI 分析
   const handleAnalyze = async () => {
@@ -645,6 +919,56 @@ function ModuleSection({ projectId, module, moduleType, project, onDataUpdate }:
                   </button>
                 </div>
               )}
+
+              {/* 通用自由文本框（所有模块：填写内容 + 粘贴图片） */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-gray-600">补充说明</span>
+                  {canEdit && (
+                    <button
+                      onClick={handleSaveFreeText}
+                      disabled={savingFreeText}
+                      className="px-3 py-1 bg-[#efedfb] text-[#6f63c9] text-xs font-medium rounded-lg hover:bg-[#e2ddf8] disabled:opacity-50 transition-colors"
+                    >
+                      {savingFreeText ? '保存中...' : '保存'}
+                    </button>
+                  )}
+                </div>
+                {canEdit ? (
+                  <textarea
+                    value={freeText}
+                    onChange={e => setFreeText(e.target.value)}
+                    onPaste={handleFreeTextPaste}
+                    placeholder={`补充该模块的文字内容（如产品细节、会议纪要、访谈要点）...\n支持粘贴图片：截图后直接 Ctrl+V / Cmd+V`}
+                    rows={4}
+                    className="w-full px-3 py-2.5 text-sm border border-[#ddd7f2] rounded-xl bg-white/80 focus:outline-none focus:border-[#b6b1ee] focus:ring-2 focus:ring-[#b6b1ee]/30 resize-y"
+                  />
+                ) : freeText ? (
+                  <div className="px-3 py-2.5 text-sm text-gray-700 whitespace-pre-wrap bg-white/60 rounded-xl border border-[#efedfb]">
+                    {freeText.replace(/!\[图片\]\([^)]+\)/g, '[图片]')}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400">暂无补充说明</p>
+                )}
+                {/* 已粘贴图片预览 */}
+                {freeText.includes('![图片](') && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {(freeText.match(/!\[图片\]\(([^)]+)\)/g) || []).map((m, i) => {
+                      const url = m.match(/\(([^)]+)\)/)?.[1] || ''
+                      return (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          key={i}
+                          src={url}
+                          alt={`图片${i + 1}`}
+                          className="w-24 h-24 object-cover rounded-lg border border-[#ddd7f2] cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => window.open(url, '_blank')}
+                        />
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
 
               {/* 文档区域 */}
               <div>
