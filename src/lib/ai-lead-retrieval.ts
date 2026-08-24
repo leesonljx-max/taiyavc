@@ -129,22 +129,28 @@ async function generateSearchKeywords(
     products: p.mainProducts,
   }))
 
-  const response = await fetch(DEEPSEEK_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'deepseek-v4-flash',
-      messages: [
-        {
-          role: 'system',
-          content: '你是一个投融资领域的检索规划师。根据初聊项目的行业标签，生成用于搜索融资PR新闻的精准关键词。只返回JSON数组，不要其他内容。'
-        },
-        {
-          role: 'user',
-          content: `初聊项目列表：${JSON.stringify(projectInfo)}
+  // 超时控制：60 秒
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 60000)
+
+  let response: Response
+  try {
+    response = await fetch(DEEPSEEK_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-v4-flash',
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个投融资领域的检索规划师。根据初聊项目的行业标签，生成用于搜索融资PR新闻的精准关键词。只返回JSON数组，不要其他内容。'
+          },
+          {
+            role: 'user',
+            content: `初聊项目列表：${JSON.stringify(projectInfo)}
 
 行业标签：${industryTags.join('、')}
 
@@ -154,13 +160,19 @@ async function generateSearchKeywords(
 1. 每个关键词组合聚焦一个行业方向
 2. 包含"融资"、"投资"、"获投"等融资相关词
 3. 返回纯JSON数组，如 ["关键词1","关键词2"]`
-        }
-      ],
-      temperature: 0.3,
-      max_tokens: 2000,
-      thinking: { type: 'disabled' },
-    }),
-  })
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 2000,
+        thinking: { type: 'disabled' },
+      }),
+      signal: controller.signal,
+    })
+  } catch (e) {
+    throw new Error(`DeepSeek 关键词生成请求失败（60秒超时或网络错误）: ${e instanceof Error ? e.message : String(e)}`)
+  } finally {
+    clearTimeout(timeoutId)
+  }
 
   if (!response.ok) {
     const errText = await response.text()
