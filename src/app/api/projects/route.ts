@@ -15,6 +15,14 @@ export async function GET(request: Request) {
       ? { id: session.user.id, role: session.user.role as UserRole }
       : null
 
+    // 未登录统一返回 401（项目规范）
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: '登录已过期，请退出后重新登录' },
+        { status: 401 }
+      )
+    }
+
     // scope=all: 项目库（所有可见项目）；scope=mine: 我的项目（仅自己维护的）
     const { searchParams } = new URL(request.url)
     const scope = searchParams.get('scope') === 'mine' ? 'mine' : 'all'

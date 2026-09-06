@@ -1,7 +1,11 @@
 # dependencies
 /node_modules
+/cli/node_modules
 /.pnp
 .pnp.js
+
+# cli build output
+/cli/dist
 
 # testing
 /coverage

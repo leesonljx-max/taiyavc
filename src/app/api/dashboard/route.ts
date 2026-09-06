@@ -44,6 +44,14 @@ export async function GET() {
   try {
     const session = await getServerSession(authOptions)
 
+    // 未登录统一返回 401（项目规范）
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: '登录已过期，请退出后重新登录' },
+        { status: 401 }
+      )
+    }
+
     const currentUser: PermissionUser | null = session?.user
       ? { id: session.user.id, role: session.user.role as UserRole }
       : null
