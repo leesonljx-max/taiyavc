@@ -10,11 +10,13 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "node dist/test/smoke.js"
+    "test": "node dist/test/smoke.js",
+    "package": "node scripts/gen-yoga-b64.mjs && bun build src/bin.tsx --compile --target=bun-darwin-arm64 --outfile release/investrask-arm64 && bun build src/bin.tsx --compile --target=bun-darwin-x64 --outfile release/investrask-x64 && cd release && zip -q investrask-mac-arm64.zip investrask-arm64 && zip -q investrask-mac-x64.zip investrask-x64"
   },
   "dependencies": {
     "ink": "^4.4.1",
-    "react": "^18.3.1"
+    "react": "^18.3.1",
+    "react-devtools-core": "^4.28.5"
   },
   "devDependencies": {
     "@types/node": "^18.15.11",

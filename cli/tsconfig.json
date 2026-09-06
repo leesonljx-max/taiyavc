@@ -10,7 +10,10 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "yoga-wasm-web/auto": ["./src/yoga-shim.ts"]
+    }
   },
   "include": ["src/**/*"]
 }

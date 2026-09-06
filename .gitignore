@@ -6,6 +6,7 @@
 
 # cli build output
 /cli/dist
+/cli/release
 
 # testing
 /coverage

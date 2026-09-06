@@ -21,6 +21,7 @@ import { runStats } from './commands/stats.js'
 import { runProjects } from './commands/projects.js'
 import { runProject } from './commands/project.js'
 import { c } from './format.js'
+import { VERSION } from './version.js'
 
 const HELP = `
 ${c.bold('investrask')} —— 泰亚投资管理系统终端客户端
@@ -98,13 +99,9 @@ async function main(): Promise<void> {
       break
 
     case '--version':
-    case '-v': {
-      const pkg = JSON.parse(
-        (await import('fs')).readFileSync(new URL('../package.json', import.meta.url), 'utf-8')
-      ) as { version: string }
-      console.log(pkg.version)
+    case '-v':
+      console.log(VERSION)
       break
-    }
 
     default:
       console.error(c.red(`未知命令：${cmd}`))
