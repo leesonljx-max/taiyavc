@@ -8,6 +8,7 @@ import DashboardLayout from '@/components/DashboardLayout'
 import DocumentPreviewModal from '@/components/DocumentPreviewModal'
 import { followStageLabels, followStageColors, type FollowStage } from '../types'
 import { invalidateCache } from '@/lib/cache'
+import { compressImage } from '@/lib/image-compress'
 
 interface PartnerReview {
   id: string

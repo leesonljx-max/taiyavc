@@ -120,7 +120,7 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string
-        session.user.role = token.role as string
+        session.user.role = token.role as typeof session.user.role
         session.user.name = token.name as string | undefined
         session.user.avatar = token.avatar as string | undefined
         // 校验 role

@@ -139,7 +139,7 @@ export default function EditProjectPage() {
           followStage: projectData.followStage,
           status: projectData.status,
           description: projectData.description || '',
-          totalAmount: projectData.totalAmount || '',
+          totalAmount: projectData.totalAmount != null ? String(projectData.totalAmount) : '',
           // raisedAmount 现在是字符串类型
           raisedAmount: typeof projectData.raisedAmount === 'string' ? projectData.raisedAmount : String(projectData.raisedAmount || ''),
           investmentValuation: projectData.investmentValuation ? projectData.investmentValuation.toString() : '',

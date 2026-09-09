@@ -413,6 +413,8 @@ export async function POST(request: Request) {
         createdById: session.user.id,
         protectionExpiresAt,
         passedStages: JSON.stringify(passedStages),
+        totalAmount: data.totalAmount as string,
+        targetDate: data.targetDate as string,
         ...data,
       },
     })

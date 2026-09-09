@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState } from 'react'
+import { compressImage } from '@/lib/image-compress'
 
 interface RichTextEditorProps {
   value: string
@@ -47,12 +48,13 @@ export default function RichTextEditor({
     onChange(editorRef.current.innerHTML)
   }
 
-  // 上传图片并插入到编辑器
+  // 上传图片并插入到编辑器（上传前压缩，解决大截图上传慢）
   const uploadAndInsertImage = async (file: File) => {
     setUploading(true)
     try {
+      const compressed = await compressImage(file)
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', compressed)
       const res = await fetch('/api/upload/image', { method: 'POST', body: formData })
       const data = await res.json()
       if (!res.ok) {

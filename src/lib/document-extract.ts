@@ -29,9 +29,15 @@ export function detectFileType(fileName: string, mimeType?: string): SupportedFi
  */
 async function extractPdf(buffer: Buffer): Promise<string> {
   // 动态 import 避免 Next.js 构建时加载
-  const pdfParse = (await import('pdf-parse')).default
-  const data = await pdfParse(buffer)
-  return data.text || ''
+  // 注意：pdf-parse v2 API 变更为 PDFParse 类
+  const { PDFParse } = await import('pdf-parse')
+  const parser = new PDFParse({ data: buffer })
+  try {
+    const result = await parser.getText()
+    return result.text || ''
+  } finally {
+    await parser.destroy().catch(() => {})
+  }
 }
 
 /**

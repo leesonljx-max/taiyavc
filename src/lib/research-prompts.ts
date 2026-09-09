@@ -20,6 +20,7 @@ interface ProjectInfo {
   coreTeam?: string | null
   competitors?: string | null
   description?: string | null
+  orderProgress?: string | null
   totalAmount: string
   raisedAmount?: string | null
 }

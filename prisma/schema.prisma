@@ -142,6 +142,8 @@ model User {
   projectDocuments   ProjectDocument[]
   // AI检索任务日志
   aiRetrievalLogs    AIRetrievalLog[]
+  // 自定义跟踪信号
+  trackingSignals    TrackingSignal[]
   // 投研分析模块文档
   researchDocuments  ResearchDocument[]
   // 投研分析模块点评
@@ -180,6 +182,9 @@ model ProjectLead {
   matchedConfidence Float?  // 匹配置信度 0-1
   releasedAt       DateTime? // 释放时间（两周后自动释放，null=仅维护人可见）
   aiSummary        String?  // AI生成的摘要
+  // 来源跟踪信号（自定义信号执行结果的标记）
+  signalId         String?  // 关联 TrackingSignal.id
+  signalName       String?  // 冗余信号名（展示用）
 
   @@index([name])
   @@index([createdById])
@@ -187,6 +192,29 @@ model ProjectLead {
   @@index([status])
   @@index([matchedProjectId])
   @@index([releasedAt])
+  @@index([signalId])
+}
+
+// 自定义跟踪信号（AI线索页配置：自然语言生成，按频率自动执行跟踪）
+model TrackingSignal {
+  id            String    @id @default(cuid())
+  name          String    // 信号名称（如"大厂核心成员离职跟踪"）
+  description   String    // 用户自然语言描述（原始输入）
+  signalType    String    @default("CUSTOM") // PERSONNEL_CHANGE / NEW_STARTUP / TECH_BREAKTHROUGH / FUNDING / CUSTOM
+  keywords      String    // 搜索关键词（JSON 数组字符串，1-3 组）
+  watchTargets  String?   // 监控对象（JSON 数组字符串：公司/人物名，可空）
+  industry      String?   // 关联行业（可选）
+  frequency     String    @default("WEEKLY") // DAILY / WEEKLY
+  isActive      Boolean   @default(true)
+  lastRunAt     DateTime? // 上次执行时间
+  lastRunCount  Int       @default(0) // 上次执行新发现的线索数
+  createdById   String
+  createdBy     User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([isActive, frequency])
+  @@index([createdById])
 }
 
 // AI 检索任务执行日志

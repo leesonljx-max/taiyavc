@@ -1,23 +1,29 @@
 /**
- * 行业动态 Harness Runner
+ * 行业动态 Runner（Tavily 调用次数优化版）
  *
- * 统计分析页「行业动态」：针对项目数量排名前十的行业，
- * 每个行业一个子Agent（联网检索当日动态 → DeepSeek 提炼 3-5 件事件）
+ * 统计分析页「行业动态」：针对项目数量排名前十的行业，收集当日动态。
  *
- * - 每日 04:00 cron 自动收集（cacheKey = industry-news:YYYY-MM-DD）
- * - 点击气泡时可即时分析任意行业（POST 强制刷新）
- * - 事件类型：竞品融资 / 产品发布 / 技术突破 / 核心人员变更 等
- * - 引用交叉验证：只保留真实搜索来源 URL（复用 dd-harness 会话日志机制）
+ * V1.5.1 优化（原版每次跑 30-50 次 Tavily + 10 次 DeepSeek）：
+ * - 搜索阶段：每行业固定 1 次精准搜索（「{行业} 融资/产品发布/人事变动」），
+ *   不再由子 Agent 自主决定搜索次数（原 maxTurns 内一轮可并行多次调用）
+ * - 提取阶段：全部行业的搜索结果分组（每 5 个行业一组）批量喂给 DeepSeek，
+ *   一次调用输出该组所有行业的 events（10 次调用 → 2 次）
+ * - 优化后：10 次 Tavily + 2 次 DeepSeek（约降低 70-80%），且同日重复查询走缓存
+ * - 点击气泡的即时分析保留单行业模式（1 次搜索 + 1 次提取）
+ * - 引用交叉验证保留：只保留真实搜索来源 URL
  */
 
 import prisma from '@/lib/prisma'
-import { runAgent, parseAgentJson } from '@/lib/dd-harness/agent'
-import { ddTools } from '@/lib/dd-harness/tools'
+import { parseAgentJson } from '@/lib/dd-harness/agent'
+import { searchWebDual, type SearchResult } from '@/lib/tavily-search'
+import { recordTokenUsage } from '@/lib/token-accounting'
+
+const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
 
 /** 前十行业数量上限 */
 export const TOP_N = 10
-/** 子Agent 并行度（避免 API 限流） */
-const CONCURRENCY = 2
+/** 批量提取：每组行业数（控制单次 DeepSeek 输入规模） */
+const BATCH_SIZE = 5
 
 /** 正在运行的任务（进程内防重入）：行业名集合 */
 const runningIndustries = new Set<string>()
@@ -47,17 +53,14 @@ export interface IndustryNewsResult {
   cards: IndustryNewsCard[]
 }
 
-/** 单行业输出（子Agent JSON） */
-interface AgentOutput {
-  events: Array<{
-    type?: string
-    company?: string
-    title?: string
-    detail?: string
-    date?: string
+/** 批量提取输出（DeepSeek JSON） */
+interface BatchOutput {
+  industries: Array<{
+    industry?: string
+    events?: Array<{ type?: string; company?: string; title?: string; detail?: string; date?: string }>
+    citations?: Array<{ label?: string; url?: string }>
+    note?: string
   }>
-  citations?: Array<{ label?: string; url?: string }>
-  note?: string
 }
 
 /** 日期键：本地时区 YYYY-MM-DD */
@@ -94,32 +97,25 @@ export async function getTopIndustries(limit = TOP_N): Promise<string[]> {
     .map(([ind]) => ind)
 }
 
-// ── 单行业子Agent ──
+// ── 阶段 1：搜索（每行业固定 1 次） ──
 
-const SYSTEM_PROMPT = (industry: string, today: string) => `你是「${industry}」行业的动态监测子Agent，服务一家一级市场投资机构。
+/** 单行业固定关键词搜索（news 主题 + 近 3 天，走 collect 模式省 credit） */
+async function searchIndustry(industry: string): Promise<SearchResult[]> {
+  try {
+    return await searchWebDual(`${industry} 融资 产品发布 人事变动 最新动态`, {
+      maxResults: 5,
+      topic: 'news',
+      days: 3,
+      mode: 'collect',
+      module: 'industry-news',
+    })
+  } catch (err) {
+    console.error(`[IndustryNews] 「${industry}」搜索失败:`, err instanceof Error ? err.message : err)
+    return []
+  }
+}
 
-任务：检索并整理「${industry}」行业今天（${today}，如当日无则以最近 3 天内为准）发生的重要动态，3-5 件事。
-
-关注的事件类型（按优先级）：
-1. 竞品玩家融资信息（轮次/金额/投资方）
-2. 产品发布/重大商业化进展
-3. 技术突破/里程碑
-4. 核心人员变更（高管加入/离职）
-5. 重要合作/监管政策
-
-工作方式：
-1. 调用 web_search 检索（最多 3 次，关键词如「${industry} 融资」「${industry} 产品发布」「${industry} 人事变动」，可组合今日/最近日期）
-2. 仅基于真实搜索结果整理，禁止编造；引用 URL 必须来自搜索结果
-3. 当日确无重要动态时，events 可为空数组并说明原因
-
-严格按以下 JSON 格式输出，不要任何其他文字：
-{
-  "events": [
-    { "type": "融资", "company": "公司名", "title": "一句话标题", "detail": "1-3句详情", "date": "${today}" }
-  ],
-  "citations": [{ "label": "来源标题", "url": "https://..." }],
-  "note": "仅当无事件时填写原因"
-}`
+// ── 阶段 2：批量提取（每组行业一次 DeepSeek 调用） ──
 
 /** 引用过滤（仅保留真实搜索返回的 URL） */
 function filterUrls(
@@ -139,9 +135,18 @@ function filterUrls(
   return out.slice(0, 8)
 }
 
+/** 事件日期有效性：格式合法且落在合理窗口（过去 90 天 ~ 未来 7 天）内 */
+function isValidEventDate(d: unknown, todayMs: number): d is string {
+  if (typeof d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return false
+  const t = new Date(`${d}T00:00:00`).getTime()
+  if (Number.isNaN(t)) return false
+  return t >= todayMs - 90 * 86_400_000 && t <= todayMs + 7 * 86_400_000
+}
+
 /** 事件规范化与校验 */
-function normalizeEvents(raw: AgentOutput['events'], today: string): IndustryEvent[] {
+function normalizeEvents(raw: Array<{ type?: string; company?: string; title?: string; detail?: string; date?: string }>, today: string): IndustryEvent[] {
   if (!Array.isArray(raw)) return []
+  const todayMs = new Date(`${today}T00:00:00`).getTime()
   const out: IndustryEvent[] = []
   for (const e of raw) {
     const title = typeof e?.title === 'string' ? e.title.trim() : ''
@@ -152,43 +157,130 @@ function normalizeEvents(raw: AgentOutput['events'], today: string): IndustryEve
       company: company.slice(0, 50),
       title: title.slice(0, 100),
       detail: (typeof e.detail === 'string' ? e.detail.trim() : '').slice(0, 300),
-      date: /^\d{4}-\d{2}-\d{2}$/.test(e.date || '') ? (e.date as string) : today,
+      date: isValidEventDate(e.date, todayMs) ? e.date : today,
     })
     if (out.length >= 5) break // 上限 5 件
   }
   return out
 }
 
-async function analyzeIndustry(industry: string): Promise<IndustryNewsCard> {
-  const today = todayKey()
-  const { content, sessionLog } = await runAgent({
-    systemPrompt: SYSTEM_PROMPT(industry, today),
-    userPrompt: `请检索「${industry}」行业今日动态并输出 JSON。`,
-    tools: ddTools('industry-news'),
-    maxTurns: 3,
-    temperature: 0.4,
-  })
-
-  const parsed = parseAgentJson<AgentOutput>(content)
-  const card: IndustryNewsCard = {
-    industry,
-    events: parsed ? normalizeEvents(parsed.events, today) : [],
-    citations: parsed ? filterUrls(parsed.citations, sessionLog.searchedUrls()) : [],
-    analyzedAt: new Date().toISOString(),
+/** 构建某行业的搜索结果文本块 */
+function buildIndustryBlock(industry: string, results: SearchResult[]): string {
+  if (results.length === 0) {
+    return `【${industry}】\n（搜索未返回结果）`
   }
-  if (card.events.length === 0) {
-    const rawNote = parsed?.note?.trim() || ''
-    if (rawNote) {
-      // 放宽至 200 字符；超长时在句末标点处截断，保持句子完整
-      card.note =
-        rawNote.length <= 200
-          ? rawNote
-          : rawNote.slice(0, 200).replace(/[，。；！？、].*$/, m => (/[。！？]/.test(m) ? m : m[0] + '…'))
-    } else {
-      card.note = '今日暂未检索到重要动态'
+  const lines = results
+    .map((r, i) => `[${i + 1}] ${r.title}\n来源: ${r.url}\n内容: ${r.content.substring(0, 400)}`)
+    .join('\n')
+  return `【${industry}】\n${lines}`
+}
+
+/**
+ * 一组行业批量提取：一次 DeepSeek 调用输出该组所有行业的动态卡片
+ * @param group 行业名列表（≤ BATCH_SIZE 个）
+ * @param searchByIndustry 各行业搜索结果
+ */
+async function analyzeIndustryBatch(
+  group: string[],
+  searchByIndustry: Map<string, SearchResult[]>
+): Promise<IndustryNewsCard[]> {
+  const today = todayKey()
+  const apiKey = process.env.DEEPSEEK_API_KEY
+  if (!apiKey) {
+    return group.map(industry => ({
+      industry,
+      events: [],
+      citations: [],
+      analyzedAt: new Date().toISOString(),
+      note: 'DeepSeek API Key 未配置',
+    }))
+  }
+
+  const allUrls = group.flatMap(ind => (searchByIndustry.get(ind) || []).map(r => r.url))
+  const blocks = group.map(ind => buildIndustryBlock(ind, searchByIndustry.get(ind) || [])).join('\n\n')
+
+  const systemPrompt = `你是多个行业的动态监测分析助手，服务一家一级市场投资机构。
+下面是${group.length}个行业各自的搜索结果。请按行业整理近期（${today} 当日优先，最迟 3 天内）发生的重要动态，每个行业 0-5 件事。
+
+关注的事件类型（按优先级）：竞品融资（轮次/金额/投资方）、产品发布/商业化进展、技术突破、核心人员变更、重要合作/监管政策。
+
+要求：
+1. 仅基于真实搜索结果整理，禁止编造；citations 的 URL 必须来自搜索结果的来源
+2. 某行业搜索结果与该行业无关或当日确无动态时，events 为空数组并在 note 说明
+3. 严格按以下 JSON 格式输出，不要任何其他文字：
+{
+  "industries": [
+    {
+      "industry": "行业名（与输入一致）",
+      "events": [{ "type": "融资", "company": "公司名", "title": "一句话标题", "detail": "1-3句详情", "date": "${today}" }],
+      "citations": [{ "label": "来源标题", "url": "https://..." }],
+      "note": "仅当无事件时填写原因"
+    }
+  ]
+}`
+
+  // 超时控制：90 秒
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 90000)
+
+  let data: { usage?: unknown; choices?: Array<{ message?: { content?: string } }> }
+  try {
+    const response = await fetch(DEEPSEEK_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'deepseek-v4-flash',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `各行业搜索结果如下：\n\n${blocks}\n\n请按行业输出 JSON。` },
+        ],
+        temperature: 0.4,
+        max_tokens: 4000,
+        thinking: { type: 'disabled' },
+      }),
+      signal: controller.signal,
+    })
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '')
+      throw new Error(`DeepSeek API 调用失败: ${response.status} ${errText.substring(0, 150)}`)
+    }
+    data = await response.json()
+  } finally {
+    clearTimeout(timeoutId)
+  }
+
+  // token 记账（归属行业动态模块）
+  recordTokenUsage('industry-news', data.usage as Parameters<typeof recordTokenUsage>[1] | undefined)
+
+  const parsed = parseAgentJson<BatchOutput>(data.choices?.[0]?.message?.content || '')
+
+  // 按行业名归位（DeepSeek 输出顺序可能与输入不同）
+  const byName = new Map<string, NonNullable<BatchOutput['industries']>[number]>()
+  if (Array.isArray(parsed?.industries)) {
+    for (const item of parsed.industries) {
+      if (typeof item?.industry === 'string' && item.industry.trim()) {
+        byName.set(item.industry.trim(), item)
+      }
     }
   }
-  return card
+
+  return group.map(industry => {
+    const item = byName.get(industry)
+    const card: IndustryNewsCard = {
+      industry,
+      events: item ? normalizeEvents(item.events || [], today) : [],
+      citations: item ? filterUrls(item.citations, allUrls) : [],
+      analyzedAt: new Date().toISOString(),
+    }
+    if (card.events.length === 0) {
+      const rawNote = item?.note?.trim() || ''
+      card.note =
+        rawNote.length <= 200
+          ? rawNote || '今日暂未检索到重要动态'
+          : rawNote.slice(0, 200).replace(/[，。；！？、].*$/, m => (/[。！？]/.test(m) ? m : m[0] + '…'))
+    }
+    return card
+  })
 }
 
 // ── 缓存读写 ──
@@ -266,37 +358,39 @@ export async function runIndustryNews(
     return { date, analyzed: [], cards: existing }
   }
 
-  // 并行子Agent（并发池）
-  const fresh: IndustryNewsCard[] = []
-  const queue = [...pending]
-  const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
-    while (queue.length > 0) {
-      const ind = queue.shift()
-      if (ind === undefined) break
-      runningIndustries.add(ind)
-      try {
-        fresh.push(await analyzeIndustry(ind))
-      } catch (e) {
-        console.error(`[IndustryNews] 「${ind}」分析失败:`, e instanceof Error ? e.message : e)
-        fresh.push({
-          industry: ind,
-          events: [],
-          citations: [],
-          analyzedAt: new Date().toISOString(),
-          note: '分析失败，请稍后重试',
-        })
-      } finally {
-        runningIndustries.delete(ind)
-      }
+  pending.forEach(ind => runningIndustries.add(ind))
+  try {
+    // 阶段 1：每行业一次精准搜索（并发，有同日缓存时直接命中）
+    const searchResults = await Promise.all(pending.map(ind => searchIndustry(ind)))
+    const searchByIndustry = new Map<string, SearchResult[]>()
+    pending.forEach((ind, i) => searchByIndustry.set(ind, searchResults[i]))
+
+    // 阶段 2：分组批量提取（每 BATCH_SIZE 个行业一次 DeepSeek 调用）
+    const groups: string[][] = []
+    for (let i = 0; i < pending.length; i += BATCH_SIZE) {
+      groups.push(pending.slice(i, i + BATCH_SIZE))
     }
-  })
-  await Promise.all(workers)
+    const freshCards = (await Promise.all(groups.map(g => analyzeIndustryBatch(g, searchByIndustry)))).flat()
 
-  // 合并写回缓存
-  const cards = mergeCards(existing, fresh)
-  await writeCache({ date, cards })
-
-  return { date, analyzed: pending, cards }
+    // 合并写回缓存
+    const cards = mergeCards(existing, freshCards)
+    await writeCache({ date, cards })
+    return { date, analyzed: pending, cards }
+  } catch (e) {
+    console.error('[IndustryNews] 批量分析失败:', e instanceof Error ? e.message : e)
+    // 失败行业返回占位卡片（保持前端结构完整）
+    const failCards: IndustryNewsCard[] = pending.map(ind => ({
+      industry: ind,
+      events: [],
+      citations: [],
+      analyzedAt: new Date().toISOString(),
+      note: '分析失败，请稍后重试',
+    }))
+    const cards = mergeCards(existing, failCards)
+    return { date, analyzed: [], cards }
+  } finally {
+    pending.forEach(ind => runningIndustries.delete(ind))
+  }
 }
 
 /** 查询当日行业动态（API GET 用）：返回缓存 + running 标记 */
@@ -305,7 +399,6 @@ export async function getIndustryNews(date = todayKey()) {
   return {
     date,
     cards: cached?.cards || [],
-    updatedAt: cached ? undefined : undefined,
     running: Array.from(runningIndustries),
   }
 }

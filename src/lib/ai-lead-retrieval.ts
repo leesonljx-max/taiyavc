@@ -154,12 +154,13 @@ async function generateSearchKeywords(
 
 行业标签：${industryTags.join('、')}
 
-请生成 5-8 个检索关键词组合（中文），用于在搜索引擎中搜索近期的融资PR新闻。
+请生成 3-5 个检索关键词组合（中文），用于在搜索引擎中搜索近期的融资PR新闻。
 关键词格式示例："商业航天 融资 2026"、"AI Agent A轮 投资"。
 要求：
-1. 每个关键词组合聚焦一个行业方向
-2. 包含"融资"、"投资"、"获投"等融资相关词
-3. 返回纯JSON数组，如 ["关键词1","关键词2"]`
+1. 严格去重聚焦：相近行业方向必须合并为一个关键词（控制在 3-5 个，节省搜索配额）
+2. 每个关键词组合聚焦一个行业方向，优先覆盖项目数最多的行业
+3. 包含"融资"、"投资"、"获投"等融资相关词
+4. 返回纯JSON数组，如 ["关键词1","关键词2"]`
           }
         ],
         temperature: 0.3,
@@ -477,9 +478,9 @@ function matchProject(
 
     return {
       ...lead,
-      matchedProjectId: bestMatch?.confidence >= 0.6 ? bestMatch!.projectId : null,
+      matchedProjectId: bestMatch && bestMatch.confidence >= 0.6 ? bestMatch.projectId : null,
       matchedConfidence: bestMatch?.confidence || 0,
-      matchedMaintainerId: bestMatch?.confidence >= 0.6 ? bestMatch!.maintainerId : null,
+      matchedMaintainerId: bestMatch && bestMatch.confidence >= 0.6 ? bestMatch.maintainerId : null,
     }
   })
 }

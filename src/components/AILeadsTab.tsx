@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import Pagination from './Pagination'
+import TrackingSignalsModal from './TrackingSignalsModal'
 
 /**
  * AI 线索 Tab
@@ -44,6 +45,9 @@ interface AILead {
   matchedConfidence: number | null
   releasedAt: string | null
   aiSummary: string | null
+  // 来源跟踪信号标记
+  signalId: string | null
+  signalName: string | null
 }
 
 interface ConvertForm {
@@ -84,6 +88,9 @@ export default function AILeadsTab() {
 
   // 详情弹窗
   const [viewingLead, setViewingLead] = useState<AILead | null>(null)
+
+  // 跟踪信号弹窗
+  const [signalsOpen, setSignalsOpen] = useState(false)
 
   // 转化弹窗
   const [convertingLead, setConvertingLead] = useState<AILead | null>(null)
@@ -315,6 +322,15 @@ export default function AILeadsTab() {
                 {retrieving ? '检索中...' : 'AI 检索'}
               </button>
             )}
+            <button
+              onClick={() => setSignalsOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-purple-300 text-purple-700 rounded-xl hover:bg-purple-50 transition-all-smooth font-medium text-sm whitespace-nowrap"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              跟踪信号
+            </button>
           </div>
         </div>
 
@@ -425,6 +441,14 @@ export default function AILeadsTab() {
                   <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-700 transition-colors truncate flex-1">
                     {lead.name}
                   </h3>
+                  {lead.signalName && (
+                    <span
+                      className="px-2 py-0.5 text-[10px] font-medium bg-fuchsia-50 text-fuchsia-600 border border-fuchsia-200 rounded-full truncate max-w-[140px]"
+                      title={`来自跟踪信号：${lead.signalName}`}
+                    >
+                      ⚡ {lead.signalName}
+                    </span>
+                  )}
                   {lead.status === 'CONVERTED' ? (
                     <span className="px-2 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-700 rounded-full">
                       已转化
@@ -796,6 +820,9 @@ export default function AILeadsTab() {
           </div>
         </div>
       )}
+
+      {/* 跟踪信号管理弹窗 */}
+      {signalsOpen && <TrackingSignalsModal onClose={() => setSignalsOpen(false)} />}
     </>
   )
 }

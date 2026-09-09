@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react'
 import DashboardLayout from '@/components/DashboardLayout'
 import DocumentPreviewModal from '@/components/DocumentPreviewModal'
 import DDReportPanel from '@/components/research/DDReportPanel'
+import { compressImage } from '@/lib/image-compress'
 
 // ── 类型定义 ──
 
@@ -85,7 +86,15 @@ const MODULE_ORDER = ['INDUSTRY', 'PRODUCT_TECH', 'COMPETITION', 'BUSINESS_DD', 
 
 // ── 手动输入模块的字段配置 ──
 
-const FINANCING_FIELDS = [
+interface ManualFieldConfig {
+  key: string
+  label: string
+  placeholder: string
+  type?: string
+  options?: string[]
+}
+
+const FINANCING_FIELDS: ManualFieldConfig[] = [
   { key: 'financingAmount', label: '融资金额', placeholder: '如 5000万元' },
   { key: 'preValuation', label: '投前估值', placeholder: '如 2亿元' },
   { key: 'oldShareValuation', label: '老股估值（如有）', placeholder: '如 1.8亿元' },
@@ -93,7 +102,7 @@ const FINANCING_FIELDS = [
   { key: 'coreTerms', label: '核心条款', placeholder: '如 优先清算权 1x, 反稀释条款...', type: 'textarea' },
 ]
 
-const RECOMMENDATION_FIELDS = [
+const RECOMMENDATION_FIELDS: ManualFieldConfig[] = [
   { key: 'investmentRange', label: '投资金额区间', placeholder: '如 500-1000万元' },
   { key: 'investmentType', label: '领投或跟投', placeholder: '如 领投 / 跟投', type: 'select', options: ['领投', '跟投', '暂不确定'] },
   { key: 'recommendation', label: '投资建议说明', placeholder: '详细说明投资建议和理由...', type: 'textarea' },
@@ -240,6 +249,7 @@ function HighlightsCard({ project, onDataUpdate }: { project: ResearchProject; o
 
   const [manualText, setManualText] = useState(project.manualHighlights || '')
   const [saving, setSaving] = useState(false)
+  const [manualUploading, setManualUploading] = useState(false)
   const [savedAt, setSavedAt] = useState<string>('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState('')
@@ -297,7 +307,7 @@ function HighlightsCard({ project, onDataUpdate }: { project: ResearchProject; o
     }
   }
 
-  // 图片粘贴上传
+  // 图片粘贴上传（上传前压缩，解决大截图上传慢）
   const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items
     if (!items) return
@@ -306,9 +316,11 @@ function HighlightsCard({ project, onDataUpdate }: { project: ResearchProject; o
         e.preventDefault()
         const file = item.getAsFile()
         if (!file) continue
+        setManualUploading(true)
         try {
+          const compressed = await compressImage(file)
           const formData = new FormData()
-          formData.append('file', file)
+          formData.append('file', compressed)
           const res = await fetch('/api/upload/image', { method: 'POST', body: formData })
           const data = await res.json()
           if (res.ok && data.url) {
@@ -318,6 +330,8 @@ function HighlightsCard({ project, onDataUpdate }: { project: ResearchProject; o
           }
         } catch {
           alert('图片上传失败')
+        } finally {
+          setManualUploading(false)
         }
         return
       }
@@ -351,6 +365,9 @@ function HighlightsCard({ project, onDataUpdate }: { project: ResearchProject; o
               >
                 {saving ? '保存中...' : '保存'}
               </button>
+            )}
+            {manualUploading && (
+              <span className="text-xs text-[#8d84e0] animate-pulse">图片上传中...</span>
             )}
           </div>
           {canEdit ? (
@@ -474,6 +491,7 @@ function ModuleSection({ projectId, module, moduleType, project, onDataUpdate }:
   const [saving, setSaving] = useState(false)
   const [savingFreeText, setSavingFreeText] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState(false)
   const [manualContent, setManualContent] = useState<Record<string, string>>({})
   // 通用自由文本框（所有模块可用，支持粘贴图片）
   const [freeText, setFreeText] = useState('')
@@ -525,7 +543,7 @@ function ModuleSection({ projectId, module, moduleType, project, onDataUpdate }:
     }
   }
 
-  // 自由文本框粘贴图片上传
+  // 自由文本框粘贴图片上传（上传前压缩）
   const handleFreeTextPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items
     if (!items) return
@@ -534,9 +552,11 @@ function ModuleSection({ projectId, module, moduleType, project, onDataUpdate }:
         e.preventDefault()
         const file = item.getAsFile()
         if (!file) continue
+        setUploadingImage(true)
         try {
+          const compressed = await compressImage(file)
           const formData = new FormData()
-          formData.append('file', file)
+          formData.append('file', compressed)
           const res = await fetch('/api/upload/image', { method: 'POST', body: formData })
           const data = await res.json()
           if (res.ok && data.url) {
@@ -546,6 +566,8 @@ function ModuleSection({ projectId, module, moduleType, project, onDataUpdate }:
           }
         } catch {
           alert('图片上传失败')
+        } finally {
+          setUploadingImage(false)
         }
         return
       }
@@ -932,6 +954,9 @@ function ModuleSection({ projectId, module, moduleType, project, onDataUpdate }:
                     >
                       {savingFreeText ? '保存中...' : '保存'}
                     </button>
+                  )}
+                  {uploadingImage && (
+                    <span className="text-xs text-[#8d84e0] animate-pulse">图片上传中...</span>
                   )}
                 </div>
                 {canEdit ? (
@@ -1346,9 +1371,9 @@ function AIResultRenderer({ moduleType, result }: { moduleType: string; result: 
             </div>
           </div>
         ))}
-        {result.competitiveLandscape && (
+        {typeof result.competitiveLandscape === 'string' && (
           <div className="text-xs text-gray-600 pt-2 border-t border-gray-100">
-            <span className="font-medium">竞争格局总结:</span> {renderValue(result.competitiveLandscape)}
+            <span className="font-medium">竞争格局总结:</span> {result.competitiveLandscape}
           </div>
         )}
       </div>
@@ -1382,10 +1407,10 @@ function AIResultRenderer({ moduleType, result }: { moduleType: string; result: 
   if (moduleType === 'TEAM') {
     return (
       <div className="space-y-3">
-        {result.founder && renderObject(result.founder as Record<string, unknown>, '创始人')}
+        {result.founder ? renderObject(result.founder as Record<string, unknown>, '创始人') : null}
         {renderArray(result.coreMembers as unknown[], '核心成员')}
-        {result.teamStrength && (
-          <div className="text-xs"><span className="text-gray-500">团队优势:</span> {renderValue(result.teamStrength)}</div>
+        {typeof result.teamStrength === 'string' && (
+          <div className="text-xs"><span className="text-gray-500">团队优势:</span> {result.teamStrength}</div>
         )}
       </div>
     )
@@ -1397,8 +1422,8 @@ function AIResultRenderer({ moduleType, result }: { moduleType: string; result: 
         {renderObject(result.basicInfo as Record<string, unknown>, '基本信息')}
         {renderArray(result.shareholderStructure as unknown[], '股权结构')}
         {renderArray(result.developmentHistory as unknown[], '发展历程')}
-        {result.businessScope && (
-          <div className="text-xs"><span className="text-gray-500">经营范围:</span> {renderValue(result.businessScope)}</div>
+        {typeof result.businessScope === 'string' && (
+          <div className="text-xs"><span className="text-gray-500">经营范围:</span> {result.businessScope}</div>
         )}
       </div>
     )

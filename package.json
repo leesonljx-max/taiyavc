@@ -12,6 +12,8 @@
     "prisma:studio": "prisma studio",
     "db:push": "prisma db push && prisma generate",
     "postinstall": "prisma generate",
+    "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
+    "test:prepare": "node -e \"require('child_process').execSync('createdb investrack_test',{stdio:'ignore'})\" ; DATABASE_URL=postgresql://leeson@localhost:5432/investrack_test prisma db push --skip-generate",
     "news-cron": "tsx scripts/news-cron.ts"
   },
   "dependencies": {
