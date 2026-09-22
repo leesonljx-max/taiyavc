@@ -2,7 +2,18 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
+import dynamic from 'next/dynamic'
 import DashboardLayout from '@/components/DashboardLayout'
+
+// ECharts 树图（客户端组件，ssr:false 避免 prerender 报 window undefined）
+const IndustryTreemap = dynamic(() => import('@/components/IndustryTreemap'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center py-20">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+    </div>
+  ),
+})
 
 interface IndustryProject {
   id: string
@@ -20,7 +31,10 @@ interface IndustryStat {
 }
 
 interface IndustryMapData {
+  range: 'month' | 'quarter' | 'half' | 'year'
   year: number
+  windowStart: string
+  windowEnd: string
   years: number[]
   totalProjects: number
   totalIndustries: number
@@ -70,8 +84,27 @@ const EVENT_TYPE_STYLES: Record<string, string> = {
   政策: 'bg-purple-100 text-purple-700',
 }
 
+/** 时间维度选项（滚动窗口口径） */
+const RANGE_OPTIONS: Array<{ key: 'month' | 'quarter' | 'half' | 'year'; label: string; hint: string }> = [
+  { key: 'month', label: '近1月', hint: '最近 30 天初聊的项目' },
+  { key: 'quarter', label: '近季度', hint: '最近 90 天初聊的项目' },
+  { key: 'half', label: '近半年', hint: '最近 180 天初聊的项目' },
+  { key: 'year', label: '当年', hint: '所选自然年初聊的项目' },
+]
+
+/** 窗口区间展示：当年显示"YYYY 年"，滚动窗口显示"MM-DD ~ MM-DD" */
+function formatWindow(data: IndustryMapData): string {
+  if (data.range === 'year') return `${data.year} 年`
+  const fmt = (iso: string) => {
+    const d = new Date(iso)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+  return `${fmt(data.windowStart)} ~ ${fmt(data.windowEnd)}`
+}
+
 export default function StatisticsPage() {
   const { status } = useSession()
+  const [selectedRange, setSelectedRange] = useState<'month' | 'quarter' | 'half' | 'year'>('year')
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
   const [industryData, setIndustryData] = useState<IndustryMapData | null>(null)
   const [industryLoading, setIndustryLoading] = useState(false)
@@ -88,14 +121,16 @@ export default function StatisticsPage() {
 
   useEffect(() => {
     if (status !== 'authenticated') return
-    fetchIndustryMap(selectedYear)
-  }, [status, selectedYear])
+    fetchIndustryMap(selectedRange, selectedYear)
+  }, [status, selectedRange, selectedYear])
 
-  const fetchIndustryMap = async (year: number) => {
+  const fetchIndustryMap = async (range: 'month' | 'quarter' | 'half' | 'year', year: number) => {
     setIndustryLoading(true)
     setIndustryError('')
     try {
-      const res = await fetch(`/api/statistics/industry-map?year=${year}`)
+      const qs = new URLSearchParams({ range })
+      if (range === 'year') qs.set('year', String(year))
+      const res = await fetch(`/api/statistics/industry-map?${qs.toString()}`)
       const data = await res.json()
       if (!res.ok) {
         setIndustryError(data.error || '获取行业图谱失败')
@@ -107,6 +142,16 @@ export default function StatisticsPage() {
     } finally {
       setIndustryLoading(false)
     }
+  }
+
+  /** 切换时间维度 / 年份：清空行业选中态 */
+  const changeRange = (range: 'month' | 'quarter' | 'half' | 'year') => {
+    setSelectedRange(range)
+    setSelectedIndustry(null)
+  }
+  const changeYear = (year: number) => {
+    setSelectedYear(year)
+    setSelectedIndustry(null)
   }
 
   // ── 行业动态：读取当日缓存（cron 每日 04:00 生成） ──
@@ -180,27 +225,6 @@ export default function StatisticsPage() {
     return null
   }
 
-  // 行业图谱气泡
-  const maxCount = industryData?.industries?.[0]?.count || 1
-  const getBubbleSize = (count: number) => {
-    const minSize = 60
-    const maxSize = 140
-    return minSize + (count / maxCount) * (maxSize - minSize)
-  }
-  const getBubbleColor = (count: number, index: number) => {
-    const colors = [
-      'from-primary-400 to-primary-600',
-      'from-blue-400 to-blue-600',
-      'from-purple-400 to-purple-600',
-      'from-emerald-400 to-emerald-600',
-      'from-rose-400 to-rose-600',
-      'from-amber-400 to-amber-600',
-      'from-cyan-400 to-cyan-600',
-      'from-indigo-400 to-indigo-600',
-    ]
-    return colors[index % colors.length]
-  }
-
   // ── 行业动态卡片筛选逻辑 ──
   // 未点气泡：显示前十行业的动态卡片；点了气泡：只显示该行业卡片
   const topIndustries = newsData?.topIndustries || []
@@ -227,34 +251,53 @@ export default function StatisticsPage() {
             <h1 className="text-2xl font-bold text-gray-900">统计分析</h1>
             <p className="text-sm text-gray-500 mt-1">行业图谱与行业动态分析</p>
           </div>
-          {/* 年份筛选 */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-700">年份筛选</span>
-            <select
-              value={selectedYear}
-              onChange={(e) => {
-                const y = parseInt(e.target.value, 10)
-                setSelectedYear(y)
-                setSelectedIndustry(null)
-              }}
-              className="px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-400 focus:border-primary-400"
-            >
-              {(industryData?.years || [selectedYear]).map(y => (
-                <option key={y} value={y}>{y} 年</option>
-              ))}
-            </select>
-          </div>
+          {/* 年份筛选（仅"当年"模式下有意义） */}
+          {selectedRange === 'year' && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">年份筛选</span>
+              <select
+                value={selectedYear}
+                onChange={(e) => changeYear(parseInt(e.target.value, 10))}
+                className="px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-400 focus:border-primary-400"
+              >
+                {(industryData?.years || [selectedYear]).map(y => (
+                  <option key={y} value={y}>{y} 年</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* 双列布局 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* ═══ 左侧：行业图谱 ═══ */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">行业图谱</h2>
-              <span className="text-xs text-gray-400">
-                {industryData ? `共 ${industryData.totalIndustries} 个行业 · ${industryData.totalProjects} 个项目` : ''}
-              </span>
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">行业图谱</h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {industryData
+                    ? `共 ${industryData.totalIndustries} 个行业 · ${industryData.totalProjects} 个项目 · ${formatWindow(industryData)}`
+                    : ''}
+                </p>
+              </div>
+              {/* 时间维度切换（右上角）：近1月 / 近季度 / 近半年 / 当年 */}
+              <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-0.5">
+                {RANGE_OPTIONS.map(opt => (
+                  <button
+                    key={opt.key}
+                    onClick={() => changeRange(opt.key)}
+                    title={opt.hint}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      selectedRange === opt.key
+                        ? 'bg-white text-primary-700 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {industryLoading && (
@@ -272,39 +315,20 @@ export default function StatisticsPage() {
 
             {!industryLoading && !industryError && industryData && industryData.industries.length === 0 && (
               <div className="py-10 text-center">
-                <p className="text-sm text-gray-400">{selectedYear} 年暂无项目数据</p>
+                <p className="text-sm text-gray-400">
+                  {industryData.range === 'year' ? `${industryData.year} 年暂无项目数据` : '所选时间范围内暂无项目数据'}
+                </p>
               </div>
             )}
 
             {!industryLoading && !industryError && industryData && industryData.industries.length > 0 && (
               <>
-                {/* 气泡图 */}
-                <div className="flex flex-wrap gap-3 justify-center items-center min-h-[280px] py-4">
-                  {industryData.industries.map((ind, idx) => {
-                    const size = getBubbleSize(ind.count)
-                    const isSelected = selectedIndustry === ind.industry
-                    const isTop = idx < 10
-                    return (
-                      <button
-                        key={ind.industry}
-                        onClick={() => setSelectedIndustry(isSelected ? null : ind.industry)}
-                        className={`relative rounded-full bg-gradient-to-br ${getBubbleColor(ind.count, idx)} ${isSelected ? 'ring-4 ring-offset-2 ring-primary-300 scale-110' : 'hover:scale-105'} flex flex-col items-center justify-center transition-all shadow-md`}
-                        style={{ width: `${size}px`, height: `${size}px` }}
-                        title={`${ind.industry}：${ind.count} 个项目`}
-                      >
-                        <span className="text-white font-bold text-sm px-2 text-center leading-tight">
-                          {ind.industry.length > 8 ? ind.industry.substring(0, 7) + '…' : ind.industry}
-                        </span>
-                        <span className="text-white/90 text-xl font-bold mt-1">{ind.count}</span>
-                        {isTop && (
-                          <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-400 border-2 border-white text-[9px] font-bold text-amber-900 flex items-center justify-center" title="项目数量前十">
-                            {idx + 1}
-                          </span>
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
+                {/* ECharts 矩形树图：块面积 = 项目数，点击选中/取消 */}
+                <IndustryTreemap
+                  industries={industryData.industries.map(ind => ({ industry: ind.industry, count: ind.count }))}
+                  selected={selectedIndustry}
+                  onSelect={setSelectedIndustry}
+                />
 
                 {/* 选中行业：项目列表 + 行业动态分析按钮 */}
                 {selectedIndustry && (

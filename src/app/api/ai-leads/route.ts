@@ -37,10 +37,13 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url)
     const scope = searchParams.get('scope') === 'mine' ? 'mine' : 'all'
-    const keyword = searchParams.get('keyword')?.trim() || ''
+    const keyword = (searchParams.get('keyword') || '').trim().slice(0, 100)
     const releasedParam = searchParams.get('released')
+    // status 筛选（与前端 filter 语义一致）：released=已释放且未转化 / locked=未释放且未转化 / converted=已转化
+    const statusParam = searchParams.get('status')
 
-    const where: any = { source: 'AI' }
+    // 权限 where（stats 计数也基于此，不含 keyword/status 筛选）
+    const permissionConditions: any[] = [{ source: 'AI' }]
 
     // 权限矩阵：
     // - ADMIN / INVESTMENT_PARTNER: 查看全部
@@ -51,49 +54,92 @@ export async function GET(request: Request) {
     if (currentUser.role === 'ADMIN' || currentUser.role === 'INVESTMENT_PARTNER') {
       // 全部可见
     } else if (scope === 'mine') {
-      where.createdById = currentUser.id
+      permissionConditions.push({ createdById: currentUser.id })
     } else {
       // scope=all 且非管理员：已释放的全部 + 自己的未释放
-      where.OR = [
-        { releasedAt: { not: null } },
-        { createdById: currentUser.id },
-      ]
-    }
-
-    if (keyword) {
-      const kwCond = {
+      permissionConditions.push({
         OR: [
-          { name: { contains: keyword } },
-          { industry: { contains: keyword } },
-          { companyPosition: { contains: keyword } },
-          { mainProducts: { contains: keyword } },
-          { fundingRound: { contains: keyword } },
-          { coreAdvantage: { contains: keyword } },
+          { releasedAt: { not: null } },
+          { createdById: currentUser.id },
         ],
-      }
-      if (where.OR) {
-        // 组合：((released OR mine) AND (keywordCond))
-        where.AND = [kwCond]
-      } else {
-        where.OR = kwCond.OR
-      }
+      })
+    }
+    const permissionWhere = permissionConditions.length === 1
+      ? permissionConditions[0]
+      : { AND: permissionConditions }
+
+    // 列表 where = 权限 AND (keyword | status)
+    const conditions: any[] = [...permissionConditions]
+    if (keyword) {
+      conditions.push({
+        OR: [
+          { name: { contains: keyword, mode: 'insensitive' } },
+          { industry: { contains: keyword, mode: 'insensitive' } },
+          { companyPosition: { contains: keyword, mode: 'insensitive' } },
+          { mainProducts: { contains: keyword, mode: 'insensitive' } },
+          { fundingRound: { contains: keyword, mode: 'insensitive' } },
+          { coreAdvantage: { contains: keyword, mode: 'insensitive' } },
+        ],
+      })
     }
 
-    if (releasedParam === 'true') {
-      where.releasedAt = { not: null }
+    if (statusParam === 'released') {
+      conditions.push({ AND: [{ releasedAt: { not: null } }, { status: { not: 'CONVERTED' } }] })
+    } else if (statusParam === 'locked') {
+      conditions.push({ AND: [{ releasedAt: null }, { status: { not: 'CONVERTED' } }] })
+    } else if (statusParam === 'converted') {
+      conditions.push({ status: 'CONVERTED' })
+    } else if (releasedParam === 'true') {
+      // 旧参数兼容（status 优先）
+      conditions.push({ releasedAt: { not: null } })
     } else if (releasedParam === 'false') {
-      where.releasedAt = null
+      conditions.push({ releasedAt: null })
     }
 
-    const leads = await prisma.projectLead.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        createdBy: { select: { id: true, name: true } },
-      },
-    })
+    const where = conditions.length === 1 ? conditions[0] : { AND: conditions }
 
-    return NextResponse.json({ leads, scope })
+    // 分页参数（不传 page = 兼容全量模式）
+    const pageParam = searchParams.get('page')
+    const paged = pageParam !== null && pageParam.trim() !== ''
+    const page = Math.max(1, parseInt(pageParam || '1', 10) || 1)
+    const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '30', 10) || 30))
+
+    // stats：权限基础集上的四象限计数（与前端统计卡片语义一致）
+    const [leads, total, stats] = await Promise.all([
+      prisma.projectLead.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        ...(paged ? { skip: (page - 1) * pageSize, take: pageSize } : {}),
+        include: {
+          createdBy: { select: { id: true, name: true } },
+        },
+      }),
+      prisma.projectLead.count({ where }),
+      (async () => {
+        const [totalCount, releasedCount, lockedCount, convertedCount] = await Promise.all([
+          prisma.projectLead.count({ where: permissionWhere }),
+          prisma.projectLead.count({
+            where: { AND: [permissionWhere, { releasedAt: { not: null } }, { status: { not: 'CONVERTED' } }] },
+          }),
+          prisma.projectLead.count({
+            where: { AND: [permissionWhere, { releasedAt: null }, { status: { not: 'CONVERTED' } }] },
+          }),
+          prisma.projectLead.count({
+            where: { AND: [permissionWhere, { status: 'CONVERTED' }] },
+          }),
+        ])
+        return { total: totalCount, released: releasedCount, locked: lockedCount, converted: convertedCount }
+      })(),
+    ])
+
+    return NextResponse.json({
+      leads,
+      total,
+      page: paged ? page : 1,
+      pageSize: paged ? pageSize : total,
+      scope,
+      stats,
+    })
   } catch (error) {
     console.error('AI leads GET error:', error)
     return NextResponse.json(

@@ -4,7 +4,8 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import prisma from '@/lib/prisma'
 import { authOptions, type UserRole } from '@/lib/auth'
-import { canViewProject, type PermissionUser } from '@/lib/permissions'
+import { type PermissionUser } from '@/lib/permissions'
+import { buildProjectVisibilityWhere } from '@/lib/project-where'
 
 /**
  * 计算本周起始时间（每周一中午12:00）
@@ -58,25 +59,22 @@ export async function GET() {
 
     const weekStart = getWeekStart()
 
-    // 获取所有项目（带权限过滤）
-    const allProjects = await prisma.project.findMany({
+    // 查询 1（轻量，全量行）：可见性 where 下推（不再拉大文本字段与 members 关联）
+    const lightRows = await prisma.project.findMany({
       orderBy: { createdAt: 'desc' },
-      include: {
-        members: { select: { userId: true } },
-        createdBy: { select: { id: true, name: true } },
+      where: currentUser ? buildProjectVisibilityWhere(currentUser) : {},
+      select: {
+        id: true,
+        followStage: true,
+        targetDate: true,
+        stageChangedAt: true,
+        createdById: true,
+        createdBy: { select: { name: true } },
       },
     })
+    const visibleProjects = lightRows
 
-    const visibleProjects = allProjects.filter(project => {
-      const memberIds = project.members.map(m => m.userId)
-      return canViewProject(currentUser, {
-        followStage: project.followStage,
-        createdById: project.createdById,
-        memberIds,
-      })
-    })
-
-    // 本周新增项目：以初聊日期为准（targetDate >= weekStart）或本周变更阶段（stageChangedAt >= weekStart）
+    // 本周新增项目：本周新建（targetDate >= weekStart）或本周变更阶段（stageChangedAt >= weekStart）
     const weeklyNewProjects = visibleProjects.filter(
       p => {
         const initialDate = p.targetDate ? new Date(p.targetDate) : null
@@ -84,6 +82,28 @@ export async function GET() {
         return (initialDate !== null && initialDate >= weekStart) || (stageChangedAt !== null && stageChangedAt >= weekStart)
       }
     )
+
+    // 查询 2（明细，仅周内子集）：只有周新增项目才需要 aiCardJson 等明细字段
+    const weeklyIds = weeklyNewProjects.map(p => p.id)
+    const detailRows = weeklyIds.length > 0
+      ? await prisma.project.findMany({
+          where: { id: { in: weeklyIds } },
+          select: {
+            id: true,
+            name: true,
+            companyFullName: true,
+            industry: true,
+            companyPosition: true,
+            financingRound: true,
+            totalAmount: true,
+            followStage: true,
+            targetDate: true,
+            createdAt: true,
+            aiCardJson: true,
+          },
+        })
+      : []
+    const detailById = new Map(detailRows.map(r => [r.id, r]))
 
     // 顶部四个统计卡片（本周维度）
     // 1) 本周新增：本周新建项目（targetDate >= weekStart）
@@ -110,24 +130,25 @@ export async function GET() {
       return stageChangedAt !== null && stageChangedAt >= weekStart && p.followStage === 'DUE_DILIGENCE'
     }).length
 
-    // 本周新增项目（带AI画板数据）
+    // 本周新增项目（带AI画板数据）：轻量行 × 明细行合并
     const weeklyProjectsWithCards = weeklyNewProjects.map(p => {
+      const detail = detailById.get(p.id)
       let aiCard = null
-      if (p.aiCardJson) {
+      if (detail?.aiCardJson) {
         try {
-          aiCard = JSON.parse(p.aiCardJson)
+          aiCard = JSON.parse(detail.aiCardJson)
         } catch {
           aiCard = null
         }
       }
       return {
         id: p.id,
-        name: p.name,
-        companyFullName: p.companyFullName,
-        industry: p.industry,
+        name: detail?.name || '',
+        companyFullName: detail?.companyFullName || null,
+        industry: detail?.industry || null,
         followStage: p.followStage,
         targetDate: p.targetDate,
-        createdAt: p.createdAt,
+        createdAt: detail?.createdAt || null,
         aiCard,
         maintainerName: p.createdBy?.name || '未分配',
       }
@@ -197,18 +218,20 @@ export async function GET() {
       }
     }
 
-    // 项目卡片：仅本周新增项目（本周新建或本周变更阶段）
+    // 项目卡片：仅本周新增项目（本周新建或本周变更阶段），明细字段取自查询 2
     for (const p of weeklyNewProjects) {
       const entry = maintainerMap.get(p.createdById)
       if (!entry) continue
+      const detail = detailById.get(p.id)
+      if (!detail) continue
 
       entry.projects.push({
         id: p.id,
-        name: p.name,
-        companyPosition: p.companyPosition,
-        industry: p.industry,
-        financingRound: p.financingRound,
-        totalAmount: p.totalAmount,
+        name: detail.name,
+        companyPosition: detail.companyPosition,
+        industry: detail.industry,
+        financingRound: detail.financingRound,
+        totalAmount: detail.totalAmount,
         followStage: p.followStage,
       })
     }

@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import DashboardLayout from '@/components/DashboardLayout'
 import Pagination from '@/components/Pagination'
 import { followStageLabels, followStageColors, type FollowStage } from '../projects/types'
-import { fetchWithCache, getCachedData, subscribeCache, setupFocusRefresh } from '@/lib/cache'
+// 服务端分页后工作台数据不再走前端缓存（卡片计数用 facets 轻量接口）
 
 interface Project {
   id: string
@@ -140,7 +140,10 @@ const stageIcons: Record<FollowStage, JSX.Element> = {
 export default function WorkbenchPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
-  const [projects, setProjects] = useState<Project[]>([])
+  /** 阶段卡片计数（facets=current，followStage 当前所处口径，随经理筛选联动） */
+  const [currentStageCounts, setCurrentStageCounts] = useState<Record<string, number> | null>(null)
+  /** 当前选中阶段的项目列表（服务端分页：仅当前页 + total） */
+  const [stageList, setStageList] = useState<{ projects: Project[]; total: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [stageRequests, setStageRequests] = useState<StageChangeRequest[]>([])
   const [requestsLoading, setRequestsLoading] = useState(false)
@@ -168,51 +171,12 @@ export default function WorkbenchPage() {
 
   // session 加载完成后才发起数据请求，避免 isPartner 未就绪时的无效请求
   useEffect(() => {
-    if (status === 'authenticated') {
-      // 初始数据：优先从缓存读取（瞬时显示，无 loading）
-      const scope = isPartner ? 'all' : 'mine'
-      const cacheKey = `workbench:projects:${scope}`
-      const cached = getCachedData<Project[]>(cacheKey)
-      if (cached) {
-        setProjects(cached)
-        setLoading(false)
-      }
-      fetchProjects()
-      if (isPartner) {
-        fetchStageRequests()
-        fetchManagers()
-      }
+    if (status === 'authenticated' && isPartner) {
+      fetchStageRequests()
+      fetchManagers()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status])
-
-  // 订阅缓存变化（后台刷新完成后自动更新 UI）
-  useEffect(() => {
-    if (status !== 'authenticated') return
-    const scope = isPartner ? 'all' : 'mine'
-    const cacheKey = `workbench:projects:${scope}`
-    const unsubscribe = subscribeCache(cacheKey, () => {
-      const cached = getCachedData<Project[]>(cacheKey)
-      if (cached) setProjects(cached)
-    })
-    return unsubscribe
-  }, [status, isPartner])
-
-  // 窗口获焦时自动刷新（数据过期时）
-  useEffect(() => {
-    if (status !== 'authenticated') return
-    const scope = isPartner ? 'all' : 'mine'
-    const cacheKey = `workbench:projects:${scope}`
-    return setupFocusRefresh<Project[]>(
-      [cacheKey],
-      [async () => {
-        const response = await fetch(`/api/projects?scope=${scope}`)
-        const result = await response.json()
-        return result.projects || []
-      }],
-      30 * 1000
-    )
-  }, [status, isPartner])
 
   const fetchManagers = async () => {
     try {
@@ -226,34 +190,52 @@ export default function WorkbenchPage() {
     }
   }
 
-  const fetchProjects = async () => {
-    // 投资合伙人/管理员看所有项目；其他角色看个人维护的项目
-    const scope = isPartner ? 'all' : 'mine'
-    const cacheKey = `workbench:projects:${scope}`
-
-    // 有缓存则不显示 loading（瞬时显示缓存数据）
-    if (getCachedData<Project[]>(cacheKey)) {
-      setLoading(false)
-    } else {
-      setLoading(true)
-    }
-
+  /** 阶段卡片计数：facets=current（followStage 当前口径 + 经理筛选） */
+  const fetchStageCounts = useCallback(async () => {
     try {
-      const data = await fetchWithCache(
-        cacheKey,
-        async () => {
-          const response = await fetch(`/api/projects?scope=${scope}`)
-          const result = await response.json()
-          return result.projects || []
-        },
-        30 * 1000
-      )
-      setProjects(data)
+      const scope = isPartner ? 'all' : 'mine'
+      const qs = new URLSearchParams({ scope, facets: 'current' })
+      if (isPartner && selectedManagerId) qs.set('managerId', selectedManagerId)
+      const response = await fetch(`/api/projects?${qs.toString()}`)
+      const result = await response.json()
+      if (result.facets?.currentStageCounts) {
+        setCurrentStageCounts(result.facets.currentStageCounts)
+      }
     } catch (error) {
-      console.error('Failed to fetch projects:', error)
+      console.error('Failed to fetch stage counts:', error)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPartner, selectedManagerId])
+
+  /** 选中阶段的项目列表：服务端按 stage 分页 */
+  const fetchStageList = useCallback(async () => {
+    const scope = isPartner ? 'all' : 'mine'
+    const qs = new URLSearchParams({ scope, stage: selectedStage, page: String(stagePage), pageSize: String(STAGE_PAGE_SIZE) })
+    if (isPartner && selectedManagerId) qs.set('managerId', selectedManagerId)
+    setLoading(true)
+    try {
+      const response = await fetch(`/api/projects?${qs.toString()}`)
+      const result = await response.json()
+      setStageList({ projects: result.projects || [], total: result.total || 0 })
+    } catch (error) {
+      console.error('Failed to fetch stage list:', error)
     }
     setLoading(false)
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPartner, selectedStage, stagePage, selectedManagerId])
+
+  // 数据加载：计数随经理筛选变化；列表随阶段/页码/经理变化
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    fetchStageCounts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, selectedManagerId])
+
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    fetchStageList()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, selectedStage, stagePage, selectedManagerId])
 
   const fetchStageRequests = async () => {
     setRequestsLoading(true)
@@ -276,9 +258,10 @@ export default function WorkbenchPage() {
         body: JSON.stringify({ action }),
       })
       if (response.ok) {
-        // 刷新待办列表和项目列表
+        // 刷新待办列表、阶段计数和当前阶段项目列表
         fetchStageRequests()
-        fetchProjects()
+        fetchStageCounts()
+        fetchStageList()
       } else {
         const data = await response.json()
         alert(data.error || '操作失败')
@@ -302,19 +285,9 @@ export default function WorkbenchPage() {
   // 阶段或投资经理变化时重置分页
   useEffect(() => { setStagePage(1) }, [selectedStage, selectedManagerId])
 
-  // 应用筛选：投资合伙人可按投资经理筛选项目（按创建人）
-  const filteredProjects = isPartner && selectedManagerId
-    ? projects.filter(p => p.createdBy?.id === selectedManagerId)
-    : projects
-
-  // 按当前阶段分组（仅当前处于该阶段的项目计入）
-  const projectsByStage = visibleStages.map(stage => ({
-    stage,
-    label: followStageLabels[stage],
-    projects: filteredProjects.filter(p => p.followStage === stage),
-  }))
-
-  const totalProjects = filteredProjects.filter(p => visibleStages.includes(p.followStage)).length
+  // 服务端 facets 计数：阶段卡片 + 副标题总数（投资经理筛选在服务端生效）
+  const stageCountOf = (stage: FollowStage) => currentStageCounts?.[stage] || 0
+  const totalProjects = visibleStages.reduce((sum, stage) => sum + stageCountOf(stage), 0)
 
   return (
     <DashboardLayout
@@ -365,7 +338,7 @@ export default function WorkbenchPage() {
 
       {/* 阶段卡片栏：所有阶段（含已否）在同一行，点击筛选对应阶段项目 */}
       <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
-        {projectsByStage.map(({ stage, label, projects: stageProjects }) => {
+        {visibleStages.map(stage => {
           const isSelected = selectedStage === stage
           const isRejectedStage = stage === 'REJECTED'
           return (
@@ -384,8 +357,8 @@ export default function WorkbenchPage() {
               <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${stageGradients[stage]} flex items-center justify-center shadow-md flex-shrink-0`}>
                 {stageIcons[stage]}
               </div>
-              <div className={`text-lg font-bold leading-tight ${isRejectedStage ? 'text-red-600' : 'text-gray-900'}`}>{stageProjects.length}</div>
-              <div className={`text-xs truncate text-center w-full ${isRejectedStage ? 'text-red-500' : 'text-gray-500'}`}>{label}</div>
+              <div className={`text-lg font-bold leading-tight ${isRejectedStage ? 'text-red-600' : 'text-gray-900'}`}>{stageCountOf(stage)}</div>
+              <div className={`text-xs truncate text-center w-full ${isRejectedStage ? 'text-red-500' : 'text-gray-500'}`}>{followStageLabels[stage]}</div>
             </button>
           )
         })}
@@ -534,17 +507,13 @@ export default function WorkbenchPage() {
         </div>
       ) : (
         (() => {
-          const stageInfo = projectsByStage.find(s => s.stage === selectedStage)
-          const stageProjects = stageInfo?.projects || []
-          const stageLabel = stageInfo?.label || ''
+          const stageProjects = stageList?.projects || []
+          const stageTotal = stageList?.total || 0
+          const stageLabel = followStageLabels[selectedStage]
           const stageKey = selectedStage
 
-          // 分页计算
-          const totalStagePages = Math.ceil(stageProjects.length / STAGE_PAGE_SIZE)
-          const pagedStageProjects = stageProjects.slice(
-            (stagePage - 1) * STAGE_PAGE_SIZE,
-            stagePage * STAGE_PAGE_SIZE
-          )
+          // 服务端分页：total 来自接口
+          const totalStagePages = Math.max(1, Math.ceil(stageTotal / STAGE_PAGE_SIZE))
 
           return (
             <div className="bg-gradient-card rounded-2xl shadow-sm border border-primary-100 overflow-hidden">
@@ -553,10 +522,10 @@ export default function WorkbenchPage() {
                 <div className="flex items-center gap-2">
                   <span className="text-white font-semibold text-sm">{stageLabel}</span>
                   <span className="px-2 py-0.5 bg-white/20 rounded-full text-white text-xs font-medium">
-                    {stageProjects.length}
+                    {stageTotal}
                   </span>
                 </div>
-                {stageProjects.length > STAGE_PAGE_SIZE && (
+                {stageTotal > STAGE_PAGE_SIZE && (
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => setStagePage(stagePage - 1)}
@@ -590,7 +559,7 @@ export default function WorkbenchPage() {
                 </div>
               ) : (
                 <div className="divide-y divide-primary-50">
-                  {pagedStageProjects.map(project => (
+                  {stageProjects.map(project => (
                     <div
                       key={project.id}
                       className={`block px-5 py-3 hover:bg-primary-50/50 transition-colors border-l-4 ${stageBorderLeft[stageKey]}`}

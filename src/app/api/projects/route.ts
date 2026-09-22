@@ -4,8 +4,20 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import prisma from '@/lib/prisma'
 import { authOptions, type UserRole } from '@/lib/auth'
-import { canViewProject, isMaintainedByUser, type PermissionUser } from '@/lib/permissions'
+import { type PermissionUser } from '@/lib/permissions'
+import { buildProjectListWhere, buildProjectScopeWhere } from '@/lib/project-where'
 import { isHighlyOverlapping, similarity } from '@/lib/lead-match'
+
+/** 解析 passedStages JSON 数组字符串（累计阶段，与前端 getPassedStages 口径一致） */
+function parsePassedStages(passedStages: string | null): string[] {
+  if (!passedStages) return ['INITIAL_TALK']
+  try {
+    const arr = JSON.parse(passedStages)
+    return Array.isArray(arr) && arr.length > 0 ? arr : ['INITIAL_TALK']
+  } catch {
+    return ['INITIAL_TALK']
+  }
+}
 
 export async function GET(request: Request) {
   try {
@@ -16,7 +28,7 @@ export async function GET(request: Request) {
       : null
 
     // 未登录统一返回 401（项目规范）
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !currentUser) {
       return NextResponse.json(
         { error: '登录已过期，请退出后重新登录' },
         { status: 401 }
@@ -27,88 +39,66 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const scope = searchParams.get('scope') === 'mine' ? 'mine' : 'all'
 
-    // 性能优化：只查询列表页需要的字段，避免返回 description/coreTeam 等大文本字段
-    // 同时根据角色在数据库层面过滤，减少内存处理
-    let whereClause: any = {}
-
-    if (scope === 'mine' && currentUser) {
-      // scope=mine：只查询自己维护的项目（作为创建者或辅助维护人）
-      whereClause = {
-        OR: [
-          { createdById: currentUser.id },
-          { members: { some: { userId: currentUser.id } } },
-        ],
-      }
-    } else if (currentUser && currentUser.role !== 'ADMIN' && currentUser.role !== 'INVESTMENT_PARTNER' && currentUser.role !== 'INVESTMENT_MANAGER') {
-      // scope=all 但非管理员/合伙人/投资经理：只查询可见项目（自己维护的 + 已进入立项及之后阶段的）
-      // 投资经理在项目库可查看所有项目（canViewProject 返回 true），不加 where 过滤
-      whereClause = {
-        OR: [
-          { createdById: currentUser.id },
-          { members: { some: { userId: currentUser.id } } },
-          {
-            followStage: {
-              in: ['PROJECT_INITIATION', 'DUE_DILIGENCE', 'AGREEMENT', 'CLOSING', 'POST_INVESTMENT'],
-            },
-          },
-        ],
-      }
+    // ── 用户筛选参数（全部下推到数据库 where） ──
+    const filters = {
+      keyword: (searchParams.get('keyword') || '').trim().slice(0, 100) || undefined,
+      stage: (searchParams.get('stage') || '').trim().slice(0, 40) || undefined,
+      industry: (searchParams.get('industry') || '').trim().slice(0, 50) || undefined,
+      managerId: (searchParams.get('managerId') || '').trim() || undefined,
+    }
+    const yearNum = parseInt(searchParams.get('year') || '', 10)
+    const filtersWithYear = {
+      ...filters,
+      year: Number.isFinite(yearNum) && yearNum > 1900 && yearNum < 3000 ? yearNum : undefined,
     }
 
-    const projects = await prisma.project.findMany({
-      where: whereClause,
-      orderBy: { createdAt: 'desc' },
-      // 只查询列表页需要的字段，避免返回大文本字段
-      select: {
-        id: true,
-        name: true,
-        companyFullName: true,
-        industry: true,
-        companyPosition: true,
-        financingRound: true,
-        financingPlan: true,
-        followStage: true,
-        status: true,
-        totalAmount: true,
-        raisedAmount: true,
-        investmentValuation: true,
-        targetDate: true,
-        createdAt: true,
-        updatedAt: true,
-        createdById: true,
-        passedStages: true,
-        // 关联只查询计数需要的字段
-        _count: {
-          select: {
-            investors: true,
-            investments: true,
+    // ── 分页参数（不传 page = 兼容全量模式，老前端不受影响） ──
+    const pageParam = searchParams.get('page')
+    const paged = pageParam !== null && pageParam.trim() !== ''
+    const page = Math.max(1, parseInt(pageParam || '1', 10) || 1)
+    const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '50', 10) || 50))
+
+    // 可见性 + 筛选条件完全在 DB 层（等价性由 tests/project-where-equivalence.test.ts 保证）
+    const where = buildProjectListWhere(currentUser, scope, filtersWithYear)
+
+    const [projects, total] = await Promise.all([
+      prisma.project.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        ...(paged ? { skip: (page - 1) * pageSize, take: pageSize } : {}),
+        // 只查询列表页需要的字段，避免返回大文本字段
+        select: {
+          id: true,
+          name: true,
+          companyFullName: true,
+          industry: true,
+          companyPosition: true,
+          financingRound: true,
+          financingPlan: true,
+          followStage: true,
+          status: true,
+          totalAmount: true,
+          raisedAmount: true,
+          investmentValuation: true,
+          targetDate: true,
+          createdAt: true,
+          updatedAt: true,
+          createdById: true,
+          passedStages: true,
+          _count: {
+            select: {
+              investors: true,
+              investments: true,
+            },
           },
+          members: { select: { userId: true } },
+          createdBy: { select: { id: true, name: true } },
         },
-        members: { select: { userId: true } },
-        createdBy: { select: { id: true, name: true } },
-      },
-    })
+      }),
+      prisma.project.count({ where }),
+    ])
 
-    // 对 scope=all 的非管理员/合伙人，进一步过滤（数据库层面已处理大部分，这里做权限兜底）
-    const filteredProjects = projects.filter(project => {
-      const memberIds = project.members.map(m => m.userId)
-      const permProject = {
-        followStage: project.followStage,
-        createdById: project.createdById,
-        memberIds,
-      }
-
-      if (!canViewProject(currentUser, permProject)) return false
-
-      if (scope === 'mine') {
-        if (!currentUser) return false
-        if (!isMaintainedByUser(currentUser, permProject)) return false
-      }
-
-      return true
-    })
-
-    const result = filteredProjects.map(p => ({
+    const result = projects.map(p => ({
       id: p.id,
       name: p.name,
       companyFullName: p.companyFullName,
@@ -132,7 +122,63 @@ export async function GET(request: Request) {
       createdBy: p.createdBy,
     }))
 
-    return NextResponse.json({ projects: result, scope })
+    // ── facets（筛选下拉与统计卡片的数据源） ──
+    // 轻量查询：scope 基础集（不含 keyword/stage 筛选），只取 4 个统计字段
+    const facetRows = await prisma.project.findMany({
+      where: buildProjectScopeWhere(currentUser, scope),
+      select: { industry: true, targetDate: true, passedStages: true },
+      // workbench 场景不需要全量行排序，加个合理上限防御
+      take: 10000,
+    })
+
+    // 行业下拉：基础集去重（不随筛选变化，保证选项完整）
+    const industries = Array.from(
+      new Set(facetRows.map(r => r.industry).filter((i): i is string => !!i))
+    ).sort()
+
+    // 年份下拉：基础集 targetDate 年份降序
+    const years = Array.from(
+      new Set(
+        facetRows
+          .map(r => (r.targetDate ? new Date(r.targetDate).getFullYear() : null))
+          .filter((y): y is number => y !== null)
+      )
+    ).sort((a, b) => b - a)
+
+    // 累计阶段统计：随行业/年份筛选联动（不随搜索词/阶段本身，与前端原语义一致）
+    const yearAndIndustryRows = facetRows.filter(r => {
+      const matchesIndustry = !filtersWithYear.industry || r.industry === filtersWithYear.industry
+      const matchesYear =
+        filtersWithYear.year === undefined ||
+        (r.targetDate && new Date(r.targetDate).getFullYear() === filtersWithYear.year)
+      return matchesIndustry && matchesYear
+    })
+    const stageCounts: Record<string, number> = {}
+    for (const row of yearAndIndustryRows) {
+      for (const stage of parsePassedStages(row.passedStages)) {
+        stageCounts[stage] = (stageCounts[stage] || 0) + 1
+      }
+    }
+
+    // 当前所处阶段统计（workbench 阶段卡片用）：followStage 口径 + 经理筛选
+    let currentStageCounts: Record<string, number> | undefined
+    if ((searchParams.get('facets') || '').includes('current')) {
+      const grouped = await prisma.project.groupBy({
+        by: ['followStage'],
+        where: buildProjectListWhere(currentUser, scope, { managerId: filters.managerId }),
+        _count: { _all: true },
+      })
+      currentStageCounts = Object.fromEntries(grouped.map(g => [g.followStage, g._count._all]))
+    }
+
+    return NextResponse.json({
+      projects: result,
+      total,
+      page: paged ? page : 1,
+      pageSize: paged ? pageSize : total,
+      scope,
+      facets: { industries, years, stageCounts, ...(currentStageCounts ? { currentStageCounts } : {}) },
+    })
   } catch (error) {
     return NextResponse.json(
       { error: '获取项目列表失败' },

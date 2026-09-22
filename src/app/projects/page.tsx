@@ -7,7 +7,7 @@ import DashboardLayout from '@/components/DashboardLayout'
 import AILeadsTab from '@/components/AILeadsTab'
 import Pagination from '@/components/Pagination'
 import { followStageLabels, followStageColors, type FollowStage } from './types'
-import { fetchWithCache, getCachedData, subscribeCache, setupFocusRefresh, invalidateCache } from '@/lib/cache'
+// 服务端分页后列表数据不再走前端缓存（30s 旧页缓存弊大于利）
 
 interface Project {
   id: string
@@ -132,11 +132,24 @@ export default function ProjectListPage() {
   const userRole = session?.user?.role as string | undefined
 
   const [projects, setProjects] = useState<Project[]>([])
+  const [totalProjects, setTotalProjects] = useState(0)
+  /** 服务端 facets：行业下拉/年份下拉/阶段统计卡片的数据源 */
+  const [facets, setFacets] = useState<{ industries: string[]; years: number[]; stageCounts: Record<string, number> }>({
+    industries: [], years: [], stageCounts: {},
+  })
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedStage, setSelectedStage] = useState<FollowStage | 'all'>('all')
   const [selectedIndustry, setSelectedIndustry] = useState<string>('all')
   const [selectedYear, setSelectedYear] = useState<number | 'all'>('all')
+
+  // 搜索防抖（300ms，避免每个按键都请求服务端）
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
+  const [debouncedLeadSearchTerm, setDebouncedLeadSearchTerm] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300)
+    return () => clearTimeout(t)
+  }, [searchTerm])
 
   // Tab 切换：项目库 / 我的项目 / 项目线索
   // 初始为 null，等 session 加载后再确定默认 tab，避免投资经理先加载 all 再切换 mine 的双重请求
@@ -152,8 +165,13 @@ export default function ProjectListPage() {
 
   // 项目线索相关状态
   const [leads, setLeads] = useState<ProjectLead[]>([])
+  const [totalLeads, setTotalLeads] = useState(0)
   const [leadsLoading, setLeadsLoading] = useState(false)
   const [leadSearchTerm, setLeadSearchTerm] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedLeadSearchTerm(leadSearchTerm), 300)
+    return () => clearTimeout(t)
+  }, [leadSearchTerm])
   const [showLeadModal, setShowLeadModal] = useState(false)
   const [editingLead, setEditingLead] = useState<ProjectLead | null>(null)
   const [viewingLead, setViewingLead] = useState<ProjectLead | null>(null)
@@ -174,59 +192,28 @@ export default function ProjectListPage() {
   }, [sessionStatus, userRole, tab])
 
   // 筛选条件变化时重置分页
-  useEffect(() => { setProjectPage(1) }, [searchTerm, selectedStage, selectedIndustry, selectedYear])
-  useEffect(() => { setLeadPage(1) }, [leadSearchTerm])
-
-  // 订阅缓存变化（后台刷新完成后自动更新 UI）
   useEffect(() => {
-    const unsubAll = subscribeCache('projects:all', () => {
-      const cached = getCachedData<Project[]>('projects:all')
-      if (cached && tab === 'library') setProjects(cached)
-    })
-    const unsubMine = subscribeCache('projects:mine', () => {
-      const cached = getCachedData<Project[]>('projects:mine')
-      if (cached && tab === 'mine') setProjects(cached)
-    })
-    return () => { unsubAll(); unsubMine() }
-  }, [tab])
+    setProjectPage(1)
+    setMinePage(1)
+  }, [debouncedSearchTerm, selectedStage, selectedIndustry, selectedYear])
+  useEffect(() => { setLeadPage(1) }, [debouncedLeadSearchTerm])
 
-  // 窗口获焦时自动刷新当前 tab 的数据（数据过期时）
-  useEffect(() => {
-    if (tab !== 'library' && tab !== 'mine') return
-    const scope = tab === 'library' ? 'all' : 'mine'
-    const cacheKey = `projects:${scope}`
-    return setupFocusRefresh<Project[]>(
-      [cacheKey],
-      [async () => {
-        const response = await fetch(`/api/projects?scope=${scope}`)
-        const result = await response.json()
-        return result.projects || []
-      }],
-      30 * 1000
-    )
-  }, [tab])
-
-  // Tab 切换时触发请求（使用 AbortController 防竞态）
-  // tab 为 null 时不发起请求（等待 session 加载完成）
+  // 数据加载：tab / 页码 / 筛选变化时请求服务端分页数据（AbortController 防竞态）
   useEffect(() => {
     if (tab === null) return
     if (tab === 'leads') {
-      fetchLeads()
-    } else {
-      const currentScope = tab === 'library' ? 'all' : 'mine'
-      // 初始数据：优先从缓存读取（瞬时显示，无 loading）
-      const cacheKey = `projects:${currentScope}`
-      const cached = getCachedData<Project[]>(cacheKey)
-      if (cached) {
-        setProjects(cached)
-        setLoading(false)
-      }
-      fetchProjects(currentScope)
+      fetchLeads(leadPage)
+      return
     }
+    if (tab === 'ai-leads') return // AILeadsTab 组件自治
+    fetchProjects(
+      tab === 'library' ? 'all' : 'mine',
+      tab === 'library' ? projectPage : minePage
+    )
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab])
+  }, [tab, projectPage, minePage, leadPage, debouncedSearchTerm, debouncedLeadSearchTerm, selectedStage, selectedIndustry, selectedYear])
 
-  const fetchProjects = useCallback(async (currentScope: 'all' | 'mine') => {
+  const fetchProjects = useCallback(async (currentScope: 'all' | 'mine', page: number) => {
     // 取消上一个未完成的请求，防止旧响应覆盖新数据
     if (fetchProjectsAbort.current) {
       fetchProjectsAbort.current.abort()
@@ -234,30 +221,32 @@ export default function ProjectListPage() {
     const controller = new AbortController()
     fetchProjectsAbort.current = controller
 
-    const cacheKey = `projects:${currentScope}`
-
-    // 有缓存则不显示 loading（瞬时显示缓存数据）
-    if (getCachedData<Project[]>(cacheKey)) {
-      setLoading(false)
-    } else {
-      setLoading(true)
-    }
-
+    setLoading(true)
     try {
-      const data = await fetchWithCache(
-        cacheKey,
-        async () => {
-          const response = await fetch(`/api/projects?scope=${currentScope}`, {
-            signal: controller.signal,
-          })
-          const result = await response.json()
-          return result.projects || []
-        },
-        30 * 1000
-      )
+      const qs = new URLSearchParams()
+      qs.set('scope', currentScope)
+      qs.set('page', String(page))
+      qs.set('pageSize', String(currentScope === 'all' ? PROJECT_PAGE_SIZE : MINE_PAGE_SIZE))
+      if (debouncedSearchTerm) qs.set('keyword', debouncedSearchTerm)
+      if (selectedStage !== 'all') qs.set('stage', selectedStage)
+      if (selectedIndustry !== 'all') qs.set('industry', selectedIndustry)
+      if (selectedYear !== 'all') qs.set('year', String(selectedYear))
+
+      const response = await fetch(`/api/projects?${qs.toString()}`, {
+        signal: controller.signal,
+      })
+      const result = await response.json()
       // 仅在当前请求未被取消时才更新状态
       if (fetchProjectsAbort.current === controller) {
-        setProjects(data)
+        setProjects(result.projects || [])
+        setTotalProjects(result.total || 0)
+        if (result.facets) {
+          setFacets({
+            industries: result.facets.industries || [],
+            years: result.facets.years || [],
+            stageCounts: result.facets.stageCounts || {},
+          })
+        }
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
@@ -268,9 +257,10 @@ export default function ProjectListPage() {
     if (fetchProjectsAbort.current === controller) {
       setLoading(false)
     }
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearchTerm, selectedStage, selectedIndustry, selectedYear])
 
-  const fetchLeads = useCallback(async () => {
+  const fetchLeads = useCallback(async (page: number) => {
     if (fetchLeadsAbort.current) {
       fetchLeadsAbort.current.abort()
     }
@@ -280,11 +270,20 @@ export default function ProjectListPage() {
     setLeadsLoading(true)
     try {
       // 项目线索向所有账户开放，和项目库一样
-      const response = await fetch(`/api/project-leads?scope=all`, {
+      const qs = new URLSearchParams()
+      qs.set('scope', 'all')
+      qs.set('page', String(page))
+      qs.set('pageSize', String(LEAD_PAGE_SIZE))
+      if (debouncedLeadSearchTerm) qs.set('keyword', debouncedLeadSearchTerm)
+
+      const response = await fetch(`/api/project-leads?${qs.toString()}`, {
         signal: controller.signal,
       })
       const data = await response.json()
-      setLeads(data.leads || [])
+      if (fetchLeadsAbort.current === controller) {
+        setLeads(data.leads || [])
+        setTotalLeads(data.total || 0)
+      }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
         return
@@ -294,7 +293,8 @@ export default function ProjectListPage() {
     if (fetchLeadsAbort.current === controller) {
       setLeadsLoading(false)
     }
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedLeadSearchTerm])
 
   const openCreateLead = () => {
     setEditingLead(null)
@@ -350,7 +350,7 @@ export default function ProjectListPage() {
         }
       }
       setShowLeadModal(false)
-      fetchLeads()
+      fetchLeads(leadPage)
     } catch (error) {
       setLeadError(error instanceof Error ? error.message : '操作失败')
     }
@@ -367,82 +367,25 @@ export default function ProjectListPage() {
         return
       }
       setViewingLead(null)
-      fetchLeads()
+      fetchLeads(leadPage)
     } catch (error) {
       alert('删除失败')
     }
   }
 
-  // 从项目列表中提取不重复的行业
-  const industries = Array.from(
-    new Set(projects.map(p => p.industry).filter((i): i is string => !!i))
-  ).sort()
+  // 行业/年份下拉数据源：服务端 facets（基于权限范围的全集，不随筛选缩小）
+  const industries = facets.industries
+  const availableYears = facets.years
 
-  // 从项目列表中提取不重复的年份（基于初聊日期 targetDate），降序排列
-  const availableYears = Array.from(
-    new Set(
-      projects
-        .map(p => p.targetDate ? new Date(p.targetDate).getFullYear() : null)
-        .filter((y): y is number => y !== null)
-    )
-  ).sort((a, b) => b - a)
+  // 累计阶段统计：服务端按行业/年份联动计算（随 keyword/stage 筛选变化时由后端 facets 保证口径）
+  const stageCount = (stage: FollowStage) => facets.stageCounts[stage] || 0
 
-  // 解析项目的 passedStages（累计统计：经过的所有阶段）
-  const getPassedStages = (p: Project): FollowStage[] => {
-    if (!p.passedStages) return ['INITIAL_TALK']
-    try {
-      const arr = JSON.parse(p.passedStages)
-      return Array.isArray(arr) && arr.length > 0 ? arr : ['INITIAL_TALK']
-    } catch {
-      return ['INITIAL_TALK']
-    }
-  }
-
-  const filteredProjects = projects.filter(project => {
-    const matchesSearch = searchTerm === '' ||
-      project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      project.companyFullName?.toLowerCase().includes(searchTerm.toLowerCase())
-
-    // 按经过的阶段过滤（累计统计：点击某阶段显示所有经过该阶段的项目）
-    const matchesStage = selectedStage === 'all' || getPassedStages(project).includes(selectedStage)
-
-    const matchesIndustry = selectedIndustry === 'all' || project.industry === selectedIndustry
-
-    // 按年份过滤（基于初聊日期 targetDate）
-    const matchesYear = selectedYear === 'all' ||
-      (project.targetDate && new Date(project.targetDate).getFullYear() === selectedYear)
-
-    return matchesSearch && matchesStage && matchesIndustry && matchesYear
-  })
-
-  // 累计统计：经过某阶段的项目数量（而非当前处于某阶段）
-  // 注意：阶段统计应随年份、行业筛选联动，但不随阶段本身和搜索词联动（否则循环/无意义）
-  const yearAndIndustryFiltered = projects.filter(project => {
-    const matchesIndustry = selectedIndustry === 'all' || project.industry === selectedIndustry
-    const matchesYear = selectedYear === 'all' ||
-      (project.targetDate && new Date(project.targetDate).getFullYear() === selectedYear)
-    return matchesIndustry && matchesYear
-  })
-
-  const stageCount = (stage: FollowStage) =>
-    yearAndIndustryFiltered.filter(p => getPassedStages(p).includes(stage)).length
-
-  // 过滤项目线索
-  const filteredLeads = leads.filter(lead => {
-    if (!leadSearchTerm) return true
-    const term = leadSearchTerm.toLowerCase()
-    return (
-      lead.name.toLowerCase().includes(term) ||
-      lead.industry?.toLowerCase().includes(term) ||
-      lead.companyPosition?.toLowerCase().includes(term) ||
-      lead.mainProducts?.toLowerCase().includes(term)
-    )
-  })
-
-  // 分页计算
+  // 分页信息（服务端分页：projects/leads 即当前页数据，total 来自接口）
   const currentProjectPageSize = tab === 'library' ? PROJECT_PAGE_SIZE : MINE_PAGE_SIZE
   const currentProjectPage = tab === 'library' ? projectPage : minePage
   const setCurrentProjectPage = tab === 'library' ? setProjectPage : setMinePage
+  const pagedProjects = projects
+  const pagedLeads = leads
 
   // session 加载中或 tab 未确定时显示骨架屏
   if (tab === null || sessionStatus === 'loading') {
@@ -454,16 +397,8 @@ export default function ProjectListPage() {
       </DashboardLayout>
     )
   }
-  const totalProjectPages = Math.ceil(filteredProjects.length / currentProjectPageSize)
-  const pagedProjects = filteredProjects.slice(
-    (currentProjectPage - 1) * currentProjectPageSize,
-    currentProjectPage * currentProjectPageSize
-  )
-  const totalLeadPages = Math.ceil(filteredLeads.length / LEAD_PAGE_SIZE)
-  const pagedLeads = filteredLeads.slice(
-    (leadPage - 1) * LEAD_PAGE_SIZE,
-    leadPage * LEAD_PAGE_SIZE
-  )
+  const totalProjectPages = Math.max(1, Math.ceil(totalProjects / currentProjectPageSize))
+  const totalLeadPages = Math.max(1, Math.ceil(totalLeads / LEAD_PAGE_SIZE))
 
   return (
     <DashboardLayout
@@ -592,7 +527,7 @@ export default function ProjectListPage() {
             <div className="flex items-center justify-center py-16">
               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
             </div>
-          ) : filteredLeads.length === 0 ? (
+          ) : leads.length === 0 && totalLeads === 0 ? (
             <div className="bg-gradient-card rounded-2xl shadow-sm p-16 text-center border border-primary-100">
               <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-primary-50 flex items-center justify-center">
                 <svg className="w-8 h-8 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -609,7 +544,7 @@ export default function ProjectListPage() {
                 currentPage={leadPage}
                 totalPages={totalLeadPages}
                 onPageChange={setLeadPage}
-                total={filteredLeads.length}
+                total={totalLeads}
                 pageSize={LEAD_PAGE_SIZE}
               />
             </div>
@@ -781,7 +716,7 @@ export default function ProjectListPage() {
             <div className="flex items-center justify-center py-16">
               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
             </div>
-          ) : filteredProjects.length === 0 ? (
+          ) : projects.length === 0 && totalProjects === 0 ? (
             <div className="bg-gradient-card rounded-2xl shadow-sm p-16 text-center border border-primary-100">
               <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-primary-50 flex items-center justify-center">
                 <svg className="w-8 h-8 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -798,7 +733,7 @@ export default function ProjectListPage() {
                 currentPage={currentProjectPage}
                 totalPages={totalProjectPages}
                 onPageChange={setCurrentProjectPage}
-                total={filteredProjects.length}
+                total={totalProjects}
                 pageSize={currentProjectPageSize}
               />
             </div>

@@ -29,7 +29,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url)
     const scope = searchParams.get('scope') === 'mine' ? 'mine' : 'all'
-    const keyword = searchParams.get('keyword')?.trim() || ''
+    const keyword = (searchParams.get('keyword') || '').trim().slice(0, 100)
 
     // 权限矩阵：
     // - ADMIN / INVESTMENT_PARTNER: 查看全部线索（scope=all）
@@ -45,23 +45,41 @@ export async function GET(request: Request) {
       }
     }
 
+    // 搜索下推（大小写不敏感；字段与前端线索搜索一致，含 mainProducts）
     if (keyword) {
       where.OR = [
-        { name: { contains: keyword } },
-        { industry: { contains: keyword } },
-        { companyPosition: { contains: keyword } },
+        { name: { contains: keyword, mode: 'insensitive' } },
+        { industry: { contains: keyword, mode: 'insensitive' } },
+        { companyPosition: { contains: keyword, mode: 'insensitive' } },
+        { mainProducts: { contains: keyword, mode: 'insensitive' } },
       ]
     }
 
-    const leads = await prisma.projectLead.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        createdBy: { select: { id: true, name: true } },
-      },
-    })
+    // 分页参数（不传 page = 兼容全量模式）
+    const pageParam = searchParams.get('page')
+    const paged = pageParam !== null && pageParam.trim() !== ''
+    const page = Math.max(1, parseInt(pageParam || '1', 10) || 1)
+    const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '30', 10) || 30))
 
-    return NextResponse.json({ leads, scope })
+    const [leads, total] = await Promise.all([
+      prisma.projectLead.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        ...(paged ? { skip: (page - 1) * pageSize, take: pageSize } : {}),
+        include: {
+          createdBy: { select: { id: true, name: true } },
+        },
+      }),
+      prisma.projectLead.count({ where }),
+    ])
+
+    return NextResponse.json({
+      leads,
+      total,
+      page: paged ? page : 1,
+      pageSize: paged ? pageSize : total,
+      scope,
+    })
   } catch (error) {
     console.error('Project leads GET error:', error)
     return NextResponse.json(

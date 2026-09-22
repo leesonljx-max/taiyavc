@@ -68,10 +68,20 @@ export default function AILeadsTab() {
   const canTrigger = userRole === 'ADMIN' || userRole === 'INVESTMENT_PARTNER'
 
   const [leads, setLeads] = useState<AILead[]>([])
+  const [totalLeads, setTotalLeads] = useState(0)
+  /** 服务端统计卡片数据（权限基础集上的四象限计数） */
+  const [stats, setStats] = useState({ total: 0, released: 0, locked: 0, converted: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [filter, setFilter] = useState<'all' | 'released' | 'locked' | 'converted'>('all')
+
+  // 搜索防抖（300ms，避免每个按键都请求服务端）
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300)
+    return () => clearTimeout(t)
+  }, [searchTerm])
 
   // 分页：每页 30 条
   const AI_LEAD_PAGE_SIZE = 30
@@ -111,7 +121,7 @@ export default function AILeadsTab() {
   // AbortController
   const fetchAbort = useRef<AbortController | null>(null)
 
-  const fetchLeads = useCallback(async () => {
+  const fetchLeads = useCallback(async (pageNum: number, keyword: string, statusFilter: string) => {
     if (fetchAbort.current) fetchAbort.current.abort()
     const controller = new AbortController()
     fetchAbort.current = controller
@@ -119,7 +129,14 @@ export default function AILeadsTab() {
     setLoading(true)
     setError('')
     try {
-      const response = await fetch('/api/ai-leads?scope=all', {
+      const qs = new URLSearchParams()
+      qs.set('scope', 'all')
+      qs.set('page', String(pageNum))
+      qs.set('pageSize', String(AI_LEAD_PAGE_SIZE))
+      if (keyword) qs.set('keyword', keyword)
+      if (statusFilter !== 'all') qs.set('status', statusFilter)
+
+      const response = await fetch(`/api/ai-leads?${qs.toString()}`, {
         signal: controller.signal,
       })
       const contentType = response.headers.get('content-type') || ''
@@ -127,7 +144,17 @@ export default function AILeadsTab() {
         throw new Error(`服务器返回错误 (${response.status})`)
       }
       const data = await response.json()
+      if (fetchAbort.current !== controller) return
       setLeads(data.leads || [])
+      setTotalLeads(data.total || 0)
+      if (data.stats) {
+        setStats({
+          total: data.stats.total || 0,
+          released: data.stats.released || 0,
+          locked: data.stats.locked || 0,
+          converted: data.stats.converted || 0,
+        })
+      }
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return
       setError(e instanceof Error ? e.message : '获取 AI 线索失败')
@@ -135,9 +162,11 @@ export default function AILeadsTab() {
     if (fetchAbort.current === controller) setLoading(false)
   }, [])
 
+  // 页码 / 搜索 / 状态筛选变化时请求服务端分页数据
   useEffect(() => {
-    fetchLeads()
-  }, [fetchLeads])
+    fetchLeads(page, debouncedSearchTerm, filter)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, debouncedSearchTerm, filter])
 
   const handleRetrieve = async () => {
     if (!confirm('确定要触发 AI 检索任务吗？该任务会调用 DeepSeek 和 Bing 搜索，可能需要 30 秒以上。')) return
@@ -151,7 +180,7 @@ export default function AILeadsTab() {
         throw new Error(data.error || '检索失败')
       }
       setRetrievalResult(data.result)
-      fetchLeads()
+      fetchLeads(page, debouncedSearchTerm, filter)
     } catch (e) {
       setError(e instanceof Error ? e.message : '检索失败')
     }
@@ -168,7 +197,7 @@ export default function AILeadsTab() {
         return
       }
       setViewingLead(null)
-      fetchLeads()
+      fetchLeads(page, debouncedSearchTerm, filter)
     } catch {
       alert('删除失败')
     }
@@ -229,7 +258,7 @@ export default function AILeadsTab() {
       }
       alert(`已成功转化为项目「${data.project.name}」`)
       setConvertingLead(null)
-      fetchLeads()
+      fetchLeads(page, debouncedSearchTerm, filter)
     } catch (e) {
       setConvertError(e instanceof Error ? e.message : '转化失败')
     }
@@ -247,44 +276,12 @@ export default function AILeadsTab() {
     }
   }
 
-  // 过滤
-  const filteredLeads = leads.filter(lead => {
-    // 搜索过滤
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase()
-      const matched =
-        lead.name.toLowerCase().includes(term) ||
-        lead.industry?.toLowerCase().includes(term) ||
-        lead.companyPosition?.toLowerCase().includes(term) ||
-        lead.mainProducts?.toLowerCase().includes(term) ||
-        lead.fundingRound?.toLowerCase().includes(term) ||
-        lead.coreAdvantage?.toLowerCase().includes(term)
-      if (!matched) return false
-    }
-    // 状态过滤
-    if (filter === 'released') return !!lead.releasedAt && lead.status !== 'CONVERTED'
-    if (filter === 'locked') return !lead.releasedAt && lead.status !== 'CONVERTED'
-    if (filter === 'converted') return lead.status === 'CONVERTED'
-    return true
-  })
-
-  // 统计
-  const stats = {
-    total: leads.length,
-    released: leads.filter(l => !!l.releasedAt && l.status !== 'CONVERTED').length,
-    locked: leads.filter(l => !l.releasedAt && l.status !== 'CONVERTED').length,
-    converted: leads.filter(l => l.status === 'CONVERTED').length,
-  }
-
   // 筛选条件变化时重置分页
-  useEffect(() => { setPage(1) }, [searchTerm, filter])
+  useEffect(() => { setPage(1) }, [debouncedSearchTerm, filter])
 
-  // 分页计算
-  const totalPages = Math.ceil(filteredLeads.length / AI_LEAD_PAGE_SIZE)
-  const pagedLeads = filteredLeads.slice(
-    (page - 1) * AI_LEAD_PAGE_SIZE,
-    page * AI_LEAD_PAGE_SIZE
-  )
+  // 分页信息（服务端分页：leads 即当前页数据，total/stats 来自接口）
+  const totalPages = Math.max(1, Math.ceil(totalLeads / AI_LEAD_PAGE_SIZE))
+  const pagedLeads = leads
 
   return (
     <>
@@ -405,7 +402,7 @@ export default function AILeadsTab() {
         <div className="flex items-center justify-center py-16">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
         </div>
-      ) : filteredLeads.length === 0 ? (
+      ) : leads.length === 0 && totalLeads === 0 ? (
         <div className="bg-gradient-card rounded-2xl shadow-sm p-16 text-center border border-primary-100">
           <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-purple-50 flex items-center justify-center">
             <svg className="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -424,7 +421,7 @@ export default function AILeadsTab() {
             currentPage={page}
             totalPages={totalPages}
             onPageChange={setPage}
-            total={filteredLeads.length}
+            total={totalLeads}
             pageSize={AI_LEAD_PAGE_SIZE}
           />
         </div>

@@ -12,8 +12,27 @@ export type PermissionProject = {
   memberIds: string[]
 }
 
-const RESTRICTED_STAGES: FollowStage[] = ['PRE_DD', 'PROJECT_INITIATION', 'DUE_DILIGENCE', 'AGREEMENT', 'CLOSING', 'POST_INVESTMENT']
-const PUBLIC_STAGES: FollowStage[] = ['INITIAL_TALK']
+export const RESTRICTED_STAGES: FollowStage[] = ['PRE_DD', 'PROJECT_INITIATION', 'DUE_DILIGENCE', 'AGREEMENT', 'CLOSING', 'POST_INVESTMENT']
+export const PUBLIC_STAGES: FollowStage[] = ['INITIAL_TALK']
+
+/** 全部阶段值（新增 FollowStage 枚举值时必须同步，等价性测试会拦截漂移） */
+export const ALL_VIEW_STAGES: FollowStage[] = [
+  'INITIAL_TALK', 'PRE_DD', 'PROJECT_INITIATION', 'DUE_DILIGENCE',
+  'AGREEMENT', 'CLOSING', 'POST_INVESTMENT', 'REJECTED',
+]
+
+/**
+ * 兜底放行阶段 = 全集 - 公开 - 受限（canViewProject 的最后 return true 分支）
+ */
+export const FALLBACK_VIEW_STAGES: FollowStage[] = ALL_VIEW_STAGES.filter(
+  s => !PUBLIC_STAGES.includes(s) && !RESTRICTED_STAGES.includes(s)
+)
+
+/**
+ * 无需成员身份即可被所有人查看的阶段 = 公开阶段 ∪ 兜底放行阶段
+ * （由上方名单自动派生，新增枚举值只需维护 ALL/RESTRICTED/PUBLIC 三张名单）
+ */
+export const OPEN_VIEW_STAGES: FollowStage[] = [...PUBLIC_STAGES, ...FALLBACK_VIEW_STAGES]
 
 /**
  * 是否能查看项目（项目库 + 项目详情）
