@@ -28,6 +28,17 @@ interface ResearchProject {
   hasCompletedReport: boolean
   /** 待补充资料模块数 */
   pendingCount: number
+  /** 尽调工作台：进行中批次徽标（进度/红旗） */
+  ddWorkbench: {
+    batchId: string
+    status: string
+    round: string | null
+    done: number
+    total: number
+    redFlags: number
+  } | null
+  /** 已冻结批次数（历史报告版本） */
+  frozenBatchCount: number
 }
 
 interface Stats {
@@ -95,12 +106,6 @@ export default function ResearchPage() {
     router.push(`/research/${projectId}`)
   }
 
-  // 模块进度百分比
-  const getProgressPercent = (p: ResearchProject) => {
-    if (!p.moduleProgress || p.moduleProgress.total === 0) return 0
-    return Math.round((p.moduleProgress.analyzed / p.moduleProgress.total) * 100)
-  }
-
   // 按项目分组的待办
   const pendingByProject = (stats?.pendingItems || []).reduce<Record<string, PendingItem[]>>((acc, item) => {
     if (!acc[item.projectName]) acc[item.projectName] = []
@@ -113,74 +118,64 @@ export default function ResearchPage() {
       title="项目尽调"
       subtitle="尽调阶段项目的尽调报告与模块资料管理"
     >
-      {/* ── 三个统计卡片（可点击） ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        {/* 我的尽调项目 */}
+      {/* ── 四概览卡（设计稿风格：尽调项目 / 进行中批次 / 已冻结批次 / 待决问题） ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        {/* 尽调项目（可点击 → 项目列表） */}
         <button
           onClick={() => { setShowProjects(true); setShowPending(false) }}
-          className={`text-left rounded-2xl shadow-sm p-5 border transition-all-smooth hover:shadow-md ${
-            showProjects ? 'dd-card border-[#b6b1ee] ring-2 ring-[#b6b1ee]/40' : 'dd-card'
+          className={`text-left rounded-xl border p-4 transition-all hover:shadow-sm ${
+            showProjects ? 'bg-blue-50/40 border-blue-300 ring-2 ring-blue-100' : 'bg-white border-gray-100 hover:border-blue-200'
           }`}
         >
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-[#b6b1ee] to-[#8d84e0] rounded-xl flex items-center justify-center shadow-md shadow-[#8d84e0]/30 flex-shrink-0">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
-              </svg>
-            </div>
-            <div className="flex-1">
-              <div className="text-3xl font-bold text-gray-900">{stats?.myProjects ?? '—'}</div>
-              <div className="text-sm text-gray-500 mt-0.5">我的尽调项目</div>
-            </div>
-            <svg className={`w-4 h-4 text-[#8d84e0] transition-transform ${showProjects ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </div>
+          <p className="text-[11px] text-gray-400 font-medium">尽调项目</p>
+          <p className="mt-1">
+            <span className="text-2xl font-bold text-gray-900">{stats?.myProjects ?? '—'}</span>
+            <span className="text-xs text-gray-400 ml-1">深度验证中</span>
+          </p>
+          <p className="mt-1.5 text-[10px] text-gray-400">点击查看尽调项目队列</p>
         </button>
 
-        {/* 已生成尽调报告 */}
-        <div className="dd-card rounded-2xl shadow-sm p-5">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-xl flex items-center justify-center shadow-md shadow-emerald-500/30 flex-shrink-0">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-gray-900">{stats?.completedReports ?? '—'}</div>
-              <div className="text-sm text-gray-500 mt-0.5">已生成尽调报告</div>
-              <div className="text-xs text-gray-400 mt-0.5">报告完整且无需补充资料</div>
-            </div>
-          </div>
+        {/* 进行中批次 */}
+        <div className="rounded-xl border border-gray-100 bg-white p-4">
+          <p className="text-[11px] text-gray-400 font-medium">进行中批次</p>
+          <p className="mt-1">
+            <span className="text-2xl font-bold text-gray-900">
+              {projects.filter(p => p.ddWorkbench).length}
+            </span>
+            <span className="text-xs text-gray-400 ml-1">个批次</span>
+          </p>
+          <p className="mt-1.5 text-[10px] text-gray-400">
+            累计红旗 {projects.reduce((s, p) => s + (p.ddWorkbench?.redFlags || 0), 0)} 个待关闭
+          </p>
         </div>
 
-        {/* 待办事项 */}
+        {/* 已冻结批次（投委会材料） */}
+        <div className="rounded-xl border border-gray-100 bg-white p-4">
+          <p className="text-[11px] text-gray-400 font-medium">已冻结批次</p>
+          <p className="mt-1">
+            <span className="text-2xl font-bold text-gray-900">
+              {projects.reduce((s, p) => s + (p.frozenBatchCount || 0), 0)}
+            </span>
+            <span className="text-xs text-gray-400 ml-1">份投委会材料</span>
+          </p>
+          <p className="mt-1.5 text-[10px] text-gray-400">完整尽调报告 {stats?.completedReports ?? 0} 份</p>
+        </div>
+
+        {/* 待决问题（可点击 → 待办面板） */}
         <button
           onClick={() => { setShowPending(true); setShowProjects(false) }}
-          className={`text-left rounded-2xl shadow-sm p-5 border transition-all-smooth hover:shadow-md ${
-            showPending ? 'dd-card border-amber-300 ring-2 ring-amber-200' : 'dd-card'
+          className={`text-left rounded-xl border p-4 transition-all hover:shadow-sm ${
+            showPending ? 'bg-amber-50/50 border-amber-300 ring-2 ring-amber-100' : 'bg-white border-gray-100 hover:border-amber-200'
           }`}
         >
-          <div className="flex items-center gap-4">
-            <div className="relative w-12 h-12 bg-gradient-to-br from-amber-400 to-amber-600 rounded-xl flex items-center justify-center shadow-md shadow-amber-500/30 flex-shrink-0">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-              {(stats?.pendingItems.length ?? 0) > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 px-1.5 py-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[20px]">
-                  {stats?.pendingItems.length}
-                </span>
-              )}
-            </div>
-            <div className="flex-1">
-              <div className="text-3xl font-bold text-gray-900">{stats?.pendingItems.length ?? '—'}</div>
-              <div className="text-sm text-gray-500 mt-0.5">待办事项</div>
-              <div className="text-xs text-gray-400 mt-0.5">各项目需补充的资料</div>
-            </div>
-            <svg className={`w-4 h-4 text-amber-500 transition-transform ${showPending ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </div>
+          <p className="text-[11px] text-gray-400 font-medium">待决问题</p>
+          <p className="mt-1">
+            <span className={`text-2xl font-bold ${(stats?.pendingItems.length ?? 0) > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+              {stats?.pendingItems.length ?? 0}
+            </span>
+            <span className="text-xs text-gray-400 ml-1">会前关闭</span>
+          </p>
+          <p className="mt-1.5 text-[10px] text-gray-400">各项目需补充的资料缺口</p>
         </button>
       </div>
 
@@ -263,15 +258,35 @@ export default function ResearchPage() {
           ) : (
             <div className="space-y-2">
               {projects.map(project => {
-                const progressPercent = getProgressPercent(project)
+                // 批次状态标签（进行中批次）或冻结徽标
+                const wb = project.ddWorkbench
+                const batchBadge = wb
+                  ? {
+                      label: `${wb.status === 'IN_REVIEW' ? '复核中' : '尽调'}${wb.round ? ` · ${wb.round}` : ''} ${wb.done}/${wb.total}`,
+                      cls: wb.status === 'IN_REVIEW'
+                        ? 'bg-amber-50 text-amber-700 border-amber-200'
+                        : 'bg-blue-50 text-blue-700 border-blue-200',
+                      title: `尽调批次${wb.round ? `（${wb.round}）` : ''}：${wb.done}/${wb.total} 模块完成${wb.redFlags > 0 ? ` · ${wb.redFlags} 个红旗` : ''}`,
+                    }
+                  : project.frozenBatchCount > 0
+                    ? {
+                        label: `❄ 已冻结 ${project.frozenBatchCount} 批`,
+                        cls: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                        title: `已冻结 ${project.frozenBatchCount} 批尽调报告（投委会材料）`,
+                      }
+                    : null
+                // 四段分段进度条：优先批次 done/total，回退模块 analyzed/total
+                const segTotal = wb?.total || project.moduleProgress?.total || 9
+                const segDone = wb?.done ?? project.moduleProgress?.analyzed ?? 0
+                const litSegs = Math.round((segDone / Math.max(segTotal, 1)) * 4)
                 return (
                   <button
                     key={project.id}
                     onClick={() => handleCardClick(project.id)}
-                    className="w-full text-left dd-card rounded-xl shadow-sm hover:shadow-md transition-all-smooth border px-4 py-3 flex items-center gap-4 group focus:outline-none focus:ring-2 focus:ring-[#b6b1ee]"
+                    className="w-full text-left dd-card rounded-xl shadow-sm hover:shadow-md transition-all-smooth border border-gray-100 px-4 py-3.5 group focus:outline-none focus:ring-2 focus:ring-blue-200 hover:border-blue-200"
                   >
-                    {/* 状态指示灯 */}
-                    <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
+                    {/* 第一行：状态灯 + 项目名 + 定位 | 金额 + 待补 */}
+                    <div className="flex items-center gap-3">
                       <span
                         className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
                           project.hasCompletedReport
@@ -284,69 +299,75 @@ export default function ResearchPage() {
                         }`}
                         title={
                           project.hasCompletedReport ? '尽调报告完整'
-                            : project.ddReportStatus === 'RUNNING' ? '分析中'
+                            : project.ddReportStatus === 'RUNNING' ? 'AI 分析中'
                             : project.pendingCount > 0 ? `${project.pendingCount} 项资料待补充`
                             : '未生成报告'
                         }
                       />
-                      {project.hasCompletedReport && (
-                        <span className="text-[9px] text-emerald-600 font-medium">完整</span>
-                      )}
-                    </div>
-
-                    {/* 项目名称 + 公司定位 */}
-                    <div className="flex items-center gap-3 min-w-0 w-[38%]">
-                      <h3 className="text-sm font-semibold text-gray-900 group-hover:text-[#6f63c9] transition-colors truncate flex-shrink-0">
+                      <h3 className="text-sm font-bold text-gray-900 group-hover:text-blue-600 transition-colors truncate flex-shrink-0">
                         {project.name}
                       </h3>
                       {project.companyPosition && (
-                        <span className="text-xs text-gray-500 truncate">
+                        <span className="text-xs text-gray-400 truncate hidden md:block">
                           {project.companyPosition}
                         </span>
                       )}
-                    </div>
-
-                    {/* 融资金额 */}
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <svg className="w-3.5 h-3.5 text-[#8d84e0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span className="text-sm font-medium text-[#6f63c9] whitespace-nowrap">
+                      {project.industry && (
+                        <span className="px-1.5 py-0.5 bg-slate-50 text-gray-500 text-[10px] rounded whitespace-nowrap flex-shrink-0 hidden lg:inline">
+                          {project.industry}
+                        </span>
+                      )}
+                      <div className="flex-1"></div>
+                      <span className="text-sm font-bold text-blue-600 whitespace-nowrap">
                         {project.totalAmount || '-'}
                       </span>
                       {project.pendingCount > 0 && (
-                        <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-medium rounded-full whitespace-nowrap">
+                        <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full whitespace-nowrap">
                           {project.pendingCount}项待补
                         </span>
                       )}
                     </div>
 
-                    <div className="flex-1"></div>
-
-                    {/* 模块资料更新进度 */}
-                    <div className="flex items-center gap-2 flex-shrink-0 w-[200px]">
-                      <span className="text-xs text-gray-400 whitespace-nowrap">
-                        模块 {project.moduleProgress?.analyzed ?? 0}/{project.moduleProgress?.total ?? 9}
-                      </span>
-                      <div className="flex-1 h-1.5 bg-[#efedfb] rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-[#b6b1ee] to-[#8d84e0] rounded-full transition-all-smooth"
-                          style={{ width: `${progressPercent}%` }}
-                        />
+                    {/* 第二行：批次状态标签 + 红旗 + 四段分段进度 + 可视化报告入口 */}
+                    <div className="mt-2.5 flex items-center gap-3">
+                      {batchBadge ? (
+                        <span
+                          className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold whitespace-nowrap flex-shrink-0 ${batchBadge.cls}`}
+                          title={batchBadge.title}
+                        >
+                          {batchBadge.label}
+                          {wb && wb.redFlags > 0 && (
+                            <span className="text-red-500 ml-1">⚑{wb.redFlags}</span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-400 text-[10px] font-bold whitespace-nowrap flex-shrink-0">
+                          未发起尽调批次
+                        </span>
+                      )}
+                      {/* 四段分段进度条（资料→抽取→复核→冻结 按完成度点亮） */}
+                      <div className="flex gap-1 flex-shrink-0" title={`模块完成 ${segDone}/${segTotal}`}>
+                        {[0, 1, 2, 3].map(i => (
+                          <div
+                            key={i}
+                            className={`w-7 h-1.5 rounded-full ${i < litSegs ? 'bg-blue-500' : 'bg-gray-200'}`}
+                          />
+                        ))}
                       </div>
-                      <span className="text-xs text-[#6f63c9] font-medium w-8 text-right">{progressPercent}%</span>
+                      <span className="text-[10px] text-gray-400 whitespace-nowrap">
+                        {segDone}/{segTotal} 模块
+                      </span>
+                      <div className="flex-1"></div>
+                      <span
+                        onClick={e => {
+                          e.stopPropagation()
+                          router.push(`/research/${project.id}/view`)
+                        }}
+                        className="text-xs text-gray-400 hover:text-blue-600 font-medium cursor-pointer px-2 py-0.5 rounded hover:bg-blue-50 transition-colors flex-shrink-0 whitespace-nowrap"
+                      >
+                        可视化报告 →
+                      </span>
                     </div>
-
-                    {/* 可视化报告入口 */}
-                    <span
-                      onClick={e => {
-                        e.stopPropagation()
-                        router.push(`/research/${project.id}/view`)
-                      }}
-                      className="text-xs text-[#8d84e0] hover:text-[#6f63c9] font-medium cursor-pointer px-2 py-1 rounded hover:bg-[#efedfb] transition-colors flex-shrink-0 whitespace-nowrap"
-                    >
-                      可视化报告 →
-                    </span>
                   </button>
                 )
               })}

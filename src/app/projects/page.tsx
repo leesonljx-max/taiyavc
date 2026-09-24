@@ -133,9 +133,9 @@ export default function ProjectListPage() {
 
   const [projects, setProjects] = useState<Project[]>([])
   const [totalProjects, setTotalProjects] = useState(0)
-  /** 服务端 facets：行业下拉/年份下拉/阶段统计卡片的数据源 */
-  const [facets, setFacets] = useState<{ industries: string[]; years: number[]; stageCounts: Record<string, number> }>({
-    industries: [], years: [], stageCounts: {},
+  /** 服务端 facets：行业下拉/年份下拉/统计卡片的数据源 */
+  const [facets, setFacets] = useState<{ industries: string[]; years: number[]; totalCount: number; stageCounts: Record<string, number> }>({
+    industries: [], years: [], totalCount: 0, stageCounts: {},
   })
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -244,6 +244,7 @@ export default function ProjectListPage() {
           setFacets({
             industries: result.facets.industries || [],
             years: result.facets.years || [],
+            totalCount: result.facets.totalCount || 0,
             stageCounts: result.facets.stageCounts || {},
           })
         }
@@ -610,7 +611,7 @@ export default function ProjectListPage() {
         <>
           {/* 统计卡片区域 - 项目库 + 7个阶段 */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-6">
-            {/* 项目库卡片 */}
+            {/* 项目总数卡片（服务端 facets 统计，不随分页截断；随行业/年份筛选联动） */}
             <button
               onClick={() => setSelectedStage('all')}
               className={`bg-gradient-card rounded-2xl p-5 shadow-sm border transition-all-smooth text-left ${
@@ -622,8 +623,8 @@ export default function ProjectListPage() {
                   {stageIcons.all}
                 </div>
                 <div className="min-w-0">
-                  <div className="text-2xl font-bold text-gray-900">{projects.length}</div>
-                  <div className="text-xs text-gray-500">项目库</div>
+                  <div className="text-2xl font-bold text-gray-900">{facets.totalCount}</div>
+                  <div className="text-xs text-gray-500">项目总数</div>
                 </div>
               </div>
             </button>

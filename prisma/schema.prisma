@@ -57,6 +57,7 @@ model Project {
   documents        ProjectDocument[]
   researchModules  ResearchModule[]
   ddReport         DDReport?
+  ddBatches        DDBatch[]
   createdBy        User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   @@index([name])
@@ -150,6 +151,18 @@ model User {
   researchComments   ResearchComment[]
   // AI行研会话
   aiChatSessions     AIChatSession[]
+  // 尽调批次：作为发起人
+  ddBatchesInitiated DDBatch[] @relation("DDBatchInitiator")
+  // 尽调模块任务：作为负责人
+  ddTasksOwned       DDTask[] @relation("DDTaskOwner")
+  // 尽调证据：作为创建人
+  ddEvidencesCreated DDEvidence[] @relation("DDEvidenceCreator")
+  // 尽调证据：作为确认人
+  ddEvidencesConfirmed DDEvidence[] @relation("DDEvidenceConfirmer")
+  // 尽调报告版本：作为冻结人
+  ddReportVersionsFrozen DDReportVersion[] @relation("DDReportFreezer")
+  // 项目解读（AI行研）：上传人
+  projectInterpretations ProjectInterpretation[] @relation("ProjectInterpretations")
 }
 
 // 项目线索（用于在新建项目时进行重合检测和合并，也用于AI自动检索）
@@ -544,6 +557,169 @@ model DDModuleResult {
 
   @@unique([reportId, moduleKey])
   @@index([reportId])
+}
+
+// ═══════════════════════════════════════════════════════════
+// 尽调工作台（《项目尽调模块优化技术规划与执行方案》P0）
+// 以尽调批次为底座：批次 → 九大模块任务 → 证据片段 → 报告版本（冻结）
+// 闭环：资料上传—结构化抽取—证据引用—模块报告—整包投委会报告
+// ═══════════════════════════════════════════════════════════
+
+// 尽调批次：一个项目可有多批尽调（如 Pre-A 轮、A 轮）
+// 每批按模板版本生成独立任务与报告版本；仅冻结版本可进入投委会材料
+model DDBatch {
+  id              String    @id @default(cuid())
+  projectId       String
+  round           String?   // 融资轮次（如 "A轮"、"Pre-A"，空=不限）
+  templateVersion String    @default("v1") // 生成任务所用的模板版本
+  status          String    @default("IN_PROGRESS") // IN_PROGRESS / IN_REVIEW / FROZEN
+  initiatedById   String    // 发起人
+  dueDate         DateTime? // 尽调截止日
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  project        Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  initiatedBy    User               @relation("DDBatchInitiator", fields: [initiatedById], references: [id], onDelete: Cascade)
+  tasks          DDTask[]
+  evidences      DDEvidence[]
+  reportVersions DDReportVersion[]
+
+  @@index([projectId])
+  @@index([status])
+}
+
+// 模块任务：按模板 v1 生成的九大尽调模块
+// 驱动完成度（状态+结论+红旗），不以"有文字"替代"完成"
+model DDTask {
+  id           String   @id @default(cuid())
+  batchId      String
+  moduleKey    String   // 模板模块标识（src/lib/dd-workbench/template.ts）
+  status       String   @default("PENDING") // PENDING / IN_PROGRESS / IN_REVIEW / DONE / BLOCKED
+  conclusion   String?  // 人工结论（进入正式报告；冻结时随快照固化）
+  aiDraft      String?  // AI 草稿（仅供人工参考，不直接进入正式结论）
+  ownerId      String?  // 负责人（模板建议责任可被重新分配）
+  redFlagLevel String   @default("NONE") // NONE / MEDIUM / HIGH
+  sortKey      Int      @default(0) // 展示顺序（模板顺序）
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  batch      DDBatch      @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  owner      User?        @relation("DDTaskOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  evidences  DDEvidence[]
+
+  @@unique([batchId, moduleKey])
+  @@index([batchId])
+  @@index([ownerId])
+}
+
+// 证据片段：事实与结论的可追溯来源（证据链核心对象）
+// - sourceType=DOCUMENT：引用项目资料（documentId + location 定位页码/段落）
+// - sourceType=WEB：外部链接（sourceUrl + 创建时间即抓取时间记录）
+// - sourceType=MANUAL：访谈/口述（一手陈述，等级固定为 B）
+// 等级 A 原始或权威 / B 一手陈述 / C 可信二手 / D 待核验（D 不得支撑关键结论）
+model DDEvidence {
+  id            String    @id @default(cuid())
+  batchId       String
+  taskId        String
+  sourceType    String    // DOCUMENT / WEB / MANUAL
+  documentId    String?   // 引用的项目资料（ProjectDocument.id；不建外键，资料删除后证据保留溯源编号）
+  sourceUrl     String?   // WEB 来源链接
+  sourceLabel   String?   // 来源名称（如 "审计报告"、"36氪报道"、"创始人访谈"）
+  location      String?   // 定位：页码/章节/段落（如 "P12 第3节"）
+  excerpt       String    // 摘录原文（结论必须可定位到此处）
+  grade         String    @default("C") // A / B / C / D
+  status        String    @default("PENDING") // PENDING / CONFIRMED / CONFLICT
+  note          String?   // 冲突说明 / 备注补充
+  createdById   String
+  confirmedById String?   // 确认人（人工复核留痕）
+  confirmedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  batch       DDBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  task        DDTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  createdBy   User    @relation("DDEvidenceCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  confirmedBy User?   @relation("DDEvidenceConfirmer", fields: [confirmedById], references: [id], onDelete: SetNull)
+
+  @@index([batchId])
+  @@index([taskId])
+  @@index([documentId])
+}
+
+// 报告版本：冻结快照（不可静默修改）
+// 仅 FROZEN 版本可进入投委会材料库；每次冻结版本号批次内自增
+model DDReportVersion {
+  id          String   @id @default(cuid())
+  batchId     String
+  reportType  String   // FULL_PACKAGE（整包）/ MODULE（单模块）
+  moduleKey   String?  // MODULE 类型时的模块标识
+  version     Int      @default(1) // 批次内自增版本号
+  contentJson String   // 冻结快照：模块结论 + 证据索引 + 红旗 + 未决问题 + 进度
+  frozenById  String
+  frozenAt    DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  batch     DDBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  frozenBy  User    @relation("DDReportFreezer", fields: [frozenById], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@index([reportType])
+}
+
+// ═══════════════════════════════════════════════════════════
+// 项目解读（AI行研 · 固定分析框架模板）
+// 上传项目文档 → 七维解读（市场地位/技术领先性/团队咖位/竞争/创业窗口/
+// 市场地位预估/10条行业融资案例）+ 问题清单（15-20问、10+技术问题、
+// 每题带行业与技术视角的理想答案）→ 逐题上传访谈文件闭环校验 → 综合结论
+// ═══════════════════════════════════════════════════════════
+
+model ProjectInterpretation {
+  id                 String   @id @default(cuid())
+  userId             String
+  projectName        String   // 项目名（用户填写或 AI 从文档推断）
+  fileName           String   // 原始文件名
+  fileUrl            String   // 文件访问 URL
+  fileType           String   // MIME 类型
+  fileSize           Int      // 字节
+  documentText       String?  // 上传时提取的文档文本（供 AI 分析）
+  status             String   @default("UPLOADED") // UPLOADED / INTERPRETING / INTERPRETED / FAILED
+  interpretationJson String?  // 七维解读结果（固定模板结构）
+  questionsStatus    String   @default("PENDING") // PENDING / GENERATING / READY / FAILED
+  conclusionJson     String?  // 综合分析结论（访谈校验后生成）
+  // 批量访谈校验：整个项目只上传一次访谈纪要，自动校验全部问题
+  verifyStatus       String   @default("PENDING") // PENDING / RUNNING / DONE / FAILED
+  interviewFileName  String?  // 访谈纪要文件名（音频或文档）
+  interviewFileUrl   String?  // 访谈纪要文件 URL
+  interviewText      String?  // 本次校验使用的访谈全文（文档提取/音频转写粘贴）
+  error              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user       User                     @relation("ProjectInterpretations", fields: [userId], references: [id], onDelete: Cascade)
+  questions  InterpretationQuestion[]
+
+  @@index([userId])
+}
+
+// 解读问题清单条目（每题带理想答案 + 访谈校验结果）
+model InterpretationQuestion {
+  id               String   @id @default(cuid())
+  interpretationId String
+  order            Int      // 展示顺序
+  category         String   // TECH / MARKET / TEAM / BUSINESS / FINANCE
+  question         String   // 必须提问的问题
+  idealAnswer      String   // 行业与技术视角的理想答案（前端浅色字体显示）
+  verifyStatus     String   @default("PENDING") // PENDING / VERIFIED
+  verifyFileName   String?  // 访谈文件名（音频或文档）
+  verifyFileUrl    String?  // 访谈文件 URL
+  verifyText       String?  // 访谈内容文本（文档自动提取 / 音频转写粘贴）
+  verifyResultJson String?  // 校验结果：{ matchLevel, gapAnalysis, conclusion }
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  interpretation   ProjectInterpretation @relation(fields: [interpretationId], references: [id], onDelete: Cascade)
+
+  @@index([interpretationId])
 }
 
 // ═══════════════════════════════════════════════════════════

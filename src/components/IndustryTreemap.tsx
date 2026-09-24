@@ -17,26 +17,39 @@ export interface TreemapDatum {
   count: number
 }
 
+/** 点击方块时回传方块中心坐标（相对图谱容器，用于喷射动画起点） */
+export interface TreemapOrigin {
+  x: number
+  y: number
+}
+
 interface IndustryTreemapProps {
   industries: TreemapDatum[]
   /** 当前选中行业（点击块 toggle） */
   selected: string | null
-  onSelect: (industry: string | null) => void
+  onSelect: (industry: string | null, origin?: TreemapOrigin) => void
 }
 
-/** 块渐变色对（浅 → 深），按项目数排名循环取色 */
-const PALETTE: Array<[string, string]> = [
-  ['#6366f1', '#4338ca'], // indigo
-  ['#3b82f6', '#1d4ed8'], // blue
-  ['#06b6d4', '#0e7490'], // cyan
-  ['#10b981', '#047857'], // emerald
-  ['#f59e0b', '#b45309'], // amber
-  ['#ec4899', '#be185d'], // pink
-  ['#8b5cf6', '#6d28d9'], // violet
-  ['#64748b', '#334155'], // slate
-]
+/**
+ * 单蓝色系磨砂玻璃配色：按数量占比连续插值（数量多 → 深蓝，数量少 → 浅蓝）
+ * 返回 [填充色 rgba, 文字色]
+ */
+function frostBlue(ratio: number): { fill: string; text: string; border: string } {
+  const lerp = (a: number, b: number, t: number) => Math.round(a + (b - a) * t)
+  // 深蓝 blue-900 (30,58,138) → 浅蓝 blue-200 (191,219,254)
+  const c1 = [30, 58, 138]
+  const c2 = [191, 219, 254]
+  const t = 1 - Math.min(1, Math.max(0, ratio)) // ratio 高 → t 低 → 深色
+  const rgb = c1.map((v, i) => lerp(v, c2[i], t))
+  return {
+    // 半透明填充叠在浅色渐变底上形成磨砂玻璃质感
+    fill: `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.82)`,
+    text: t < 0.55 ? '#ffffff' : '#1e3a8a', // 深块白字，浅块深蓝字
+    border: 'rgba(255,255,255,0.65)',
+  }
+}
 
-/** 前十行业在块上显示排名角标（通过 label prefix） */
+/** 前十行业在块上显示排名前缀 */
 const TOP_N_BADGE = 10
 
 export default function IndustryTreemap({ industries, selected, onSelect }: IndustryTreemapProps) {
@@ -53,10 +66,15 @@ export default function IndustryTreemap({ industries, selected, onSelect }: Indu
     const chart = echarts.init(containerRef.current)
     chartRef.current = chart
 
-    // 点击行业块：toggle 选中（nodeClick 已禁用默认下钻）
+    // 点击行业块：toggle 选中，并把方块中心坐标回传（喷射动画起点）
     chart.on('click', params => {
       if (params.seriesType !== 'treemap' || typeof params.name !== 'string') return
-      onSelectRef.current(selectedRef.current === params.name ? null : params.name)
+      const ev = params.event as { offsetX?: number; offsetY?: number } | undefined
+      const origin =
+        typeof ev?.offsetX === 'number' && typeof ev?.offsetY === 'number'
+          ? { x: ev.offsetX, y: ev.offsetY }
+          : undefined
+      onSelectRef.current(selectedRef.current === params.name ? null : params.name, origin)
     })
 
     const observer = new ResizeObserver(() => chart.resize())
@@ -95,41 +113,37 @@ export default function IndustryTreemap({ industries, selected, onSelect }: Indu
           top: 0,
           right: 0,
           bottom: 0,
-          itemStyle: { borderWidth: 2, borderColor: '#fff', gapWidth: 2, borderRadius: 6 },
+          // 磨砂玻璃质感：半透明填充 + 白色半透明描边 + 圆角 + 柔和阴影
+          itemStyle: { borderWidth: 2, borderColor: 'rgba(255,255,255,0.65)', gapWidth: 3, borderRadius: 10 },
           label: {
             show: true,
             formatter: p => {
               const idx = (p.dataIndex as number) ?? 0
               const badge = idx < TOP_N_BADGE ? `${idx + 1}. ` : ''
-              const name = String(p.name ?? '')
-              return `{badge|${badge}}{name|${name}}\n{count|${p.value} 个项目}`
+              return `${badge}${p.name}\n${p.value} 个项目`
             },
-            rich: {
-              badge: { fontSize: 11, color: 'rgba(255,255,255,0.75)', fontWeight: 'bold' },
-              name: { fontSize: 13, color: '#fff', fontWeight: 'bold' },
-              count: { fontSize: 11, color: 'rgba(255,255,255,0.85)', padding: [4, 0, 0, 0] },
-            },
+            fontSize: 13,
+            fontWeight: 'bold',
+            lineHeight: 18,
             overflow: 'truncate',
           },
           upperLabel: { show: false },
           data: industries.map((item, idx) => {
-            const [c1, c2] = PALETTE[idx % PALETTE.length]
+            const ratio = item.count / maxCount
+            const color = frostBlue(ratio)
             const isSelected = selected === item.industry
             return {
               name: item.industry,
               value: item.count,
+              label: { color: color.text },
               itemStyle: {
-                color: {
-                  type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
-                  colorStops: [
-                    { offset: 0, color: c1 },
-                    { offset: 1, color: c2 },
-                  ],
-                },
-                borderColor: isSelected ? '#312e81' : '#fff',
+                color: color.fill,
+                borderColor: isSelected ? '#1e3a8a' : color.border,
                 borderWidth: isSelected ? 4 : 2,
+                shadowBlur: isSelected ? 16 : 6,
+                shadowColor: 'rgba(30,58,138,0.25)',
               },
-              emphasis: { itemStyle: { shadowBlur: 12, shadowColor: 'rgba(0,0,0,0.35)' } },
+              emphasis: { itemStyle: { shadowBlur: 14, shadowColor: 'rgba(30,58,138,0.4)' } },
             }
           }),
         },
@@ -139,9 +153,10 @@ export default function IndustryTreemap({ industries, selected, onSelect }: Indu
   }, [industries, selected])
 
   return (
+    // 浅蓝渐变底衬托半透明色块，形成磨砂玻璃质感
     <div
       ref={containerRef}
-      className="w-full"
+      className="w-full rounded-2xl bg-gradient-to-br from-blue-50 via-indigo-50/60 to-sky-50"
       style={{ height: `${Math.max(300, Math.min(460, industries.length * 36 + 160))}px` }}
     />
   )

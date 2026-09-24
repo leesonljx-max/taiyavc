@@ -153,6 +153,8 @@ export async function GET(request: Request) {
         (r.targetDate && new Date(r.targetDate).getFullYear() === filtersWithYear.year)
       return matchesIndustry && matchesYear
     })
+    // 项目总数卡片（不随搜索词/阶段联动，与阶段卡片同口径；非累计——每个项目只计一次）
+    const totalCount = yearAndIndustryRows.length
     const stageCounts: Record<string, number> = {}
     for (const row of yearAndIndustryRows) {
       for (const stage of parsePassedStages(row.passedStages)) {
@@ -177,7 +179,13 @@ export async function GET(request: Request) {
       page: paged ? page : 1,
       pageSize: paged ? pageSize : total,
       scope,
-      facets: { industries, years, stageCounts, ...(currentStageCounts ? { currentStageCounts } : {}) },
+      facets: {
+        industries,
+        years,
+        totalCount,
+        stageCounts,
+        ...(currentStageCounts ? { currentStageCounts } : {}),
+      },
     })
   } catch (error) {
     return NextResponse.json(

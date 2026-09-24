@@ -70,6 +70,15 @@ export async function GET() {
             },
           },
         },
+        // 尽调工作台批次（列表徽标：进行中批次进度/红旗 + 冻结历史数）
+        ddBatches: {
+          select: {
+            id: true,
+            status: true,
+            round: true,
+            tasks: { select: { status: true, redFlagLevel: true } },
+          },
+        },
       },
       orderBy: { updatedAt: 'desc' },
     })
@@ -114,6 +123,21 @@ export async function GET() {
         }
       }
 
+      // 尽调工作台批次徽标：进行中批次（进度/红旗）+ 冻结历史数
+      const batches = project.ddBatches || []
+      const activeBatch = batches.find(b => b.status !== 'FROZEN') || null
+      const ddWorkbench = activeBatch
+        ? {
+            batchId: activeBatch.id,
+            status: activeBatch.status,
+            round: activeBatch.round,
+            done: activeBatch.tasks.filter(t => t.status === 'DONE').length,
+            total: activeBatch.tasks.length,
+            redFlags: activeBatch.tasks.filter(t => t.redFlagLevel !== 'NONE').length,
+          }
+        : null
+      const frozenBatchCount = batches.filter(b => b.status === 'FROZEN').length
+
       return {
         ...project,
         moduleProgress: {
@@ -124,8 +148,11 @@ export async function GET() {
         ddReportStatus: dd ? dd.status : null,
         hasCompletedReport,
         pendingCount: insufficientModules.length,
+        ddWorkbench,
+        frozenBatchCount,
         members: undefined, // 不暴露 memberIds
         ddReport: undefined,
+        ddBatches: undefined,
       }
     })
 

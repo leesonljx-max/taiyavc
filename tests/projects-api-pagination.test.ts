@@ -45,6 +45,7 @@ async function fetchJson(params: Record<string, string | number> = {}): Promise<
     facets: {
       industries: string[]
       years: number[]
+      totalCount: number
       stageCounts: Record<string, number>
       currentStageCounts?: Record<string, number>
     }
@@ -203,6 +204,32 @@ test('facets：industries/years 完整；stageCounts 随 industry 联动', async
   // 半导体芯片行业：只有项目乙经过 PRE_DD → 1
   const semi = await fetchJson({ page: 1, pageSize: 1, industry: '半导体芯片' })
   assert.equal(semi.body.facets.stageCounts['PRE_DD'], 1)
+})
+
+test('facets.totalCount：项目总数不随分页截断，随 industry/year 联动、不随 keyword/stage 联动', async () => {
+  asAdmin()
+  // 分页 pageSize=1 时 totalCount 仍为全集 6（不随分页截断）
+  const paged = await fetchJson({ page: 1, pageSize: 1 })
+  assert.equal(paged.body.projects.length, 1)
+  assert.equal(paged.body.facets.totalCount, 6)
+
+  // 随 industry 联动：半导体芯片 = 2
+  const semi = await fetchJson({ page: 1, pageSize: 1, industry: '半导体芯片' })
+  assert.equal(semi.body.facets.totalCount, 2)
+
+  // 随 year 联动：去年 = 1
+  const lastYear = await fetchJson({ page: 1, pageSize: 1, year: year - 1 })
+  assert.equal(lastYear.body.facets.totalCount, 1)
+
+  // 不随 keyword 联动：搜索无结果时 totalCount 仍为 6
+  const kw = await fetchJson({ page: 1, pageSize: 1, keyword: '不存在的关键词' })
+  assert.equal(kw.body.total, 0)
+  assert.equal(kw.body.facets.totalCount, 6)
+
+  // 不随 stage 联动
+  const stage = await fetchJson({ page: 1, pageSize: 1, stage: 'PRE_DD' })
+  assert.equal(stage.body.total, 2)
+  assert.equal(stage.body.facets.totalCount, 6)
 })
 
 test('facets=current：currentStageCounts 按 followStage 当前口径 + managerId 联动', async () => {

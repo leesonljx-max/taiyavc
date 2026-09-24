@@ -2,6 +2,11 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // pdf-parse v2 被 webpack 打包后运行时报
+  // "Object.defineProperty called on non-object"，必须作为外部包原生加载
+  experimental: {
+    serverComponentsExternalPackages: ['pdf-parse'],
+  },
   typescript: {
     ignoreBuildErrors: true,
   },

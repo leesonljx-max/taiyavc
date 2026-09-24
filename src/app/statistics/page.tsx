@@ -14,6 +14,10 @@ const IndustryTreemap = dynamic(() => import('@/components/IndustryTreemap'), {
     </div>
   ),
 })
+// 点击行业块后的 3D 喷射项目卡片（CSS 3D 动画）
+const IndustryProjectsBurst = dynamic(() => import('@/components/IndustryProjectsBurst'), {
+  ssr: false,
+})
 
 interface IndustryProject {
   id: string
@@ -64,16 +68,6 @@ interface IndustryNewsData {
   topIndustries?: string[]
 }
 
-const stageLabels: Record<string, string> = {
-  INITIAL_TALK: '初聊',
-  PRE_DD: 'PreDD',
-  PROJECT_INITIATION: '立项',
-  DUE_DILIGENCE: '尽调',
-  AGREEMENT: '协议',
-  CLOSING: '交割',
-  POST_INVESTMENT: '投后',
-}
-
 /** 事件类型徽章配色 */
 const EVENT_TYPE_STYLES: Record<string, string> = {
   融资: 'bg-rose-100 text-rose-700',
@@ -110,6 +104,8 @@ export default function StatisticsPage() {
   const [industryLoading, setIndustryLoading] = useState(false)
   const [industryError, setIndustryError] = useState('')
   const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null)
+  /** 点击方块的中心坐标（喷射动画起点，相对图谱容器） */
+  const [burstOrigin, setBurstOrigin] = useState<{ x: number; y: number } | null>(null)
 
   // 行业动态
   const [newsData, setNewsData] = useState<IndustryNewsData | null>(null)
@@ -144,14 +140,16 @@ export default function StatisticsPage() {
     }
   }
 
-  /** 切换时间维度 / 年份：清空行业选中态 */
+  /** 切换时间维度 / 年份：清空行业选中态与喷射动画起点 */
   const changeRange = (range: 'month' | 'quarter' | 'half' | 'year') => {
     setSelectedRange(range)
     setSelectedIndustry(null)
+    setBurstOrigin(null)
   }
   const changeYear = (year: number) => {
     setSelectedYear(year)
     setSelectedIndustry(null)
+    setBurstOrigin(null)
   }
 
   // ── 行业动态：读取当日缓存（cron 每日 04:00 生成） ──
@@ -323,65 +321,39 @@ export default function StatisticsPage() {
 
             {!industryLoading && !industryError && industryData && industryData.industries.length > 0 && (
               <>
-                {/* ECharts 矩形树图：块面积 = 项目数，点击选中/取消 */}
+                {/* 图谱容器：relative 包裹，喷射卡片 overlay 覆盖其上 */}
+                <div className="relative">
+                {/* ECharts 矩形树图：块面积 = 项目数，单色蓝磨砂渐变 */}
                 <IndustryTreemap
                   industries={industryData.industries.map(ind => ({ industry: ind.industry, count: ind.count }))}
                   selected={selectedIndustry}
-                  onSelect={setSelectedIndustry}
+                  onSelect={(industry, origin) => {
+                    setSelectedIndustry(industry)
+                    setBurstOrigin(origin ?? { x: 220, y: 150 })
+                  }}
                 />
 
-                {/* 选中行业：项目列表 + 行业动态分析按钮 */}
-                {selectedIndustry && (
-                  <div className="mt-4 pt-4 border-t border-gray-100">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-sm font-semibold text-gray-700">
-                        {selectedIndustry} · 项目列表
-                      </h3>
-                      <div className="flex items-center gap-2">
-                        {/* ═══ 行业动态分析按钮（点击气泡后出现） ═══ */}
-                        <button
-                          onClick={() => handleAnalyzeIndustry(selectedIndustry)}
-                          disabled={analyzingIndustry !== null}
-                          className="px-3 py-1.5 bg-gradient-to-r from-indigo-500 to-primary-600 text-white text-xs font-bold rounded-lg hover:from-indigo-600 hover:to-primary-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-indigo-500/20 transition-all"
-                        >
-                          {analyzingIndustry === selectedIndustry ? (
-                            <span className="inline-flex items-center gap-1">
-                              <span className="animate-spin inline-block w-3 h-3 border-b-2 border-white rounded-full"></span>
-                              动态收集中...
-                            </span>
-                          ) : (
-                            '⚡ 行业动态分析'
-                          )}
-                        </button>
-                        <button
-                          onClick={() => setSelectedIndustry(null)}
-                          className="text-xs text-gray-400 hover:text-gray-600"
-                        >
-                          收起
-                        </button>
-                      </div>
-                    </div>
-                    <div className="space-y-2 max-h-[200px] overflow-y-auto">
-                      {industryData.industries.find(i => i.industry === selectedIndustry)?.projects.map(p => (
-                        <div key={p.id} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg text-sm">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="font-medium text-gray-900 truncate">{p.name}</span>
-                            <span className="text-xs text-gray-400 flex-shrink-0">{stageLabels[p.followStage] || p.followStage}</span>
-                          </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            {p.financingRound && <span className="text-xs text-primary-600">{p.financingRound}</span>}
-                            {p.totalAmount && <span className="text-xs text-gray-500">{p.totalAmount}</span>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                {/* 点击行业块：项目卡片从方块位置 3D 喷射浮现（替代下方列表） */}
+                {selectedIndustry && burstOrigin && (() => {
+                  const stat = industryData.industries.find(i => i.industry === selectedIndustry)
+                  if (!stat) return null
+                  return (
+                    <IndustryProjectsBurst
+                      industry={stat.industry}
+                      projects={stat.projects}
+                      origin={burstOrigin}
+                      onAnalyze={() => handleAnalyzeIndustry(selectedIndustry)}
+                      analyzing={analyzingIndustry === selectedIndustry}
+                      onClose={() => { setSelectedIndustry(null); setBurstOrigin(null) }}
+                    />
+                  )
+                })()}
+                </div>
 
                 {/* 图例 */}
                 <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
-                  <span>气泡大小 = 项目数量 · 角标 = 前十行业</span>
-                  <span>点击气泡查看项目列表与动态分析</span>
+                  <span>块面积 = 项目数量 · 颜色深浅 = 数量等级 · 角标 = 前十行业</span>
+                  <span>点击方块喷射查看项目并动态分析</span>
                 </div>
               </>
             )}

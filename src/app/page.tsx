@@ -57,9 +57,13 @@ interface DashboardData {
 }
 
 // 数据获取函数（独立于组件，供缓存模块使用）
+// 注意：非 2xx 响应必须抛错，防止错误体（如 401 的 {error}）被 fetchWithCache 当数据缓存
 async function fetchDashboardData(): Promise<DashboardData> {
   const response = await fetch('/api/dashboard')
   const result = await response.json()
+  if (!response.ok) {
+    throw new Error(result.error || '获取仪表盘数据失败')
+  }
   return result as DashboardData
 }
 
@@ -182,7 +186,7 @@ export default function HomePage() {
             {data && (
               <p className="text-sm text-gray-500 mt-0.5">
                 共 {data.maintainerStats?.length || 0} 位维护人
-                {data.weeklyProjects.length > 0 && ` · 本周新增 ${data.weeklyProjects.length} 个`}
+                {data.weeklyProjects && data.weeklyProjects.length > 0 && ` · 本周新增 ${data.weeklyProjects.length} 个`}
               </p>
             )}
           </div>

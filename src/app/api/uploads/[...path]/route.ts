@@ -18,10 +18,18 @@ const MIME_TYPES: Record<string, string> = {
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   '.xls': 'application/vnd.ms-excel',
   '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.txt': 'text/plain',
+  '.md': 'text/markdown',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.ogg': 'audio/ogg',
+  '.flac': 'audio/flac',
 }
 
 // 只允许访问这些目录
-const ALLOWED_DIRS = new Set(['avatars', 'project-docs', 'project-images', 'research-docs'])
+const ALLOWED_DIRS = new Set(['avatars', 'project-docs', 'project-images', 'research-docs', 'interpretation-docs'])
 
 export async function GET(
   _request: Request,

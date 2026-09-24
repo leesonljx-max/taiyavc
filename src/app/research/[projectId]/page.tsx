@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react'
 import DashboardLayout from '@/components/DashboardLayout'
 import DocumentPreviewModal from '@/components/DocumentPreviewModal'
 import DDReportPanel from '@/components/research/DDReportPanel'
+import DDBatchWorkbench from '@/components/dd-workbench/DDBatchWorkbench'
 import { compressImage } from '@/lib/image-compress'
 
 // ── 类型定义 ──
@@ -200,6 +201,18 @@ export default function ResearchDetailPage() {
           }
         />
 
+        {/* 尽调工作台（批次 → 九大模块任务 → 证据链 → 投委会报告闭环） */}
+        <DDBatchWorkbench
+          projectId={params.projectId}
+          projectName={project.name}
+          canEdit={
+            (session?.user?.role as string) === 'ADMIN' ||
+            (session?.user?.role as string) === 'INVESTMENT_PARTNER' ||
+            project.createdById === (session?.user?.id as string) ||
+            project.isMaintainer === true
+          }
+        />
+
         {/* 项目基本信息（不含主要产品/核心优势，已移至各尽调模块） */}
         <div className="dd-card rounded-2xl shadow-sm border p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">项目基本信息</h2>
@@ -216,7 +229,8 @@ export default function ResearchDetailPage() {
         {/* 投资亮点（手动填写 + AI 总结） */}
         <HighlightsCard project={project} onDataUpdate={fetchData} />
 
-        {/* 9 个模块 */}
+        {/* 9 个模块（资料中心锚点：工作台"资料中心"按钮滚动定位到此） */}
+        <div id="dd-resource-center" />
         {MODULE_ORDER.map(moduleType => (
           <ModuleSection
             key={moduleType}
