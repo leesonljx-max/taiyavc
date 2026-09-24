@@ -93,6 +93,8 @@ export default function ProjectInterpretationPanel() {
   // 粘贴文本备选通道（扫描件 PDF / 图片型 BP 直接粘贴项目内容）
   const [pastedText, setPastedText] = useState('')
   const [pasteBusy, setPasteBusy] = useState(false)
+  // BP 文件先选择暂存，点「提交」后统一上传（可与访谈纪要一起提交）
+  const [bpFile, setBpFile] = useState<File | null>(null)
   // 初始上传：同时上传访谈纪要（可选）
   const [ivFile, setIvFile] = useState<File | null>(null)
   const [ivText, setIvText] = useState('')
@@ -192,6 +194,7 @@ export default function ProjectInterpretationPanel() {
       }
       const id = data.interpretation.id as string
       setPastedText('')
+      setBpFile(null)
       setIvText('')
       setIvFile(null)
       setProjectName('')
@@ -222,16 +225,33 @@ export default function ProjectInterpretationPanel() {
       }
       const id = data.interpretation.id as string
       setProjectName('')
+      setBpFile(null)
       setIvText('')
       setIvFile(null)
       await fetchList()
       await fetchDetail(id)
-      // 同时上传了访谈纪要 → 自动执行完整分析链路
+      // 同时上传了访谈纪要 → 自动执行完整分析链路；仅 BP → 手动点「解读项目」/「生成问题清单」
       if (data.interpretation.hasInterview) runAutoChain(id)
     } catch {
       setError('网络错误')
     } finally {
       setBusy(false)
+    }
+  }
+
+  /**
+   * 主提交按钮：BP 文件优先，其次粘贴文本；访谈纪要（文件/粘贴）随请求一并携带。
+   * - BP + 访谈纪要 → 提交后自动执行 解读 → 问题清单 → 校对 → 结论
+   * - 仅 BP → 提交后进入项目页，手动点击「解读项目」/「生成问题清单」
+   */
+  const handleSubmit = async () => {
+    if (busy || pasteBusy) return
+    if (bpFile) {
+      await handleUpload(bpFile)
+      return
+    }
+    if (pastedText.trim().length >= 100) {
+      await handlePasteUpload()
     }
   }
 
@@ -302,11 +322,11 @@ export default function ProjectInterpretationPanel() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-3xl mx-auto space-y-6">
-        {/* 上传框（初始界面） */}
+        {/* 上传框（初始界面）：BP 与访谈纪要分别选择，点「提交」统一上传 */}
         <div className="bg-white rounded-2xl border border-primary-100 shadow-sm p-6">
           <h3 className="text-base font-bold text-gray-900">上传项目文档，开始固定框架解读</h3>
           <p className="text-xs text-gray-400 mt-1">
-            支持 PDF / Word(docx) / PPT(pptx) / Excel / txt · 上传后执行「解读项目」与「生成问题清单」
+            支持 PDF / Word(docx) / PPT(pptx) / Excel / txt · 选好 BP 与访谈纪要后点击下方「提交」按钮开始分析
           </p>
           <input
             value={projectName}
@@ -314,16 +334,21 @@ export default function ProjectInterpretationPanel() {
             placeholder="项目名称（选填，默认取文件名）"
             className="mt-4 w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-400"
           />
+          {/* BP 选择窗口：只暂存不上传，等提交按钮统一触发 */}
           <div
             onClick={() => uploadInputRef.current?.click()}
             onDragOver={e => e.preventDefault()}
             onDrop={e => {
               e.preventDefault()
               const f = e.dataTransfer.files?.[0]
-              if (f) handleUpload(f)
+              if (f) setBpFile(f)
             }}
             className={`mt-3 border-2 border-dashed rounded-2xl py-12 text-center cursor-pointer transition-colors ${
-              busy ? 'border-primary-200 bg-primary-50/30' : 'border-gray-200 hover:border-primary-300 hover:bg-primary-50/20'
+              bpFile
+                ? 'border-emerald-300 bg-emerald-50/30'
+                : busy
+                  ? 'border-primary-200 bg-primary-50/30'
+                  : 'border-gray-200 hover:border-primary-300 hover:bg-primary-50/20'
             }`}
           >
             {busy ? (
@@ -331,12 +356,26 @@ export default function ProjectInterpretationPanel() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500" />
                 <p className="text-sm text-primary-600">上传中...</p>
               </div>
+            ) : bpFile ? (
+              <div className="flex flex-col items-center gap-1.5">
+                <span className="text-2xl">✅</span>
+                <p className="text-sm font-bold text-emerald-700">已选择：{bpFile.name}</p>
+                <p className="text-[11px] text-gray-400">
+                  {(bpFile.size / 1024 / 1024).toFixed(2)} MB · 点击可重新选择
+                </p>
+                <button
+                  onClick={e => { e.stopPropagation(); setBpFile(null) }}
+                  className="mt-1 px-2.5 py-1 text-[11px] text-gray-400 hover:text-red-500 border border-gray-200 rounded-lg"
+                >
+                  清除重选
+                </button>
+              </div>
             ) : (
               <div className="flex flex-col items-center gap-2">
                 <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
-                <p className="text-sm text-gray-500">点击或拖拽上传文档</p>
+                <p className="text-sm text-gray-500">点击或拖拽上传项目 BP</p>
                 <p className="text-[11px] text-gray-400">BP / 商业计划书 / 项目介绍材料</p>
               </div>
             )}
@@ -347,24 +386,23 @@ export default function ProjectInterpretationPanel() {
             accept=".pdf,.docx,.pptx,.xlsx,.txt,.md"
             className="hidden"
             onChange={e => {
-              const f = e.target.files?.[0]
-              if (f) handleUpload(f)
+              setBpFile(e.target.files?.[0] || null)
               e.target.value = ''
             }}
           />
           {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
 
-          {/* 同时上传访谈纪要（可选）：一起上传则自动执行 解读→问题清单→校验→结论 */}
+          {/* 同时上传访谈纪要（可选）：与 BP 一起提交则自动执行全部分析 */}
           <div className="mt-4 pt-4 border-t border-gray-100">
             <p className="text-xs font-bold text-gray-600">
-              同时上传访谈纪要 <span className="text-gray-400 font-normal">（可选，上传后自动完成全部分析并生成结论）</span>
+              同时上传访谈纪要 <span className="text-gray-400 font-normal">（可选，与 BP 一起提交后自动完成全部分析并生成结论）</span>
             </p>
             <div className="mt-2 flex items-center gap-2 flex-wrap">
               <button
                 onClick={() => ivInputRef.current?.click()}
-                className="px-3 py-1.5 bg-white border border-gray-200 text-xs font-bold rounded-lg hover:border-primary-300 text-gray-600"
+                className={`px-3 py-1.5 bg-white border text-xs font-bold rounded-lg text-gray-600 ${ivFile ? 'border-emerald-300 text-emerald-700' : 'border-gray-200 hover:border-primary-300'}`}
               >
-                {ivFile ? `已选：${ivFile.name}` : '📎 选择访谈纪要（音频/文档）'}
+                {ivFile ? `✓ 已选：${ivFile.name}` : '📎 选择访谈纪要（音频/文档）'}
               </button>
               <input
                 ref={ivInputRef}
@@ -389,7 +427,7 @@ export default function ProjectInterpretationPanel() {
               value={ivText}
               onChange={e => setIvText(e.target.value)}
               rows={3}
-              placeholder="或粘贴访谈纪要全文（音频需配合粘贴转写文本）。与 BP 一起上传后，系统自动：解读项目 → 生成问题清单与理想答案 → 校对访谈回答 → 输出分析结论。"
+              placeholder="或粘贴访谈纪要全文（音频需配合粘贴转写文本）。与 BP 一起提交后，系统自动：解读项目 → 生成问题清单与理想答案 → 校对访谈回答 → 输出分析结论。"
               className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-300"
             />
           </div>
@@ -406,17 +444,32 @@ export default function ProjectInterpretationPanel() {
               placeholder="粘贴项目的文字内容（BP 正文、项目介绍等，至少 100 字）。适合扫描版 PDF 或以图片为主的 PPT——可从原文档复制文字，或粘贴其他来源的项目介绍。"
               className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-300"
             />
-            <div className="mt-2 flex items-center gap-2">
-              <button
-                onClick={handlePasteUpload}
-                disabled={pasteBusy || pastedText.trim().length < 100}
-                className="px-4 py-2 bg-primary-500 text-white text-xs font-bold rounded-xl hover:bg-primary-600 disabled:opacity-40"
-              >
-                {pasteBusy ? '提交中...' : '用粘贴文本创建解读项目'}
-              </button>
-              <span className="text-[10px] text-gray-400">{pastedText.trim().length} 字（至少 100 字）</span>
-            </div>
+            {pastedText.trim().length > 0 && (
+              <p className="text-[10px] text-gray-400">{pastedText.trim().length} 字（至少 100 字，填好后点击下方「提交」按钮）</p>
+            )}
           </details>
+
+          {/* 提交按钮：BP/粘贴文本就绪后统一提交；是否带访谈纪要决定自动/手动分析 */}
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <button
+              onClick={handleSubmit}
+              disabled={busy || pasteBusy || (!bpFile && pastedText.trim().length < 100)}
+              className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-bold rounded-xl shadow-md shadow-indigo-500/25 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            >
+              {(busy || pasteBusy)
+                ? '提交中...'
+                : (ivFile || ivText.trim())
+                  ? '🚀 提交并自动完成全部分析'
+                  : '🚀 提交并开始分析'}
+            </button>
+            <p className="mt-2 text-[11px] text-gray-400 text-center">
+              {(ivFile || ivText.trim())
+                ? '已附访谈纪要：提交后自动执行 解读项目 → 生成问题清单 → 访谈校对 → 分析结论'
+                : bpFile || pastedText.trim().length >= 100
+                  ? '仅上传 BP：提交后进入项目页，可分别点击「解读项目」或「生成问题清单」'
+                  : '请先选择 BP 文档（或在上方粘贴项目文本）'}
+            </p>
+          </div>
         </div>
 
         {/* 解读历史 */}
@@ -591,7 +644,12 @@ function Detail({
         <div className="bg-white rounded-2xl border border-primary-100 shadow-sm p-5">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
-              <button onClick={onBack} className="text-xs text-gray-400 hover:text-primary-600 mb-1">← 返回列表</button>
+              <button
+                onClick={onBack}
+                className="flex items-center gap-1.5 px-3 py-1.5 mb-2 border border-gray-200 rounded-xl text-xs font-bold text-gray-500 hover:border-primary-300 hover:text-primary-600 transition-colors"
+              >
+                ← 返回上一级
+              </button>
               <h3 className="text-lg font-bold text-gray-900">{detail.projectName}</h3>
               <p className="text-xs text-gray-400 mt-0.5">
                 {detail.fileName}
@@ -640,6 +698,12 @@ function Detail({
                 {detail.interviewFileName && (
                   <span className="text-gray-400 font-normal ml-2">上次：📎 {detail.interviewFileName}</span>
                 )}
+                <button
+                  onClick={() => setIvOpen(false)}
+                  className="ml-2 px-2 py-0.5 border border-gray-200 rounded-lg text-[10px] font-bold text-gray-400 hover:text-gray-600 hover:border-gray-300"
+                >
+                  收起 ↑
+                </button>
               </p>
               {detail.verifyStatus === 'RUNNING' ? (
                 <div className="flex items-center gap-2 text-sm text-indigo-600 py-2">
@@ -713,9 +777,11 @@ function Detail({
               ))}
             </div>
 
-            {/* 融资案例表 */}
+            {/* 融资案例表（模型按项目定位/产品/技术智能匹配，含国内外 + 重合度说明） */}
             <div className="mt-4">
-              <p className="text-[11px] font-bold text-blue-600 mb-2">该行业融资案例（{interpretation.financingCases?.length || 0} 条）</p>
+              <p className="text-[11px] font-bold text-blue-600 mb-2">
+                重合度较高的融资案例（{interpretation.financingCases?.length || 0} 条 · 按项目定位/产品/技术智能匹配，含国内外）
+              </p>
               {interpretation.financingCases?.length ? (
                 <div className="overflow-x-auto rounded-xl border border-gray-100">
                   <table className="min-w-full text-xs">
@@ -727,6 +793,7 @@ function Detail({
                         <th className="px-3 py-2 text-left font-semibold">时间</th>
                         <th className="px-3 py-2 text-left font-semibold">投资方</th>
                         <th className="px-3 py-2 text-left font-semibold">业务</th>
+                        <th className="px-3 py-2 text-left font-semibold">与本项目重合度</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
@@ -738,13 +805,14 @@ function Detail({
                           <td className="px-3 py-2 whitespace-nowrap">{c.date}</td>
                           <td className="px-3 py-2">{c.investors}</td>
                           <td className="px-3 py-2 text-gray-500">{c.brief}</td>
+                          <td className="px-3 py-2 text-indigo-600">{c.relevance || '—'}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
               ) : (
-                <p className="text-xs text-gray-400">联网检索未获取到该行业融资案例</p>
+                <p className="text-xs text-gray-400">联网检索未获取到重合度较高的融资案例</p>
               )}
             </div>
           </div>

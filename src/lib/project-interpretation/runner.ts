@@ -87,21 +87,40 @@ const INTERPRET_SYSTEM_PROMPT = `你是一级市场资深投资人。基于项�
 }
 要求：结论克制、可核验，文档未提及的信息明确写"文档未披露"而非编造。`
 
-const FINANCING_CASES_SYSTEM_PROMPT = `你是一级市场投资研究员。基于联网搜索结果，整理该行业近年的 10 条融资案例。
+const CASE_QUERY_SYSTEM_PROMPT = `你是一级市场投资研究员。基于项目画像生成 4 组联网搜索关键词，用于检索与该项目重合度高的融资案例（国内外）。
+严格输出 JSON（不要 markdown 代码块），结构：
+{
+  "queries": [
+    { "text": "中文关键词组（核心技术/产品方向 + 融资）", "lang": "zh" },
+    { "text": "中文关键词组（细分赛道 + 创业公司 + 投资轮次）", "lang": "zh" },
+    { "text": "English keywords (core technology/product + startup funding)", "lang": "en" },
+    { "text": "English keywords (niche segment + venture round)", "lang": "en" }
+  ]
+}
+要求：
+- 关键词必须来自该项目的具体定位、产品形态、核心技术、细分赛道（不要只用大行业名泛搜）
+- 中英文各 2 组；英文组用于检索国外对标公司的融资案例
+- 每组 3-6 个词，精准可搜`
+
+const FINANCING_CASES_SYSTEM_PROMPT = `你是一级市场投资研究员。基于项目画像与联网搜索结果，整理与该项目重合度较高的融资案例（国内外均可，目标 10 条）。
 严格输出 JSON（不要 markdown 代码块），结构：
 {
   "cases": [
     {
       "company": "公司名",
-      "round": "轮次（如 A轮/战略融资）",
-      "amount": "金额（如 2亿元）",
+      "round": "轮次（如 A轮/战略融资/Series A）",
+      "amount": "金额（如 2亿元/$50M）",
       "date": "时间（如 2025-08）",
       "investors": "主要投资方",
-      "brief": "一句话业务说明（30字内）"
+      "brief": "一句话业务说明（30字内）",
+      "relevance": "与该项目的重合点（产品方向/技术路线/目标市场的具体重合说明，40字内，如：同为硅光计算路线，均瞄准云厂商AI算力场景）"
     }
   ]
 }
-要求：只使用搜索结果中的真实信息，不得编造；不足 10 条时如实输出已有条数，每条附上来源链接放在 brief 末尾（格式：来源:URL）。`
+要求：
+- 只使用搜索结果中的真实信息，不得编造；不足 10 条时如实输出已有条数，每条附上来源链接放在 brief 末尾（格式：来源:URL）
+- 优先选取与项目定位、产品、技术重合度高的案例，国内外案例都要覆盖（英文来源的公司保留英文公司名）
+- relevance 必须写具体的重合维度；与项目几乎不重合的案例宁可不选`
 
 /**
  * 执行"解读项目"：七维解读 + 联网检索行业融资案例
@@ -123,17 +142,36 @@ export async function runInterpretation(input: {
     throw new Error('AI 解读结果不完整，请重试')
   }
 
-  // 2. 联网检索该行业融资案例（双源搜索）
+  // 2. 智能检索融资案例：模型基于项目定位/产品/技术生成中英文精准查询 → 双源并发搜索
+  //   （与行业动态同源的搜索引擎架构；英文组覆盖国外对标公司）
   const industry = base.industry
   const searchResults: SearchResult[] = []
   try {
-    const [r1, r2] = await Promise.all([
-      searchWebDual(`${industry} 融资 轮次 2024 2025 投资`, { maxResults: 10 }),
-      searchWebDual(`${industry} 创业公司 融资事件 投资`, { maxResults: 10 }),
-    ])
-    searchResults.push(...r1, ...r2)
+    // 2a. 模型生成精准搜索关键词（项目画像驱动，而非仅行业名）
+    const { parsed: q } = await callDeepSeekJson<{ queries?: Array<{ text?: string; lang?: string }> }>(
+      CASE_QUERY_SYSTEM_PROMPT,
+      `项目画像：\n行业：${industry}\n市场地位：${base.marketPosition || '未披露'}\n技术领先性：${base.techLeadership || '未披露'}\n竞争分析：${base.competitionAnalysis || '未披露'}\n\n请输出搜索关键词 JSON。`,
+      500
+    )
+    const modelQueries = (Array.isArray(q?.queries) ? q!.queries! : [])
+      .map(x => (typeof x?.text === 'string' ? x.text.trim() : ''))
+      .filter(t => t.length > 1)
+      .slice(0, 4)
+    // 关键词生成失败时兜底：行业名泛搜
+    const finalQueries = modelQueries.length > 0
+      ? modelQueries
+      : [`${industry} 融资 轮次 投资`, `${industry} 创业公司 融资事件`]
+
+    // 2b. 并发双源搜索（collect 模式控成本；单组失败不影响其他组）
+    const results = await Promise.all(
+      finalQueries.map(text =>
+        searchWebDual(text, { maxResults: 5, mode: 'collect', module: 'project-interpretation' })
+          .catch(() => [] as SearchResult[])
+      )
+    )
+    searchResults.push(...results.flat())
   } catch {
-    // 搜索失败不阻塞：融资案例置空并在 brief 说明
+    // 搜索失败不阻塞：融资案例置空
   }
 
   let financingCases: FinancingCase[] = []
@@ -148,7 +186,7 @@ export async function runInterpretation(input: {
 
     const { parsed: cases } = await callDeepSeekJson<{ cases?: FinancingCase[] }>(
       FINANCING_CASES_SYSTEM_PROMPT,
-      `行业：${industry}\n\n搜索结果：\n\n${searchDigest}\n\n请整理该行业 10 条融资案例 JSON。`,
+      `项目画像：\n行业：${industry}\n技术领先性：${base.techLeadership || '未披露'}\n竞争分析：${base.competitionAnalysis || '未披露'}\n\n搜索结果：\n\n${searchDigest}\n\n请整理与该项目重合度高的融资案例 JSON（国内外，含 relevance 重合说明）。`,
       3500
     )
     if (Array.isArray(cases?.cases)) {

@@ -78,6 +78,8 @@ export interface FinancingCase {
   date: string
   investors: string
   brief: string
+  /** 与本项目的重合点（产品方向/技术路线/目标市场，智能匹配生成） */
+  relevance?: string
 }
 
 export interface InterpretationResult {

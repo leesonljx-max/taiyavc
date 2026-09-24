@@ -60,12 +60,25 @@ beforeEach(async () => {
       marketEstimate: 'POC 订单为主，客户 logo 含两家云厂商，验证程度早期',
     })
     if (system.includes('结构化 JSON 解读')) return chatCompletions(interpretJson)
+    // 智能搜索关键词生成（项目定位/产品/技术驱动，中英文各组检索国内外案例）
+    if (system.includes('搜索关键词')) {
+      return chatCompletions(
+        JSON.stringify({
+          queries: [
+            { text: '硅光计算芯片 创业公司 融资', lang: 'zh' },
+            { text: '光子计算 赛道 投资轮次', lang: 'zh' },
+            { text: 'silicon photonics compute startup funding', lang: 'en' },
+            { text: 'photonic computing venture round', lang: 'en' },
+          ],
+        })
+      )
+    }
     if (system.includes('融资案例')) {
       return chatCompletions(
         JSON.stringify({
           cases: [
-            { company: '光擎科技', round: 'A轮', amount: '2亿元', date: '2025-06', investors: '红杉', brief: '光互连芯片 来源:https://x.com/1' },
-            { company: '曦智科技', round: 'B轮', amount: '5亿元', date: '2025-03', investors: '经纬', brief: '光子计算 来源:https://x.com/2' },
+            { company: '光擎科技', round: 'A轮', amount: '2亿元', date: '2025-06', investors: '红杉', brief: '光互连芯片 来源:https://x.com/1', relevance: '同为硅光计算路线，均瞄准云厂商AI算力' },
+            { company: 'Lightmatter', round: 'Series D', amount: '$400M', date: '2025-03', investors: 'GV', brief: '美国光子计算芯片商 来源:https://x.com/2', relevance: '国外对标：同为光子计算加速芯片，产品形态高度重合' },
           ],
         })
       )
@@ -128,7 +141,7 @@ const post = (url: string, init?: RequestInit) => new Request(url, { method: 'PO
 
 // ── 解读项目 ──
 
-test('interpret：七维解读 + 融资案例搜索 → INTERPRETED', async () => {
+test('interpret：七维解读 + 智能融资案例搜索 → INTERPRETED', async () => {
   asUser()
   const res = await INTERPRET(post(`http://t/api/project-interpretation/${recordId}/interpret`), { params: { id: recordId } })
   assert.equal(res.status, 200)
@@ -136,6 +149,8 @@ test('interpret：七维解读 + 融资案例搜索 → INTERPRETED', async () =
   assert.equal(body.interpretation.industry, '半导体芯片')
   assert.equal(body.interpretation.financingCases.length, 2)
   assert.equal(body.interpretation.financingCases[0].company, '光擎科技')
+  // 重合度说明（relevance）保留：智能匹配的核心输出
+  assert.ok(body.interpretation.financingCases[1].relevance.includes('国外对标'))
 
   const record = await prisma.projectInterpretation.findUnique({ where: { id: recordId } })
   assert.equal(record!.status, 'INTERPRETED')
@@ -143,8 +158,13 @@ test('interpret：七维解读 + 融资案例搜索 → INTERPRETED', async () =
   assert.ok(stored.marketPosition.includes('硅光'))
   assert.ok(stored.marketEstimate.includes('客户'))
 
-  // 搜索被调用（融资案例检索）
-  assert.ok(mockState.searchCalls.length >= 2)
+  // 智能搜索：模型基于项目画像生成的中英文关键词被用于双源搜索（英文组覆盖国外案例）
+  const queries = mockState.searchCalls.map(c => c.query)
+  assert.ok(queries.includes('硅光计算芯片 创业公司 融资'))
+  assert.ok(queries.includes('silicon photonics compute startup funding'))
+  assert.equal(mockState.searchCalls.length, 4)
+  // 不再用大行业名泛搜
+  assert.ok(queries.every(q => !q.startsWith('半导体芯片 融资')))
 })
 
 test('interpret：AI 结果不完整 → 502 且状态 FAILED；重复执行可恢复', async () => {

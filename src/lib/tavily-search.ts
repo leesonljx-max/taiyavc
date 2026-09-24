@@ -54,6 +54,7 @@ export type SearchModule =
   | 'research'       // 投研模块分析
   | 'dd-harness'     // 尽调报告
   | 'ai-research'    // AI行研 ChatBot
+  | 'project-interpretation' // 项目解读（融资案例智能检索）
   | 'search-lib'     // 搜索库自身（归纳调用）
 
 /**
