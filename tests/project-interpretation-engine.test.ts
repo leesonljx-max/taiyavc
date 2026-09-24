@@ -232,7 +232,7 @@ test('questions：与解读解耦——未解读可直接生成；生成后 READ
   assert.equal(questions[0].order, 1)
   assert.equal(questions[0].idealAnswer.length > 0, true)
 
-  // 旧问题清除、校验状态/访谈文件/结论全部重置
+  // 旧问题清除、校验状态/结论重置；访谈纪要保留（原始材料不随清单重建失效）
   const record = await prisma.projectInterpretation.findUnique({
     where: { id: recordId },
     include: { questions: true },
@@ -241,7 +241,8 @@ test('questions：与解读解耦——未解读可直接生成；生成后 READ
   assert.ok(!record!.questions.some(q => q.question === '旧问题'))
   assert.equal(record!.conclusionJson, null)
   assert.equal(record!.verifyStatus, 'PENDING')
-  assert.equal(record!.interviewFileName, null)
+  assert.equal(record!.interviewFileName, '旧访谈.txt')
+  assert.equal(record!.interviewText, '旧内容')
 
   // 解读之后再生成：补充上下文路径同样可用（interpretation 可选增强）
   await seedInterpreted()
@@ -413,6 +414,45 @@ test('verify：无请求内容时回退上传时已存访谈全文（自动链�
   const questions = await prisma.interpretationQuestion.findMany({ where: { interpretationId: recordId }, orderBy: { order: 'asc' } })
   assert.equal(questions.every(q => q.verifyStatus === 'VERIFIED'), true)
   assert.equal(JSON.parse(questions[0].verifyResultJson!).matchLevel, 'GAP')
+})
+
+test('自动链路完整回归：上传存访谈全文 → questions 重建不清访谈 → verify 回退成功（修复回归）', async () => {
+  asUser()
+  // 场景：BP+访谈纪要一起上传（interviewText 已存），自动链路 interpret → questions → verify
+  // 此前 bug：questions 重建时清空 interviewText，导致 verify 回退时报"缺少访谈内容"
+  await prisma.projectInterpretation.update({
+    where: { id: recordId },
+    data: {
+      status: 'INTERPRETED',
+      interpretationJson: JSON.stringify({
+        projectName: '光子芯片', industry: '半导体芯片', marketPosition: 'x', techLeadership: 'x',
+        teamStanding: 'x', competitionAnalysis: 'x', startupWindow: 'x', marketEstimate: 'x', financingCases: [],
+      }),
+      interviewFileName: '纪要.txt',
+      interviewText: '访谈纪要：算力密度 10 TOPS/W，良率 85%，有第三方测试报告验证。订单 3000 万，明年 Q2 交付。现金流健康。',
+    },
+  })
+
+  // 1. 生成问题清单（走真实路由，重建问题）
+  const qres = await QUESTIONS(post(`http://t/api/project-interpretation/${recordId}/questions`), { params: { id: recordId } })
+  assert.equal(qres.status, 200)
+  assert.equal((await qres.json()).questions.length, 16)
+
+  // 关键断言：问题清单重建后访谈纪要仍保留
+  let record = await prisma.projectInterpretation.findUnique({ where: { id: recordId } })
+  assert.equal(record!.interviewFileName, '纪要.txt')
+  assert.ok(record!.interviewText!.includes('算力密度'))
+
+  // 2. verify 无 body 回退已存全文 → 校验成功（16 问：mock 覆盖 index 1-4，其余 UNCOVERED 兜底）
+  const vres = await VERIFY(post(`http://t/api/project-interpretation/${recordId}/verify`), { params: { id: recordId } })
+  assert.equal(vres.status, 200)
+  const body = await vres.json()
+  assert.equal(body.verifiedCount, 16)
+  assert.equal(body.conclusionGenerated, true)
+
+  record = await prisma.projectInterpretation.findUnique({ where: { id: recordId } })
+  assert.equal(record!.verifyStatus, 'DONE')
+  assert.ok(record!.conclusionJson!)
 })
 
 // ── 综合结论 ──

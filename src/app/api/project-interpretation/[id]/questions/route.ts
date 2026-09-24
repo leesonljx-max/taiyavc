@@ -71,9 +71,8 @@ export async function POST(
             questionsStatus: 'READY',
             conclusionJson: null,
             verifyStatus: 'PENDING',
-            interviewFileName: null,
-            interviewFileUrl: null,
-            interviewText: null,
+            // 保留访谈纪要（interviewFileName/Url/Text）：纪要是原始材料，不随清单重建失效，
+            // 校验可直接用已存全文校验新问题（自动链路：上传 → 问题清单 → 校验 依赖此行为）
             error: null,
           },
         })
