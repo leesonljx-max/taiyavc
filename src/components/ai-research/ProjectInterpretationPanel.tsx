@@ -334,7 +334,7 @@ export default function ProjectInterpretationPanel() {
             placeholder="项目名称（选填，默认取文件名）"
             className="mt-4 w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-400"
           />
-          {/* BP 选择窗口：只暂存不上传，等提交按钮统一触发 */}
+          {/* BP 选择窗口（紧凑单行）：只暂存不上传，等提交按钮统一触发 */}
           <div
             onClick={() => uploadInputRef.current?.click()}
             onDragOver={e => e.preventDefault()}
@@ -343,7 +343,7 @@ export default function ProjectInterpretationPanel() {
               const f = e.dataTransfer.files?.[0]
               if (f) setBpFile(f)
             }}
-            className={`mt-3 border-2 border-dashed rounded-2xl py-12 text-center cursor-pointer transition-colors ${
+            className={`mt-3 flex items-center gap-2.5 border-2 border-dashed rounded-xl px-4 py-4 cursor-pointer transition-colors ${
               bpFile
                 ? 'border-emerald-300 bg-emerald-50/30'
                 : busy
@@ -352,32 +352,31 @@ export default function ProjectInterpretationPanel() {
             }`}
           >
             {busy ? (
-              <div className="flex flex-col items-center gap-2">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500" />
+              <>
+                <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-500 flex-shrink-0" />
                 <p className="text-sm text-primary-600">上传中...</p>
-              </div>
+              </>
             ) : bpFile ? (
-              <div className="flex flex-col items-center gap-1.5">
-                <span className="text-2xl">✅</span>
-                <p className="text-sm font-bold text-emerald-700">已选择：{bpFile.name}</p>
-                <p className="text-[11px] text-gray-400">
-                  {(bpFile.size / 1024 / 1024).toFixed(2)} MB · 点击可重新选择
-                </p>
+              <>
+                <span className="text-emerald-500 flex-shrink-0">✅</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-emerald-700 truncate">{bpFile.name}</p>
+                  <p className="text-[11px] text-gray-400">{(bpFile.size / 1024 / 1024).toFixed(2)} MB · 点击可重新选择</p>
+                </div>
                 <button
                   onClick={e => { e.stopPropagation(); setBpFile(null) }}
-                  className="mt-1 px-2.5 py-1 text-[11px] text-gray-400 hover:text-red-500 border border-gray-200 rounded-lg"
+                  className="flex-shrink-0 px-2.5 py-1 text-[11px] text-gray-400 hover:text-red-500 border border-gray-200 rounded-lg"
                 >
                   清除重选
                 </button>
-              </div>
+              </>
             ) : (
-              <div className="flex flex-col items-center gap-2">
-                <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <>
+                <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
-                <p className="text-sm text-gray-500">点击或拖拽上传项目 BP</p>
-                <p className="text-[11px] text-gray-400">BP / 商业计划书 / 项目介绍材料</p>
-              </div>
+                <p className="text-sm text-gray-500">点击或拖拽上传项目 BP（PDF / docx / pptx / xlsx / txt）</p>
+              </>
             )}
           </div>
           <input
@@ -407,6 +406,7 @@ export default function ProjectInterpretationPanel() {
                 </button>
               )}
             </div>
+            {/* 访谈纪要上传框（紧凑单行，与 BP 框同尺寸同交互） */}
             <div
               onClick={() => ivInputRef.current?.click()}
               onDragOver={e => e.preventDefault()}
@@ -415,28 +415,27 @@ export default function ProjectInterpretationPanel() {
                 const f = e.dataTransfer.files?.[0]
                 if (f) setIvFile(f)
               }}
-              className={`mt-3 border-2 border-dashed rounded-2xl py-12 text-center cursor-pointer transition-colors ${
+              className={`mt-3 flex items-center gap-2.5 border-2 border-dashed rounded-xl px-4 py-4 cursor-pointer transition-colors ${
                 ivFile
                   ? 'border-emerald-300 bg-emerald-50/30'
                   : 'border-gray-200 hover:border-primary-300 hover:bg-primary-50/20'
               }`}
             >
               {ivFile ? (
-                <div className="flex flex-col items-center gap-1.5">
-                  <span className="text-2xl">✅</span>
-                  <p className="text-sm font-bold text-emerald-700">已选择：{ivFile.name}</p>
-                  <p className="text-[11px] text-gray-400">
-                    {(ivFile.size / 1024 / 1024).toFixed(2)} MB · 点击可重新选择
-                  </p>
-                </div>
+                <>
+                  <span className="text-emerald-500 flex-shrink-0">✅</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-emerald-700 truncate">{ivFile.name}</p>
+                    <p className="text-[11px] text-gray-400">{(ivFile.size / 1024 / 1024).toFixed(2)} MB · 点击可重新选择</p>
+                  </div>
+                </>
               ) : (
-                <div className="flex flex-col items-center gap-2">
-                  <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <>
+                  <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0-4a3 3 0 003-3V5a3 3 0 00-6 0v10a3 3 0 003 3zm7-3a7 7 0 01-14 0" />
                   </svg>
-                  <p className="text-sm text-gray-500">点击或拖拽上传访谈纪要</p>
-                  <p className="text-[11px] text-gray-400">音频（mp3/wav/m4a）· 文档（pdf/docx/txt/pptx）</p>
-                </div>
+                  <p className="text-sm text-gray-500">点击或拖拽上传访谈纪要（音频 / pdf / docx / txt / pptx）</p>
+                </>
               )}
             </div>
             <input
@@ -810,28 +809,39 @@ function Detail({
               </p>
               {interpretation.financingCases?.length ? (
                 <div className="overflow-x-auto rounded-xl border border-gray-100">
-                  <table className="min-w-full text-xs">
+                  <table className="w-full min-w-[960px] table-fixed text-xs">
+                    <colgroup>
+                      {/* 窄列：公司/轮次/金额/时间 */}
+                      <col className="w-36" />
+                      <col className="w-[76px]" />
+                      <col className="w-[92px]" />
+                      <col className="w-[76px]" />
+                      {/* 宽列：投资方/业务/重合度（后两列均分剩余宽度） */}
+                      <col className="w-44" />
+                      <col />
+                      <col />
+                    </colgroup>
                     <thead>
                       <tr className="bg-slate-50 text-gray-500">
-                        <th className="px-3 py-2 text-left font-semibold">公司</th>
-                        <th className="px-3 py-2 text-left font-semibold">轮次</th>
-                        <th className="px-3 py-2 text-left font-semibold">金额</th>
-                        <th className="px-3 py-2 text-left font-semibold">时间</th>
-                        <th className="px-3 py-2 text-left font-semibold">投资方</th>
-                        <th className="px-3 py-2 text-left font-semibold">业务</th>
-                        <th className="px-3 py-2 text-left font-semibold">与本项目重合度</th>
+                        <th className="px-3 py-2.5 text-left font-semibold">公司</th>
+                        <th className="px-2 py-2.5 text-left font-semibold">轮次</th>
+                        <th className="px-2 py-2.5 text-left font-semibold">金额</th>
+                        <th className="px-2 py-2.5 text-left font-semibold">时间</th>
+                        <th className="px-3 py-2.5 text-left font-semibold">投资方</th>
+                        <th className="px-3 py-2.5 text-left font-semibold">业务</th>
+                        <th className="px-3 py-2.5 text-left font-semibold">与本项目重合度</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
                       {interpretation.financingCases.map((c, i) => (
-                        <tr key={i} className="text-gray-700">
-                          <td className="px-3 py-2 font-medium whitespace-nowrap">{c.company}</td>
-                          <td className="px-3 py-2 whitespace-nowrap">{c.round}</td>
-                          <td className="px-3 py-2 whitespace-nowrap text-blue-600 font-medium">{c.amount}</td>
-                          <td className="px-3 py-2 whitespace-nowrap">{c.date}</td>
-                          <td className="px-3 py-2">{c.investors}</td>
-                          <td className="px-3 py-2 text-gray-500">{c.brief}</td>
-                          <td className="px-3 py-2 text-indigo-600">{c.relevance || '—'}</td>
+                        <tr key={i} className="text-gray-700 hover:bg-slate-50/60 transition-colors">
+                          <td className="px-3 py-2.5 font-medium break-words">{c.company}</td>
+                          <td className="px-2 py-2.5 break-words text-gray-600">{c.round}</td>
+                          <td className="px-2 py-2.5 break-words text-blue-600 font-semibold">{c.amount}</td>
+                          <td className="px-2 py-2.5 break-words text-gray-600">{c.date}</td>
+                          <td className="px-3 py-2.5 leading-relaxed break-words">{c.investors}</td>
+                          <td className="px-3 py-2.5 text-gray-500 leading-relaxed break-words">{c.brief}</td>
+                          <td className="px-3 py-2.5 text-indigo-600 leading-relaxed break-words">{c.relevance || '—'}</td>
                         </tr>
                       ))}
                     </tbody>

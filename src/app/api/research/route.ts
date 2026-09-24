@@ -167,8 +167,10 @@ export async function GET() {
     })
   } catch (error) {
     console.error('Research list error:', error)
+    // 透传具体错误（如 Prisma P2021 表不存在），便于部署环境排查数据库问题
+    const detail = error instanceof Error ? error.message : '未知错误'
     return NextResponse.json(
-      { error: '获取项目尽调列表失败' },
+      { error: `获取项目尽调列表失败：${detail}` },
       { status: 500 }
     )
   }

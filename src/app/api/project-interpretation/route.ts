@@ -61,6 +61,8 @@ export async function GET() {
     })
   } catch (error) {
     console.error('Project interpretation list error:', error)
-    return NextResponse.json({ error: '获取列表失败' }, { status: 500 })
+    // 透传具体错误（如 Prisma P2021 表不存在），便于部署环境排查数据库问题
+    const detail = error instanceof Error ? error.message : '未知错误'
+    return NextResponse.json({ error: `获取列表失败：${detail}` }, { status: 500 })
   }
 }
