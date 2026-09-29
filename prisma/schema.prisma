@@ -61,6 +61,10 @@ model Project {
   ddModuleResources DDModuleResource[]
   ddModuleQAs      DDModuleQA[]
   ddInvestmentDecisions DDInvestmentDecision[]
+  teamEvaluation   DDTeamEvaluation?
+  postInvestDocs      PostInvestDoc[]
+  postInvestMetrics   PostInvestMetric[]
+  postInvestAnalyses  PostInvestAnalysis[]
   createdBy        User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   @@index([name])
@@ -159,6 +163,8 @@ model User {
   ddInvestmentDecisions DDInvestmentDecision[] @relation("DDInvestmentDecisions")
   ddModuleQuestionsAsked DDModuleQA[] @relation("DDModuleQAQuestioner")
   ddModuleAnswersGiven DDModuleQA[] @relation("DDModuleQAAnswerer")
+  // 投后管理：上传的文档
+  postInvestUploads PostInvestDoc[] @relation("PostInvestUploads")
   // 尽调模块任务：作为负责人
   ddTasksOwned       DDTask[] @relation("DDTaskOwner")
   // 尽调证据：作为创建人
@@ -826,6 +832,88 @@ model DDInvestmentDecision {
   @@unique([projectId, partnerId])
   @@index([projectId])
 }
+
+// 创业团队评价表（尽调·团队与治理模块，10 分制）
+// membersJson: [{ id, name, roleLabel, profileType: CEO|TECH|OPS, dimensions: [{key, label, hint, group, weight, score}] }]
+// teamJson: [{ key, label, hint, group, weight, score }]（团队整体四维度）
+// 一级权重固定：实控人 CEO 独占 60、团队整体独占 20、其余成员共享 20（取平均）
+model DDTeamEvaluation {
+  id          String    @id @default(cuid())
+  projectId   String    @unique
+  membersJson String
+  teamJson    String
+  status      String    @default("DRAFT") // DRAFT / CONFIRMED
+  finalScore  Float?    // 最终得分（10 分制，确认时计算）
+  confirmedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+// ═══════════════════════════════════════════════════════════
+// 投后管理（季度经营报告 / 财务报表 / BP 上传 → 指标时序库 → AI 经营分析）
+// ═══════════════════════════════════════════════════════════
+
+// 投后文档（每季上传，全文入库供指标提取与溯源）
+model PostInvestDoc {
+  id           String   @id @default(cuid())
+  projectId    String
+  docType      String   // OPERATION_REPORT / FINANCIAL_STATEMENT / BP / OTHER
+  period       String   // 报告期：2026Q1 / 2026H1 / 2026FY
+  fileName     String
+  fileUrl      String
+  fileType     String
+  fileSize     Int
+  text         String   // 提取全文（指标提取输入 + 证据溯源）
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation("PostInvestUploads", fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([projectId, period])
+}
+
+// 投后指标时序库（每项目×报告期×指标 唯一，含原文证据）
+model PostInvestMetric {
+  id          String   @id @default(cuid())
+  projectId   String
+  period      String   // 2026Q1 / 2026H1 / 2026FY
+  periodType  String   // Q / H / FY（H 与 Q 不可直接环比）
+  metricKey   String   // 指标字典 key（revenue / gross_margin ...）
+  metricName  String   // 营业收入
+  category    String   // financial / business
+  value       Float
+  unit        String   // 万元 / % / 人
+  sourceDocId String?  // 证据溯源：来源文档
+  sourceText  String?  // 证据溯源：原文摘录
+  createdAt   DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, period, metricKey])
+  @@index([projectId])
+}
+
+// 投后 AI 分析结果（每项目×报告期 唯一）
+// summaryJson: { executive_summary, financial_analysis[], anomalies[], cashflow_analysis, business_progress[], risk_alerts[] }
+model PostInvestAnalysis {
+  id          String   @id @default(cuid())
+  projectId   String
+  period      String
+  summaryJson String
+  createdAt   DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, period])
+  @@index([projectId])
+}
+
 
 // ═══════════════════════════════════════════════════════════
 // AI行研 ChatBot（Harness 架构 + 分层记忆）

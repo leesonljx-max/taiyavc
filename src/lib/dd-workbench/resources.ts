@@ -67,6 +67,8 @@ export interface ParsedModuleResource {
   report: DDModuleReport | null
   analysis: DDModuleAnalysis | null
   conclusion: string | null
+  /** 仅 TEAM_GOVERNANCE：团队评价确认状态（null=未生成；false=草稿中，模块视为不完整；true=已确认） */
+  teamEvaluationConfirmed: boolean | null
   updatedAt: string
 }
 
@@ -89,18 +91,26 @@ export function moduleProgress(res: Pick<ParsedModuleResource, 'documents' | 'te
   return Math.min(100, score)
 }
 
-/** 模块是否资料完整（任一：文档 ≥1 / 非空文本框 ≥1 / 截图 ≥1） */
-export function isModuleComplete(res: Pick<ParsedModuleResource, 'documents' | 'textBlocks' | 'screenshots'>): boolean {
-  return (
+/** 模块是否资料完整（任一：文档 ≥1 / 非空文本框 ≥1 / 截图 ≥1）
+ *  团队与治理模块额外要求：团队评价表已确认（评价存在但为草稿时视为不完整） */
+export function isModuleComplete(
+  res: Pick<ParsedModuleResource, 'moduleKey' | 'documents' | 'textBlocks' | 'screenshots' | 'teamEvaluationConfirmed'>
+): boolean {
+  const hasData =
     res.documents.length > 0 ||
     res.screenshots.length > 0 ||
     res.textBlocks.some(t => t.content.trim().length > 0)
-  )
+  if (res.moduleKey === 'TEAM_GOVERNANCE' && res.teamEvaluationConfirmed === false) {
+    return false
+  }
+  return hasData
 }
 
 /** 完整性检查：返回缺失模块名列表（全部完整时为空） */
 export function findMissingModules(resources: ParsedModuleResource[]): string[] {
-  return resources.filter(r => !isModuleComplete(r)).map(r => r.moduleName)
+  return resources
+    .filter(r => !isModuleComplete(r))
+    .map(r => r.moduleName + (r.moduleKey === 'TEAM_GOVERNANCE' && r.teamEvaluationConfirmed === false ? '（需确认团队评价表）' : ''))
 }
 
 /** 报告是否已生成（九大模块全部有 reportJson） */
@@ -110,7 +120,10 @@ export function isReportReady(resources: ParsedModuleResource[]): boolean {
 
 /** 读取项目九大模块资料（无记录的模块补空壳，顺序与模板一致） */
 export async function getProjectModuleResources(projectId: string): Promise<ParsedModuleResource[]> {
-  const records = await prisma.dDModuleResource.findMany({ where: { projectId } })
+  const [records, teamEval] = await Promise.all([
+    prisma.dDModuleResource.findMany({ where: { projectId } }),
+    prisma.dDTeamEvaluation.findUnique({ where: { projectId }, select: { status: true } }),
+  ])
   const byKey = new Map(records.map(r => [r.moduleKey, r]))
 
   return DD_TEMPLATE_MODULES.map(tpl => {
@@ -154,6 +167,7 @@ export async function getProjectModuleResources(projectId: string): Promise<Pars
       report,
       analysis,
       conclusion: r?.conclusion || null,
+      teamEvaluationConfirmed: tpl.key === 'TEAM_GOVERNANCE' ? (teamEval ? teamEval.status === 'CONFIRMED' : null) : null,
       updatedAt: (r?.updatedAt || new Date()).toISOString(),
     }
   })

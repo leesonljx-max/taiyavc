@@ -86,7 +86,11 @@ function buildContentDigest(res: ParsedModuleResource): string {
   }
   const texts = res.textBlocks.filter(t => t.content.trim())
   if (texts.length > 0) {
-    parts.push(`【维护人填写】\n${texts.map((t, i) => `${i + 1}. ${t.content.trim()}`).join('\n')}`)
+    // 文本框支持粘贴截图（富文本 HTML）：img 转为 [截图] 占位，其余标签剥除，避免噪音进入模型
+    const plain = texts
+      .map((t, i) => `${i + 1}. ${t.content.replace(/<img[^>]*>/g, '[截图]').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').trim()}`)
+      .join('\n')
+    parts.push(`【维护人填写】\n${plain}`)
   }
   if (res.screenshots.length > 0) {
     parts.push(`【截图材料】共 ${res.screenshots.length} 张截图（随报告原样展示，含关键界面/数据图）`)

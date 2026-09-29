@@ -16,8 +16,10 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import DocumentPreviewModal from '@/components/DocumentPreviewModal'
+import RichTextEditor from '@/components/RichTextEditor'
 import { compressImage } from '@/lib/image-compress'
 import { ModuleVisual, MODULE_VISUAL_LABELS, type VisualTaskStats } from './ModuleVisuals'
+import TeamEvaluationCard from './TeamEvaluationCard'
 import { DD_EVIDENCE_GRADE_LABELS, DD_EVIDENCE_STATUS_LABELS } from '@/lib/dd-workbench/constants'
 
 // ── 类型（与后端 resources.ts 对齐） ──
@@ -53,6 +55,8 @@ interface ModuleResource {
   report: DDModuleReport | null
   analysis: DDModuleAnalysis | null
   conclusion: string | null
+  /** 仅团队与治理：团队评价确认状态（null=未生成；false=草稿中；true=已确认） */
+  teamEvaluationConfirmed: boolean | null
   updatedAt: string
 }
 
@@ -70,6 +74,14 @@ interface DecisionState {
 const DECISION_KEY = '__INVESTMENT_DECISION__'
 const DECISION_LABELS: Record<string, string> = { INVEST: '投资', NO_INVEST: '不投资', UNDECIDED: '纠结中' }
 
+/** 富文本渲染安全过滤：移除 script/事件属性（项目惯例） */
+function sanitizeRichText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, '')
+}
+
 function resourceCount(res: ModuleResource) {
   return {
     docs: res.documents.length,
@@ -79,7 +91,10 @@ function resourceCount(res: ModuleResource) {
 }
 function isComplete(res: ModuleResource) {
   const c = resourceCount(res)
-  return c.docs > 0 || c.texts > 0 || c.shots > 0
+  const hasData = c.docs > 0 || c.texts > 0 || c.shots > 0
+  // 团队与治理：评价表存在但未确认 → 模块视为不完整（阻塞报告生成）
+  if (res.moduleKey === 'TEAM_GOVERNANCE' && res.teamEvaluationConfirmed === false) return false
+  return hasData
 }
 /** 资料完整度（0-100）：文档 34% + 非空文本 33% + 截图 33%（进度条数据源） */
 function moduleProgress(res: ModuleResource) {
@@ -260,9 +275,23 @@ export default function DDWorkbenchShell({
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-[10px] font-black text-[#8d84e0]">{String(i + 1).padStart(2, '0')}</span>
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                      analyzed ? 'bg-blue-50 text-blue-600' : complete ? 'bg-amber-50 text-amber-600' : 'bg-gray-100 text-gray-400'
+                      res.moduleKey === 'TEAM_GOVERNANCE' && res.teamEvaluationConfirmed === false
+                        ? 'bg-amber-50 text-amber-600'
+                        : analyzed
+                          ? 'bg-blue-50 text-blue-600'
+                          : complete
+                            ? 'bg-amber-50 text-amber-600'
+                            : 'bg-gray-100 text-gray-400'
                     }`}>
-                      {analyzed ? '✓ 已分析' : complete ? '待分析' : '待补充'}
+                      {res.moduleKey === 'TEAM_GOVERNANCE' && res.teamEvaluationConfirmed === false
+                        ? '📋 待评价'
+                        : res.moduleKey === 'TEAM_GOVERNANCE' && res.teamEvaluationConfirmed === true
+                          ? '📋 已评价'
+                          : analyzed
+                            ? '✓ 已分析'
+                            : complete
+                              ? '待分析'
+                              : '待补充'}
                     </span>
                   </div>
                   <p className="text-sm font-bold text-gray-800 leading-tight">{res.moduleName}</p>
@@ -692,6 +721,16 @@ function FrontModuleDetail({
             />
           </div>
 
+          {/* 团队评价表（仅团队与治理模块，必填：确认后模块才算完整） */}
+          {module.moduleKey === 'TEAM_GOVERNANCE' && (
+            <TeamEvaluationCard
+              projectId={projectId}
+              canEdit={canEdit}
+              hasResourceData={resourceCount(module).docs + resourceCount(module).texts + resourceCount(module).shots > 0}
+              onChanged={onRefresh}
+            />
+          )}
+
           {/* 模块资料（折叠）：文档 / 文本 / 截图 + 模块报告 */}
           <details className="rounded-xl border border-[#efedfb] bg-white">
             <summary className="cursor-pointer px-4 py-2.5 text-xs font-bold text-[#6f63c9] select-none">
@@ -725,7 +764,11 @@ function FrontModuleDetail({
                   <p className="text-[11px] font-bold text-gray-500 mb-1.5">📝 文本说明</p>
                   <div className="space-y-2">
                     {module.textBlocks.filter(t => t.content.trim()).map(t => (
-                      <div key={t.id} className="p-2.5 bg-[#faf9fe] border border-[#efedfb] rounded-lg text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{t.content}</div>
+                      <div
+                        key={t.id}
+                        className="p-2.5 bg-[#faf9fe] border border-[#efedfb] rounded-lg text-xs text-gray-700 leading-relaxed [&_img]:max-w-full [&_img]:rounded-lg"
+                        dangerouslySetInnerHTML={{ __html: sanitizeRichText(t.content) }}
+                      />
                     ))}
                   </div>
                 </div>
@@ -1388,14 +1431,19 @@ function ResourceCenterModule({
               )}
               {texts.map((t, i) => (
                 <div key={i} className="flex gap-2">
-                  <textarea
-                    value={t}
-                    onChange={e => { setTexts(texts.map((x, j) => (j === i ? e.target.value : x))); setTextSaved(false) }}
-                    rows={t.length > 200 ? 5 : 3}
-                    placeholder={`文本框 ${i + 1}：填写该模块的文字内容（纪要、要点、说明等）...`}
-                    disabled={!canEdit}
-                    className="flex-1 px-3 py-2 text-xs border border-[#ddd7f2] rounded-xl bg-white focus:outline-none focus:border-[#b6b1ee] resize-y disabled:bg-gray-50"
-                  />
+                  {canEdit ? (
+                    <RichTextEditor
+                      value={t}
+                      onChange={html => { setTexts(texts.map((x, j) => (j === i ? html : x))); setTextSaved(false) }}
+                      placeholder={`文本框 ${i + 1}：填写该模块的文字内容（纪要、要点、说明等），可直接粘贴截图...`}
+                      className="flex-1"
+                    />
+                  ) : (
+                    <div
+                      className="flex-1 px-3 py-2 text-xs border border-[#ddd7f2] rounded-xl bg-gray-50 text-gray-700 leading-relaxed [&_img]:max-w-full [&_img]:rounded-lg"
+                      dangerouslySetInnerHTML={{ __html: sanitizeRichText(t) }}
+                    />
+                  )}
                   {canEdit && (
                     <button onClick={() => { setTexts(texts.filter((_, j) => j !== i)); setTextSaved(false) }} className="text-gray-300 hover:text-red-500 self-start px-1 pt-2" title="删除该文本框">✕</button>
                   )}
