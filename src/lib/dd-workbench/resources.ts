@@ -82,12 +82,11 @@ function safeParseArray<T>(raw: string | null | undefined): T[] {
   }
 }
 
-/** 模块资料完整度（0-100）：文档/非空文本/截图三类各占 1/3（进度条数据源） */
+/** 模块资料完整度（0-100）：文档 50% + 非空文本 50%（截图功能已下线——文本框支持直接粘贴截图；历史截图兜底计入文本分） */
 export function moduleProgress(res: Pick<ParsedModuleResource, 'documents' | 'textBlocks' | 'screenshots'>): number {
   let score = 0
-  if (res.documents.length > 0) score += 34
-  if (res.textBlocks.some(t => t.content.trim())) score += 33
-  if (res.screenshots.length > 0) score += 33
+  if (res.documents.length > 0) score += 50
+  if (res.textBlocks.some(t => t.content.trim()) || res.screenshots.length > 0) score += 50
   return Math.min(100, score)
 }
 

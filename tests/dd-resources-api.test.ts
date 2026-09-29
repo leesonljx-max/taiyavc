@@ -101,10 +101,10 @@ async function fillAllModules() {
 function mockReportAI() {
   mockState.fetchHandler = (url, body) => {
     const system = String((body.messages as Array<{ content: string }>)[0]?.content || '')
-    if (system.includes('尽调总结报告')) {
+    if (system.includes('尽调分析报告')) {
       return chatCompletions(
         JSON.stringify({
-          summary: '该模块资料完整，关键事实清晰。',
+          summary: '关键事实：资料完整。\n分析判断：**技术路线具备领先性**，订单增长明确。\n核心结论：**该模块整体判断为正常**。',
           opportunities: ['技术路线领先', '订单增长明确'],
           risks: ['良率数据未提供，需补充验证'],
         })
@@ -234,6 +234,7 @@ test('生成报告：资料不完整 400 + 缺失清单；补齐后生成九模�
   for (const r of body.resources) {
     assert.ok(r.report, `${r.moduleName} 应有报告`)
     assert.ok(r.report.summary.includes('资料完整'))
+    assert.ok(r.report.summary.includes('**技术路线具备领先性**'), '核心内容 **加粗** 标记应原样保留')
     assert.equal(r.report.opportunities.length, 2)
     assert.equal(r.report.risks.length, 1)
   }

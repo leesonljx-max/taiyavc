@@ -45,6 +45,11 @@ model Project {
   passedStages String?
   // 最近一次阶段变更时间（用于本周新增项目：本周变更阶段的项目也显示）
   stageChangedAt DateTime?
+  // 投后投资信息（投后管理详情页窄条卡片录入，确认后不可更改）
+  postInvestFund      String?   // 投资基金（如：泰亚三期；支持用户新增自定义基金）
+  postInvestAmount    Float?    // 投资金额（万元）
+  postInvestDate      String?   // 投资日期（YYYY-MM，精确到月）
+  postInvestConfirmed Boolean @default(false)  // 确认后锁定不可修改
   investments      Investment[]
   investors        Investor[] @relation("InvestorProjects")
   members          ProjectMember[]

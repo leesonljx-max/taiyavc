@@ -20,6 +20,7 @@ import { POST as DOC_POST, DELETE as DOC_DELETE } from '@/app/api/post-investmen
 import { GET as DOC_PREVIEW } from '@/app/api/post-investment/documents/preview/route'
 import { GET as PI_DETAIL } from '@/app/api/post-investment/[projectId]/route'
 import { POST as ANALYZE_POST } from '@/app/api/post-investment/[projectId]/analyze/route'
+import { POST as INVESTMENT_POST } from '@/app/api/post-investment/[projectId]/investment/route'
 
 const SUFFIX = String(Date.now()).slice(-6)
 const MANAGER_EMAIL = `d5-mgr-${SUFFIX}@test.com`
@@ -527,4 +528,67 @@ test('上传 pptx：自动按页提取文本入库（供 AI 分析与文本阅�
   // 清理上传的真实文件
   const m = doc.fileUrl.match(/post-investment-docs\/([A-Za-z0-9._-]+)$/)
   if (m) writtenFiles.push(join(UPLOAD_DIR, m[1]))
+})
+
+// ── V2.2.0：投资信息（基金/金额/日期，确认后锁定） ──
+
+test('投资信息：录入确认后锁定不可更改；校验与权限；列表/详情返回基金筛选数据', async () => {
+  const invUrl = `http://t/api/post-investment/${projectId}/investment`
+  const invReq = (body: object) => new Request(invUrl, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+
+  // 未登录 401
+  mockState.session = null
+  let res: Response = await INVESTMENT_POST(invReq({ fund: '泰亚三期', amount: 100, date: '2024-12' }), { params: { projectId } })
+  assert.equal(res.status, 401)
+
+  asManager()
+  // 校验失败：空基金 / 非正金额 / 非法日期格式
+  res = await INVESTMENT_POST(invReq({ fund: '', amount: 100, date: '2024-12' }), { params: { projectId } })
+  assert.equal(res.status, 400)
+  res = await INVESTMENT_POST(invReq({ fund: '泰亚三期', amount: -5, date: '2024-12' }), { params: { projectId } })
+  assert.equal(res.status, 400)
+  res = await INVESTMENT_POST(invReq({ fund: '泰亚三期', amount: 100, date: '2024-13' }), { params: { projectId } })
+  assert.equal(res.status, 400)
+  res = await INVESTMENT_POST(invReq({ fund: '泰亚三期', amount: 100, date: '2024/12' }), { params: { projectId } })
+  assert.equal(res.status, 400)
+
+  // 路人（非维护人）403
+  asUser(outsiderId, 'INVESTMENT_MANAGER')
+  res = await INVESTMENT_POST(invReq({ fund: '泰亚三期', amount: 100, date: '2024-12' }), { params: { projectId } })
+  assert.equal(res.status, 403)
+
+  // 合法录入（自定义基金 → 之后下拉可选）
+  asManager()
+  const fundName = `泰亚五期${SUFFIX}`
+  res = await INVESTMENT_POST(invReq({ fund: fundName, amount: 2500, date: '2024-12' }), { params: { projectId } })
+  assert.equal(res.status, 200)
+
+  const proj = await prisma.project.findUnique({ where: { id: projectId } })
+  assert.equal(proj!.postInvestFund, fundName)
+  assert.equal(proj!.postInvestAmount, 2500)
+  assert.equal(proj!.postInvestDate, '2024-12')
+  assert.equal(proj!.postInvestConfirmed, true)
+
+  // 确认后锁定 → 409
+  res = await INVESTMENT_POST(invReq({ fund: '泰亚一期', amount: 100, date: '2025-01' }), { params: { projectId } })
+  assert.equal(res.status, 409)
+
+  // 详情 API：investment + funds（预置 + 自定义）
+  const detail = await (await PI_DETAIL(new Request(`http://t/api/post-investment/${projectId}`), { params: { projectId } })).json()
+  assert.equal(detail.investment.fund, fundName)
+  assert.equal(detail.investment.amount, 2500)
+  assert.equal(detail.investment.date, '2024-12')
+  assert.equal(detail.investment.confirmed, true)
+  assert.ok(detail.funds.includes(fundName), '自定义基金应出现在可选列表')
+  assert.ok(detail.funds.includes('泰亚一期') && detail.funds.includes('泰亚四期'), '预置基金应在列表中')
+
+  // 列表 API：investment + funds
+  const list = await (await PI_LIST()).json()
+  const item = list.projects.find((p: { id: string }) => p.id === projectId)
+  assert.ok(item)
+  assert.equal(item.investment.fund, fundName)
+  assert.equal(item.investment.amount, 2500)
+  assert.ok(list.funds.includes(fundName))
 })

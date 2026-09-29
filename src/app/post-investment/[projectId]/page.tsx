@@ -47,6 +47,13 @@ interface AnalysisResult {
   risk_alerts: Array<{ type: string; level: 'high' | 'medium' | 'low'; description: string; evidence: string }>
 }
 
+interface InvestmentInfo {
+  fund: string | null
+  amount: number | null
+  date: string | null
+  confirmed: boolean
+}
+
 interface DetailData {
   project: {
     id: string
@@ -57,6 +64,8 @@ interface DetailData {
     followStage: string
   }
   canEdit: boolean
+  investment: InvestmentInfo
+  funds: string[]
   periods: string[]
   docs: PIDoc[]
   metricsByPeriod: Record<string, MetricWithChange[]>
@@ -109,6 +118,16 @@ function fmtSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`
 }
 
+/** 投资日期 YYYY-MM → 「2024年12月」 */
+function fmtInvestDate(ym: string | null): string {
+  if (!ym) return '—'
+  const m = ym.match(/^(\d{4})-(\d{2})$/)
+  return m ? `${m[1]}年${m[2]}月` : ym
+}
+
+/** 下拉中的「新增基金」特殊值 */
+const NEW_FUND = '__NEW_FUND__'
+
 export default function PostInvestmentDetailPage() {
   const params = useParams<{ projectId: string }>()
   const router = useRouter()
@@ -133,6 +152,37 @@ export default function PostInvestmentDetailPage() {
   const [analyzeErr, setAnalyzeErr] = useState('')
 
   const [previewDoc, setPreviewDoc] = useState<{ fileName: string; fileUrl: string; fileType: string; textContent?: string; previewHtml?: string } | null>(null)
+
+  // 投资信息录入（基金 / 金额 / 日期，确认后锁定）
+  const [invFund, setInvFund] = useState('')
+  const [invCustomMode, setInvCustomMode] = useState(false)
+  const [invCustomName, setInvCustomName] = useState('')
+  const [invAmount, setInvAmount] = useState('')
+  const [invDate, setInvDate] = useState('')
+  const [savingInv, setSavingInv] = useState(false)
+  const [invErr, setInvErr] = useState('')
+
+  /** 确认投资信息（锁定不可更改） */
+  const confirmInvestment = async () => {
+    if (savingInv) return
+    const fund = invCustomMode ? invCustomName.trim() : invFund.trim()
+    if (!fund) { setInvErr('请选择或填写投资基金'); return }
+    if (!invAmount || !Number.isFinite(Number(invAmount)) || Number(invAmount) <= 0) { setInvErr('请填写投资金额（正数，单位：万元）'); return }
+    if (!/^\d{4}-\d{2}$/.test(invDate)) { setInvErr('请选择投资日期（年月）'); return }
+    if (!window.confirm('确认后投资信息将锁定、不可更改。确定保存？')) return
+    setSavingInv(true)
+    setInvErr('')
+    try {
+      const res = await fetch(`/api/post-investment/${params.projectId}/investment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fund, amount: Number(invAmount), date: invDate }),
+      })
+      const json = await res.json()
+      if (!res.ok) { setInvErr(json.error || '保存失败'); return }
+      await load()
+    } catch { setInvErr('网络错误') } finally { setSavingInv(false) }
+  }
 
   /** 打开文档预览：调用预览 API（docx/xlsx→HTML、pptx→文本、pdf/txt→文件地址） */
   const openPreviewDoc = async (d: PIDoc) => {
@@ -284,6 +334,84 @@ export default function PostInvestmentDetailPage() {
 
       {view === 'overview' ? (
         <div className="space-y-4">
+          {/* ── 投资信息窄条卡片（确认后锁定不可更改） ── */}
+          <div className="dd-card rounded-2xl shadow-sm border px-5 py-3">
+            {data.investment.confirmed ? (
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="text-xs font-bold text-gray-500 flex-shrink-0">💳 投资信息</span>
+                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold">{data.investment.fund}</span>
+                <span className="text-sm font-bold text-blue-600">{data.investment.amount?.toLocaleString()} <span className="text-xs font-normal text-gray-400">万元</span></span>
+                <span className="text-sm text-gray-700">{fmtInvestDate(data.investment.date)}</span>
+                <span className="text-[10px] text-gray-400">🔒 已确认，不可更改</span>
+              </div>
+            ) : canEdit ? (
+              <div className="space-y-2">
+                <div className="flex items-end gap-3 flex-wrap">
+                  <span className="text-xs font-bold text-gray-500 flex-shrink-0 pb-2">💳 投资信息</span>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 mb-1">投资基金</label>
+                    {invCustomMode ? (
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          value={invCustomName}
+                          onChange={e => { setInvCustomName(e.target.value); setInvErr('') }}
+                          placeholder="输入新基金名称"
+                          maxLength={30}
+                          className="px-3 py-1.5 text-sm border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-200 w-40"
+                        />
+                        <button onClick={() => { setInvCustomMode(false); setInvCustomName('') }} className="text-[11px] text-gray-400 hover:text-gray-600 px-1">改选</button>
+                      </div>
+                    ) : (
+                      <select
+                        value={invFund}
+                        onChange={e => {
+                          if (e.target.value === NEW_FUND) { setInvCustomMode(true); setInvErr('') }
+                          else { setInvFund(e.target.value); setInvErr('') }
+                        }}
+                        className="px-3 py-1.5 text-sm border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-200"
+                      >
+                        <option value="">选择基金</option>
+                        {data.funds.map(f => <option key={f} value={f}>{f}</option>)}
+                        <option value={NEW_FUND}>＋ 新增基金</option>
+                      </select>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 mb-1">投资金额（万元）</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={invAmount}
+                      onChange={e => { setInvAmount(e.target.value); setInvErr('') }}
+                      placeholder="如 2500"
+                      className="px-3 py-1.5 text-sm border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-200 w-32"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 mb-1">投资日期（年月）</label>
+                    <input
+                      type="month"
+                      value={invDate}
+                      onChange={e => { setInvDate(e.target.value); setInvErr('') }}
+                      className="px-3 py-1.5 text-sm border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-200"
+                    />
+                  </div>
+                  <button
+                    onClick={confirmInvestment}
+                    disabled={savingInv}
+                    className="px-4 py-1.5 bg-blue-600 text-white text-sm font-bold rounded-xl shadow-md shadow-blue-500/25 hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {savingInv ? '保存中...' : '确认（锁定）'}
+                  </button>
+                </div>
+                {invErr && <p className="text-[11px] text-red-500">{invErr}</p>}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400">💳 投资信息未填写（由项目维护人录入）</p>
+            )}
+          </div>
+
           {/* ── 上传区 ── */}
           {canEdit && (
             <div className="dd-card rounded-2xl shadow-sm border p-5">

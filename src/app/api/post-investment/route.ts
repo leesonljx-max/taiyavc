@@ -6,6 +6,7 @@ import prisma from '@/lib/prisma'
 import { authOptions, type UserRole } from '@/lib/auth'
 import type { PermissionUser } from '@/lib/permissions'
 import { canViewResearchProject } from '@/lib/research-permissions'
+import { getAvailableFunds } from '@/lib/post-investment/funds'
 import type { PostInvestAnalysisResult } from '@/lib/post-investment/analysis'
 
 /** 当前季度（用于统计"本季已提交/待提交"） */
@@ -43,6 +44,7 @@ export async function GET() {
       where: { followStage: 'POST_INVESTMENT' },
       select: {
         id: true, name: true, companyFullName: true, industry: true, totalAmount: true,
+        postInvestFund: true, postInvestAmount: true, postInvestDate: true, postInvestConfirmed: true,
         createdById: true, updatedAt: true,
         members: { select: { userId: true } },
       },
@@ -77,6 +79,9 @@ export async function GET() {
         companyFullName: p.companyFullName,
         industry: p.industry,
         totalAmount: p.totalAmount,
+        investment: p.postInvestConfirmed
+          ? { fund: p.postInvestFund, amount: p.postInvestAmount, date: p.postInvestDate }
+          : null,
         docCount,
         latestPeriod: latestAnalysisRecord?.period || null,
         latestSummary: analysis?.executive_summary || null,
@@ -95,6 +100,7 @@ export async function GET() {
         pending: visible.length - submittedCount,
         riskCount,
       },
+      funds: await getAvailableFunds(),
     })
   } catch (error) {
     console.error('Post-investment list error:', error)

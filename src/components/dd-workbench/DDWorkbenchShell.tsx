@@ -11,13 +11,12 @@
  *   右上「生成尽调报告」按钮（九模块资料完整才变蓝，灰色点击提示缺失部分）；
  *   报告生成后出现第 10 模块「投资决策」（合伙人投票 / 维护人看进度）
  * - 背面（资料中心）：点击「资料中心」工作台整体 3D 翻转过来；
- *   每模块可上传文档（自动提取全文）、上传截图、填写/添加多个文本框
+ *   每模块可上传文档（自动提取全文）、填写/添加多个文本框（支持直接粘贴截图）
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import DocumentPreviewModal from '@/components/DocumentPreviewModal'
 import RichTextEditor from '@/components/RichTextEditor'
-import { compressImage } from '@/lib/image-compress'
 import { ModuleVisual, MODULE_VISUAL_LABELS, type VisualTaskStats } from './ModuleVisuals'
 import TeamEvaluationCard from './TeamEvaluationCard'
 import { DD_EVIDENCE_GRADE_LABELS, DD_EVIDENCE_STATUS_LABELS } from '@/lib/dd-workbench/constants'
@@ -96,12 +95,11 @@ function isComplete(res: ModuleResource) {
   if (res.moduleKey === 'TEAM_GOVERNANCE' && res.teamEvaluationConfirmed === false) return false
   return hasData
 }
-/** 资料完整度（0-100）：文档 34% + 非空文本 33% + 截图 33%（进度条数据源） */
+/** 资料完整度（0-100）：文档 50% + 非空文本 50%（截图功能已下线——文本框支持直接粘贴截图；历史截图兜底计入文本分） */
 function moduleProgress(res: ModuleResource) {
   let score = 0
-  if (res.documents.length > 0) score += 34
-  if (res.textBlocks.some(t => t.content.trim())) score += 33
-  if (res.screenshots.length > 0) score += 33
+  if (res.documents.length > 0) score += 50
+  if (res.textBlocks.some(t => t.content.trim()) || res.screenshots.length > 0) score += 50
   return Math.min(100, score)
 }
 
@@ -131,6 +129,8 @@ export default function DDWorkbenchShell({
   const [generating, setGenerating] = useState(false)
   const [reportMsg, setReportMsg] = useState('')
   const [decision, setDecision] = useState<DecisionState | null>(null)
+  // 查看尽调报告全文弹窗
+  const [showFullReport, setShowFullReport] = useState(false)
 
   const fetchResources = useCallback(async () => {
     try {
@@ -163,7 +163,7 @@ export default function DDWorkbenchShell({
     if (generating) return
     if (!allComplete) {
       const missing = resources.filter(r => !isComplete(r)).map(r => r.moduleName)
-      setReportMsg(`资料不完整，缺失模块：${missing.join('、')}。请到资料中心补充（上传文档 / 填写文本 / 上传截图，任一项即可）`)
+      setReportMsg(`资料不完整，缺失模块：${missing.join('、')}。请到资料中心补充（上传文档 / 填写文本（可粘贴截图），任一项即可）`)
       return
     }
     setGenerating(true)
@@ -194,7 +194,8 @@ export default function DDWorkbenchShell({
   }
 
   return (
-    <div className="grid" style={{ perspective: '1800px' }}>
+    <>
+      <div className="grid" style={{ perspective: '1800px' }}>
       {/* ── 正面：尽调工作台 ── */}
       <div
         className="col-start-1 row-start-1"
@@ -218,6 +219,15 @@ export default function DDWorkbenchShell({
               <p className="text-xs text-gray-400 mt-1">点击模块查看资料与报告 · 资料完整后可生成尽调报告</p>
             </div>
             <div className="flex items-center gap-2">
+              {reportReady && (
+                <button
+                  onClick={() => setShowFullReport(true)}
+                  className="px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-xl shadow-md shadow-emerald-500/25 hover:bg-emerald-700"
+                  title="查看九大模块汇总的完整尽调报告"
+                >
+                  📄 查看尽调报告
+                </button>
+              )}
               <button
                 onClick={handleGenerateReport}
                 disabled={generating || !canEdit}
@@ -383,7 +393,7 @@ export default function DDWorkbenchShell({
                 </span>
                 资料中心 · {projectName}
               </h2>
-              <p className="text-xs text-gray-400 mt-1">九大模块的文档、文本与截图都在这里管理 · 上传后前台模块与报告自动汇总</p>
+              <p className="text-xs text-gray-400 mt-1">九大模块的文档与文本都在这里管理（文本框支持直接粘贴截图） · 上传后前台模块与报告自动汇总</p>
             </div>
             <button onClick={() => setFlipped(false)} className="px-4 py-2 bg-white border border-[#ddd7f2] text-[#6f63c9] text-sm font-bold rounded-xl hover:bg-[#efedfb]">
               ← 返回工作台
@@ -404,6 +414,110 @@ export default function DDWorkbenchShell({
               />
             ))}
           </div>
+        </div>
+      </div>
+      </div>
+
+      {/* 查看尽调报告全文弹窗（渲染在翻转容器外，避免 3D 变换影响 fixed 定位） */}
+      {showFullReport && reportReady && (
+        <DDFullReportModal projectName={projectName} resources={resources} onClose={() => setShowFullReport(false)} />
+      )}
+    </>
+  )
+}
+
+/** 尽调报告全文弹窗：九大模块依次汇总的完整尽调报告（核心内容 **加粗** 提亮） */
+function DDFullReportModal({
+  projectName,
+  resources,
+  onClose,
+}: {
+  projectName: string
+  resources: ModuleResource[]
+  onClose: () => void
+}) {
+  // ESC 关闭
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleEsc)
+    return () => window.removeEventListener('keydown', handleEsc)
+  }, [onClose])
+
+  const modules = resources.filter(r => r.report)
+  const latestAt = modules
+    .map(r => new Date(r.report!.generatedAt).getTime())
+    .reduce((a, b) => Math.max(a, b), 0)
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl shadow-2xl flex flex-col"
+        style={{ width: '86vw', height: '88vh', maxWidth: '1100px' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* 头部 */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#b6b1ee] to-[#8d84e0] flex items-center justify-center text-white">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+              </span>
+              尽调报告 · {projectName}
+            </h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              九大模块尽调分析汇总 · 共 {modules.length} 个模块 · 生成于 {new Date(latestAt).toLocaleString('zh-CN')}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            aria-label="关闭"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* 正文：按模块依次展开 */}
+        <div className="flex-1 overflow-auto px-6 py-5 space-y-5 bg-gray-50/60">
+          {modules.map((r, i) => (
+            <section key={r.moduleKey} className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+              <div className="flex items-center gap-2.5 mb-1">
+                <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#b6b1ee] to-[#8d84e0] text-white text-xs font-black flex items-center justify-center flex-shrink-0">
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <h4 className="text-base font-bold text-gray-900">{r.moduleName}</h4>
+              </div>
+              <p className="text-xs text-gray-400 mb-3">投委会核心问题：{r.coreQuestion}</p>
+              <p
+                className="text-sm text-gray-700 leading-relaxed [&_strong]:text-[#5b4fb5]"
+                dangerouslySetInnerHTML={{ __html: renderBold(r.report!.summary) }}
+              />
+              {(r.report!.opportunities.length > 0 || r.report!.risks.length > 0) && (
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {r.report!.opportunities.length > 0 && (
+                    <div className="px-3.5 py-3 rounded-xl bg-emerald-50/50 border border-emerald-100">
+                      <p className="text-[11px] font-bold text-emerald-600 mb-1.5">✦ 机会点</p>
+                      {r.report!.opportunities.map((o, j) => (
+                        <p key={j} className="text-xs text-gray-700 leading-relaxed mb-1">{o}</p>
+                      ))}
+                    </div>
+                  )}
+                  {r.report!.risks.length > 0 && (
+                    <div className="px-3.5 py-3 rounded-xl bg-red-50/40 border border-red-100">
+                      <p className="text-[11px] font-bold text-red-500 mb-1.5">⚠ 风险点</p>
+                      {r.report!.risks.map((rk, j) => (
+                        <p key={j} className="text-xs text-gray-700 leading-relaxed mb-1">{rk}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          ))}
         </div>
       </div>
     </div>
@@ -1050,12 +1164,21 @@ function ModuleQA({
   )
 }
 
-/** 模块尽调报告卡（总结 + 机会 + 风险） */
+/** 渲染 **加粗** 标记：先转义 HTML，再把 **x** 转为 <strong>（报告核心内容加粗提亮） */
+function renderBold(text: string): string {
+  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return escaped.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-bold text-gray-900">$1</strong>')
+}
+
+/** 模块尽调报告卡（总结 + 机会 + 风险；核心内容 **加粗** 提亮） */
 function ModuleReportCard({ report }: { report: DDModuleReport }) {
   return (
     <div className="p-3.5 rounded-xl bg-gradient-to-br from-[#efedfb] to-white border border-[#ddd7f2]">
       <p className="text-[11px] font-bold text-[#6f63c9] mb-2">📊 模块尽调报告</p>
-      <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">{report.summary}</p>
+      <p
+        className="text-xs text-gray-700 leading-relaxed [&_strong]:text-[#5b4fb5]"
+        dangerouslySetInnerHTML={{ __html: renderBold(report.summary) }}
+      />
       {report.opportunities.length > 0 && (
         <div className="mt-2.5">
           <p className="text-[10px] font-bold text-emerald-600 mb-1">机会</p>
@@ -1266,11 +1389,9 @@ function ResourceCenterModule({
   const [savingText, setSavingText] = useState(false)
   const [textSaved, setTextSaved] = useState(false)
   const [uploadingDoc, setUploadingDoc] = useState(false)
-  const [uploadingShot, setUploadingShot] = useState(false)
   const [opErr, setOpErr] = useState('')
   const [previewDoc, setPreviewDoc] = useState<{ fileName: string; fileUrl: string; fileType: string } | null>(null)
   const docInputRef = useRef<HTMLInputElement>(null)
-  const shotInputRef = useRef<HTMLInputElement>(null)
 
   // 切换模块时载入其文本框；保存后父级刷新（引用变化）不重置"已保存"提示
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1318,32 +1439,6 @@ function ResourceCenterModule({
     setOpErr('')
     try {
       const res = await fetch(`/api/dd/resources/${projectId}/${module.moduleKey}/documents?docId=${docId}`, { method: 'DELETE' })
-      const data = await res.json()
-      if (!res.ok) { setOpErr(data.error || '删除失败'); return }
-      onChanged()
-    } catch { setOpErr('网络错误') }
-  }
-
-  // 上传截图（压缩后）
-  const uploadShot = async (file: File) => {
-    setUploadingShot(true)
-    setOpErr('')
-    try {
-      const compressed = await compressImage(file)
-      const fd = new FormData()
-      fd.append('file', compressed)
-      const res = await fetch(`/api/dd/resources/${projectId}/${module.moduleKey}/screenshots`, { method: 'POST', body: fd })
-      const data = await res.json()
-      if (!res.ok) { setOpErr(data.error || '上传失败'); return }
-      onChanged()
-    } catch { setOpErr('上传失败') } finally { setUploadingShot(false) }
-  }
-
-  // 删除截图
-  const deleteShot = async (shotId: string) => {
-    setOpErr('')
-    try {
-      const res = await fetch(`/api/dd/resources/${projectId}/${module.moduleKey}/screenshots?shotId=${shotId}`, { method: 'DELETE' })
       const data = await res.json()
       if (!res.ok) { setOpErr(data.error || '删除失败'); return }
       onChanged()
@@ -1458,47 +1553,6 @@ function ResourceCenterModule({
               )}
               {!canEdit && texts.length === 0 && <p className="text-[11px] text-gray-400">暂无文本内容</p>}
             </div>
-          </div>
-
-          {/* 截图 */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-bold text-gray-500">上传截图（数据图/界面/关键截图，报告中原样嵌入展示）</span>
-              {canEdit && (
-                <label className={`px-2.5 py-1 bg-[#efedfb] text-[#6f63c9] text-xs font-bold rounded-lg cursor-pointer hover:bg-[#e2ddf8] ${uploadingShot ? 'opacity-50 pointer-events-none' : ''}`}>
-                  {uploadingShot ? '上传中...' : '+ 上传截图'}
-                  <input
-                    ref={shotInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={e => {
-                      const f = e.target.files?.[0]
-                      e.target.value = ''
-                      if (f) uploadShot(f)
-                    }}
-                  />
-                </label>
-              )}
-            </div>
-            {module.screenshots.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {module.screenshots.map(s => (
-                  <div key={s.id} className="relative group">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={s.url} alt={s.fileName} className="w-20 h-20 object-cover rounded-lg border border-[#ddd7f2] cursor-pointer hover:opacity-80" onClick={() => window.open(s.url, '_blank')} />
-                    {canEdit && (
-                      <button
-                        onClick={() => window.confirm('删除该截图？') && deleteShot(s.id)}
-                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-[10px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                      >✕</button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-[11px] text-gray-400">暂无截图</p>
-            )}
           </div>
         </div>
       )}

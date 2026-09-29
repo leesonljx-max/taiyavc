@@ -6,6 +6,7 @@ import prisma from '@/lib/prisma'
 import { authOptions, type UserRole } from '@/lib/auth'
 import type { PermissionUser } from '@/lib/permissions'
 import { canViewResearchProject, canEditResearchProject } from '@/lib/research-permissions'
+import { getAvailableFunds } from '@/lib/post-investment/funds'
 import { computeMetricsWithChange, type MetricWithChange } from '@/lib/post-investment/calc'
 import type { PostInvestAnalysisResult } from '@/lib/post-investment/analysis'
 
@@ -29,6 +30,7 @@ export async function GET(
       select: {
         id: true, name: true, companyFullName: true, industry: true, totalAmount: true,
         followStage: true, createdById: true,
+        postInvestFund: true, postInvestAmount: true, postInvestDate: true, postInvestConfirmed: true,
         members: { select: { userId: true } },
       },
     })
@@ -81,6 +83,10 @@ export async function GET(
         followStage: project.followStage,
       },
       canEdit: canEditResearchProject(currentUser, { createdById: project.createdById, memberIds }),
+      investment: project.postInvestConfirmed
+        ? { fund: project.postInvestFund, amount: project.postInvestAmount, date: project.postInvestDate, confirmed: true }
+        : { fund: null, amount: null, date: null, confirmed: false },
+      funds: await getAvailableFunds(),
       periods,
       docs: docs.map(d => ({
         id: d.id,
