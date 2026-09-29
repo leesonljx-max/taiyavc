@@ -41,6 +41,17 @@ export async function POST(
       }
     }
 
+    // 赛道知识库：读取同赛道（行业）历史沉淀的高质量问题 + 历史结论，注入生成二次校验问题
+    let sectorInsights: Array<{ question: string; idealAnswer: string; conclusion: string }> = []
+    if (interpretation?.industry) {
+      sectorInsights = await prisma.sectorInsight.findMany({
+        where: { sector: interpretation.industry },
+        orderBy: [{ hitCount: 'desc' }, { updatedAt: 'desc' }],
+        take: 12,
+        select: { question: true, idealAnswer: true, conclusion: true },
+      })
+    }
+
     await prisma.projectInterpretation.update({
       where: { id: record.id },
       data: { questionsStatus: 'GENERATING', error: null },
@@ -51,6 +62,7 @@ export async function POST(
         projectName: record.projectName,
         documentText: record.documentText || '',
         interpretation,
+        sectorInsights,
       })
 
       // 覆盖式重建（事务：删旧建新；重新生成问题后旧校验结果作废）
@@ -63,6 +75,7 @@ export async function POST(
             category: q.category,
             question: q.question,
             idealAnswer: q.idealAnswer,
+            sectorInsight: q.isSectorInsight,
           })),
         })
         await tx.projectInterpretation.update({

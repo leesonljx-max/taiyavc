@@ -210,7 +210,8 @@ export default function WorkbenchPage() {
   /** 选中阶段的项目列表：服务端按 stage 分页 */
   const fetchStageList = useCallback(async () => {
     const scope = isPartner ? 'all' : 'mine'
-    const qs = new URLSearchParams({ scope, stage: selectedStage, page: String(stagePage), pageSize: String(STAGE_PAGE_SIZE) })
+    // stageMatch=current：按当前所处阶段（followStage）过滤——已否项目 passedStages 不含 REJECTED，累计口径查不到
+    const qs = new URLSearchParams({ scope, stage: selectedStage, stageMatch: 'current', page: String(stagePage), pageSize: String(STAGE_PAGE_SIZE) })
     if (isPartner && selectedManagerId) qs.set('managerId', selectedManagerId)
     setLoading(true)
     try {

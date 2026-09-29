@@ -219,7 +219,8 @@ const QUESTIONS_SYSTEM_PROMPT = `你是一级市场资深投资人，站在投�
     {
       "category": "TECH",
       "question": "问题（站在投资人角度必须问、能验证真伪的问题）",
-      "idealAnswer": "站在行业和技术角度，这个问题理想情况下项目方应该给出的回答（80字内）"
+      "idealAnswer": "站在行业和技术角度，这个问题理想情况下项目方应该给出的回答（80字内）",
+      "isSectorInsight": false
     }
   ]
 }
@@ -227,18 +228,20 @@ const QUESTIONS_SYSTEM_PROMPT = `你是一级市场资深投资人，站在投�
 要求：
 - 技术问题（category=TECH）至少 10 个，聚焦可验证的技术细节（如具体性能指标、工艺良率、第三方验证）
 - 每个问题的 idealAnswer 必须具体、可判断（好的理想答案应包含量化指标或可核验事实）
-- 问题不得空泛（避免"你们的优势是什么"这类问题）`
+- 问题不得空泛（避免"你们的优势是什么"这类问题）
+- isSectorInsight 仅在题目来源赛道沉淀时为 true，其余一律 false`
 
 /** 校验 AI 生成的问题清单是否符合固定规则 */
 export function validateQuestions(
-  questions: Array<{ category?: string; question?: string; idealAnswer?: string }>
-): { valid: boolean; error?: string; cleaned: Array<{ category: string; question: string; idealAnswer: string }> } {
+  questions: Array<{ category?: string; question?: string; idealAnswer?: string; isSectorInsight?: boolean }>
+): { valid: boolean; error?: string; cleaned: Array<{ category: string; question: string; idealAnswer: string; isSectorInsight: boolean }> } {
   const cleaned = questions
     .filter(q => q && typeof q.question === 'string' && q.question.trim() && typeof q.idealAnswer === 'string' && q.idealAnswer.trim())
     .map(q => ({
       category: isPIQuestionCategory(String(q.category)) ? String(q.category) : 'TECH',
       question: q.question!.trim(),
       idealAnswer: q.idealAnswer!.trim(),
+      isSectorInsight: q.isSectorInsight === true,
     }))
 
   if (cleaned.length < PI_RULES.minQuestions) {
@@ -257,12 +260,15 @@ export function validateQuestions(
 /**
  * 执行"生成问题清单"：15-20 问（技术 ≥10）+ 每题理想答案
  * 与"解读项目"无逻辑承接：interpretation 可选（有则作为补充上下文，无则直接基于文档）
+ * sectorInsights：同赛道历史沉淀的高质量问题（含历史结论）。提供时 AI 会结合新项目情况
+ * 生成对应的二次校验问题（isSectorInsight=true），作为该赛道的重要关注问题
  */
 export async function runQuestionGeneration(input: {
   projectName: string
   documentText: string
   interpretation?: InterpretationResult | null
-}): Promise<Array<{ category: string; question: string; idealAnswer: string }>> {
+  sectorInsights?: Array<{ question: string; idealAnswer: string; conclusion: string }>
+}): Promise<Array<{ category: string; question: string; idealAnswer: string; isSectorInsight: boolean }>> {
   const docText = input.documentText.slice(0, MAX_DOC_TEXT)
   const digestParts: string[] = []
   if (input.interpretation) {
@@ -276,9 +282,23 @@ export async function runQuestionGeneration(input: {
   }
   const digest = digestParts.length > 0 ? digestParts.join('\n') + '\n\n' : ''
 
-  const { parsed } = await callDeepSeekJson<{ questions?: Array<{ category?: string; question?: string; idealAnswer?: string }> }>(
+  // 赛道沉淀：同赛道历史高质量问题 + 历史结论（重要关注问题，结合新项目生成二次校验变体）
+  let insightDigest = ''
+  if (input.sectorInsights && input.sectorInsights.length > 0) {
+    const list = input.sectorInsights
+      .slice(0, 12)
+      .map((s, i) => `[${i + 1}] 历史高质量问题：${s.question}\n理想答案：${s.idealAnswer}\n历史项目校验结论：${s.conclusion}`)
+      .join('\n\n')
+    insightDigest =
+      `\n\n【同赛道历史沉淀的高质量问题（来自历史项目访谈验证，是该赛道的重要关注问题）】\n${list}\n` +
+      `要求：结合新项目的具体情况，把上述历史问题改写为适合本项目的二次校验问题（保留核心验证点，结合新项目的产品/技术/阶段调整表述），` +
+      `这些改写后的问题标记 isSectorInsight=true，优先排在清单前部（最多纳入 ${Math.min(input.sectorInsights.length, 12)} 个）；` +
+      `其余问题正常生成（isSectorInsight=false）。历史结论仅作关注点参考，不得照抄进理想答案。\n`
+  }
+
+  const { parsed } = await callDeepSeekJson<{ questions?: Array<{ category?: string; question?: string; idealAnswer?: string; isSectorInsight?: boolean }> }>(
     QUESTIONS_SYSTEM_PROMPT,
-    `项目：${input.projectName}\n${digest}项目文档内容：\n\n${docText}\n\n请输出访谈问题清单 JSON。`,
+    `项目：${input.projectName}\n${digest}${insightDigest}\n项目文档内容：\n\n${docText}\n\n请输出访谈问题清单 JSON。`,
     6000
   )
 
@@ -288,6 +308,91 @@ export async function runQuestionGeneration(input: {
     throw new Error(error || '问题清单生成不符合固定框架规则')
   }
   return cleaned
+}
+
+// ═══════════ 固定模板：闭环创建项目库草稿 ═══════════
+
+const PROJECT_DRAFT_SYSTEM_PROMPT = `你是一级市场投资经理。基于项目解读的全量材料（BP 文档原文、七维解读、访谈校验综合结论），按项目库创建模板提取项目关键信息。
+严格输出 JSON（不要 markdown 代码块），结构：
+{
+  "name": "项目简称（与 BP 中项目名一致，2-20字）",
+  "companyFullName": "公司全称（BP 中有则提取，无则空字符串）",
+  "industry": "所处行业（AI应用/AI硬件/AI基础设施/具身智能/商业航天/量子计算/脑机接口/可控核聚变/半导体设备/半导体芯片/光学/新材料/其他）",
+  "companyPosition": "公司定位一句话（30字内）",
+  "mainProducts": "主要产品：从 BP 原文截取产品/服务相关核心段落（保留原文关键表述与量化指标，200字内，可轻度组织成通顺文字）",
+  "coreAdvantage": "核心优势：从 BP 原文截取技术壁垒/差异化/里程碑相关段落（保留原文关键表述，200字内）",
+  "coreTeam": "核心团队：从 BP 原文截取创始人及核心成员背景段落（姓名/背景/履历要点，200字内）",
+  "description": "项目描述：综合 BP 与解读结论的一段项目综述（150字内）",
+  "financingRound": "本轮融资轮次（如 天使轮/A轮/Pre-A轮；未披露则空字符串）",
+  "totalAmount": "本轮融资金额（如 8000万/2亿；未披露则'待补充'）",
+  "investmentValuation": 投资估值（亿元，数字；未披露则 null）
+}
+要求：
+- mainProducts / coreAdvantage / coreTeam 三个字段必须优先使用 BP 原文中的对应资料（截取关键句），再辅以文字描述串联，不得凭空编造
+- 文档与解读均未提及的信息：字符串字段写"未披露"，估值写 null
+- 结论克制、可核验`
+
+/** 项目库草稿（AI 按项目库模板从 BP/解读/结论提取） */
+export interface ProjectDraft {
+  name: string
+  companyFullName: string
+  industry: string
+  companyPosition: string
+  mainProducts: string
+  coreAdvantage: string
+  coreTeam: string
+  description: string
+  financingRound: string
+  totalAmount: string
+  investmentValuation: number | null
+}
+
+/**
+ * 闭环创建：从解读全量材料提取项目库模板字段
+ * （主要产品/核心优势/核心团队 截取 BP 原文对应资料 + 文字描述）
+ */
+export async function runProjectDraftExtraction(input: {
+  projectName: string
+  documentText: string
+  interpretation: InterpretationResult | null
+  conclusionSummary: string
+}): Promise<ProjectDraft> {
+  const docText = input.documentText.slice(0, MAX_DOC_TEXT)
+  const digestParts: string[] = []
+  if (input.interpretation) {
+    digestParts.push(
+      `七维解读：\n行业：${input.interpretation.industry}\n市场地位：${input.interpretation.marketPosition}\n技术领先性：${input.interpretation.techLeadership}\n团队咖位：${input.interpretation.teamStanding}\n竞争分析：${input.interpretation.competitionAnalysis}`
+    )
+  }
+  if (input.conclusionSummary) {
+    digestParts.push(`访谈校验综合结论：${input.conclusionSummary}`)
+  }
+  const digest = digestParts.length > 0 ? digestParts.join('\n\n') + '\n\n' : ''
+
+  const { parsed } = await callDeepSeekJson<Partial<ProjectDraft>>(
+    PROJECT_DRAFT_SYSTEM_PROMPT,
+    `项目：${input.projectName}\n${digest}BP 文档原文：\n\n${docText}\n\n请按项目库模板输出提取 JSON。`,
+    3000
+  )
+  if (!parsed || !parsed.name || !parsed.mainProducts) {
+    throw new Error('AI 提取项目信息不完整，请重试')
+  }
+  return {
+    name: String(parsed.name).trim().slice(0, 50),
+    companyFullName: parsed.companyFullName ? String(parsed.companyFullName).slice(0, 100) : '',
+    industry: parsed.industry ? String(parsed.industry).slice(0, 50) : '',
+    companyPosition: parsed.companyPosition ? String(parsed.companyPosition).slice(0, 100) : '',
+    mainProducts: String(parsed.mainProducts).slice(0, 2000),
+    coreAdvantage: parsed.coreAdvantage ? String(parsed.coreAdvantage).slice(0, 2000) : '未披露',
+    coreTeam: parsed.coreTeam ? String(parsed.coreTeam).slice(0, 2000) : '未披露',
+    description: parsed.description ? String(parsed.description).slice(0, 1000) : '',
+    financingRound: parsed.financingRound ? String(parsed.financingRound).slice(0, 30) : '',
+    totalAmount: parsed.totalAmount ? String(parsed.totalAmount).slice(0, 30) : '待补充',
+    investmentValuation:
+      typeof parsed.investmentValuation === 'number' && Number.isFinite(parsed.investmentValuation)
+        ? parsed.investmentValuation
+        : null,
+  }
 }
 
 // ═══════════ 固定模板：批量访谈校验（一次上传，全量校验） ═══════════

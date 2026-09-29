@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
@@ -38,6 +38,30 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
   const { data: session, update: updateSession } = useSession()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [profileModalOpen, setProfileModalOpen] = useState(false)
+  // 待办数字徽标：投资合伙人/管理员的待审批阶段变更请求数（微信未读消息样式）
+  const [pendingCount, setPendingCount] = useState(0)
+
+  const fetchPendingCount = useCallback(async () => {
+    try {
+      const res = await fetch('/api/pending-count')
+      if (res.ok) {
+        const data = await res.json()
+        setPendingCount(typeof data.count === 'number' ? data.count : 0)
+      }
+    } catch { /* 静默失败：徽标不阻塞导航 */ }
+  }, [])
+
+  useEffect(() => {
+    const role = session?.user?.role
+    if (role !== 'ADMIN' && role !== 'INVESTMENT_PARTNER') {
+      setPendingCount(0)
+      return
+    }
+    fetchPendingCount()
+    // 60s 轮询保持待办数新鲜
+    const timer = setInterval(fetchPendingCount, 60000)
+    return () => clearInterval(timer)
+  }, [session?.user?.role, pathname, fetchPendingCount])
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/'
@@ -94,7 +118,13 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
                   </svg>
                   <span className="text-sm font-medium flex-1">{item.label}</span>
-                  {active && (
+                  {/* 工作台待办徽标（微信未读消息样式）：仅合伙人/管理员有待办数时显示 */}
+                  {item.href === '/workbench' && pendingCount > 0 && (
+                    <span className="flex-shrink-0 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[11px] font-bold shadow-sm ring-2 ring-white/90">
+                      {pendingCount > 99 ? '99+' : pendingCount}
+                    </span>
+                  )}
+                  {active && pendingCount === 0 && (
                     <span className="w-2 h-2 rounded-full bg-white/95 shadow-[0_0_8px_rgba(255,255,255,0.9)] animate-pulse" />
                   )}
                 </Link>

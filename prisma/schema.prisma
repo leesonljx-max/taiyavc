@@ -691,12 +691,15 @@ model ProjectInterpretation {
   interviewFileName  String?  // 访谈纪要文件名（音频或文档）
   interviewFileUrl   String?  // 访谈纪要文件 URL
   interviewText      String?  // 本次校验使用的访谈全文（文档提取/音频转写粘贴）
+  // 闭环创建：校验结论生成后创建到项目库的关联项目（防重复创建/重复弹窗）
+  linkedProjectId    String?
   error              String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
   user       User                     @relation("ProjectInterpretations", fields: [userId], references: [id], onDelete: Cascade)
   questions  InterpretationQuestion[]
+  sectorInsights SectorInsight[]
 
   @@index([userId])
 }
@@ -709,6 +712,8 @@ model InterpretationQuestion {
   category         String   // TECH / MARKET / TEAM / BUSINESS / FINANCE
   question         String   // 必须提问的问题
   idealAnswer      String   // 行业与技术视角的理想答案（前端浅色字体显示）
+  // 赛道沉淀标记：该题由同赛道历史高质量问题（SectorInsight）结合新项目生成，属重点二次校验
+  sectorInsight    Boolean  @default(false)
   verifyStatus     String   @default("PENDING") // PENDING / VERIFIED
   verifyFileName   String?  // 访谈文件名（音频或文档）
   verifyFileUrl    String?  // 访谈文件 URL
@@ -720,6 +725,29 @@ model InterpretationQuestion {
   interpretation   ProjectInterpretation @relation(fields: [interpretationId], references: [id], onDelete: Cascade)
 
   @@index([interpretationId])
+}
+
+// 赛道知识库：每个赛道（行业标签）沉淀的高质量访谈问题与核心结论
+// 高质量问题 = 历史项目访谈中"高度吻合"（HIGH）匹配的问题（问题问得好、回答可验证）
+// 下次同赛道新项目解读时自动读取，生成二次校验问题并作为重要关注问题
+model SectorInsight {
+  id             String   @id @default(cuid())
+  sector         String   // 赛道标签（如 具身智能 / AI4AI / 可控核聚变，取 interpretation.industry）
+  question       String   // 高质量问题
+  idealAnswer    String   // 理想答案
+  conclusion     String   // 该问题最近一次访谈校验形成的核心结论（新结论覆盖更新）
+  matchLevel     String   // 最近一次匹配等级（HIGH / PARTIAL）
+  sourceProjectName String // 来源项目名
+  sourceInterpretationId String? // 来源解读记录（记录删除后保留沉淀，SetNull）
+  sourceUserId   String   // 创建者（解读发起人）
+  hitCount       Int      @default(1) // 被后续项目沉淀命中的次数（越高越重要）
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  interpretation ProjectInterpretation? @relation(fields: [sourceInterpretationId], references: [id], onDelete: SetNull)
+
+  @@unique([sector, question])
+  @@index([sector])
 }
 
 // ═══════════════════════════════════════════════════════════

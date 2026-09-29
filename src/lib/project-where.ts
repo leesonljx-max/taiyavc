@@ -66,8 +66,14 @@ export function buildProjectScopeWhere(user: PermissionUser, scope: 'all' | 'min
 export interface ProjectListFilters {
   /** 搜索关键词（name / companyFullName，大小写不敏感 contains） */
   keyword?: string
-  /** 累计阶段（passedStages JSON 数组字符串 contains，与前端 getPassedStages 口径一致） */
+  /**
+   * 阶段筛选 + 匹配口径：
+   * - passed（默认，项目库用）：passedStages 累计口径（项目经过该阶段即命中）
+   * - current（工作台用）：followStage 当前所处阶段口径（如已否项目 followStage=REJECTED
+   *   但 passedStages 不含 REJECTED，累计口径永远查不到）
+   */
   stage?: string
+  stageMatch?: 'passed' | 'current'
   /** 行业精确等值 */
   industry?: string
   /** 初聊日期（targetDate）所在年份 */
@@ -96,10 +102,15 @@ export function buildProjectListWhere(
     })
   }
 
-  // 阶段值互不为子串，带引号 contains 即精确命中 JSON 数组元素
+  // 阶段筛选：默认 passedStages 累计口径；stageMatch=current 时按 followStage 当前阶段（工作台已否等场景）
   const stage = filters.stage?.trim()
   if (stage) {
-    conditions.push({ passedStages: { contains: `"${stage}"` } })
+    if (filters.stageMatch === 'current') {
+      conditions.push({ followStage: stage })
+    } else {
+      // 阶段值互不为子串，带引号 contains 即精确命中 JSON 数组元素
+      conditions.push({ passedStages: { contains: `"${stage}"` } })
+    }
   }
 
   if (filters.industry?.trim()) {

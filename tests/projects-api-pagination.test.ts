@@ -108,6 +108,11 @@ beforeEach(async () => {
     followStage: 'INITIAL_TALK',
     createdById: visitorId,
   })
+  // 已否项目：followStage=REJECTED 但 passedStages 不含 REJECTED（computePassedStages 不收 REJECTED）
+  await mk(`已否项目${SUFFIX}`, {
+    followStage: 'REJECTED',
+    passedStages: ['INITIAL_TALK', 'PRE_DD'],
+  })
 })
 
 after(async () => {
@@ -125,17 +130,17 @@ test('兼容全量模式（不传 page）：返回全部 + total + facets', asyn
   asAdmin()
   const { status, body } = await fetchJson()
   assert.equal(status, 200)
-  assert.equal(body.projects.length, 6)
-  assert.equal(body.total, 6)
+  assert.equal(body.projects.length, 7)
+  assert.equal(body.total, 7)
   assert.equal(body.page, 1)
   assert.ok(Array.isArray(body.facets.industries))
 })
 
-test('分页：page=1/pageSize=2 返回 2 条、total=6、两页不重叠', async () => {
+test('分页：page=1/pageSize=2 返回 2 条、total=7、两页不重叠', async () => {
   asAdmin()
   const p1 = await fetchJson({ page: 1, pageSize: 2 })
   assert.equal(p1.body.projects.length, 2)
-  assert.equal(p1.body.total, 6)
+  assert.equal(p1.body.total, 7)
   assert.equal(p1.body.pageSize, 2)
 
   const p2 = await fetchJson({ page: 2, pageSize: 2 })
@@ -147,7 +152,7 @@ test('超界页：返回空数组但 total 正确', async () => {
   asAdmin()
   const { body } = await fetchJson({ page: 99, pageSize: 10 })
   assert.equal(body.projects.length, 0)
-  assert.equal(body.total, 6)
+  assert.equal(body.total, 7)
 })
 
 test('pageSize 上限 100（传 1000 被钳制）', async () => {
@@ -163,12 +168,34 @@ test('keyword 大小写不敏感：搜 alpha 命中 Alpha Case', async () => {
   assert.ok(body.projects[0].name.startsWith('Alpha Case'))
 })
 
-test('stage 累计筛选：PRE_DD 命中 2 个（含已到 CLOSING 的）', async () => {
+test('stage 累计筛选：PRE_DD 命中 3 个（含已到 CLOSING 的与已否的）', async () => {
   asAdmin()
   const { body } = await fetchJson({ page: 1, pageSize: 50, stage: 'PRE_DD' })
-  assert.equal(body.total, 2)
+  assert.equal(body.total, 3)
   const names = body.projects.map(p => p.name).sort()
-  assert.ok(names.every(n => n.includes('项目乙') || n.includes('项目丙')))
+  assert.ok(names.every(n => n.includes('项目乙') || n.includes('项目丙') || n.includes('已否项目')))
+})
+
+test('stageMatch=current（工作台口径）：已否项目按 followStage 命中，不受累计口径影响', async () => {
+  asAdmin()
+  // 默认 passed 口径：REJECTED 不在 passedStages 里，查不到已否项目
+  const passedMode = await fetchJson({ page: 1, pageSize: 50, stage: 'REJECTED' })
+  assert.equal(passedMode.body.total, 0)
+
+  // current 口径：按 followStage=REJECTED 命中已否项目（工作台阶段卡片场景）
+  const currentMode = await fetchJson({ page: 1, pageSize: 50, stage: 'REJECTED', stageMatch: 'current' })
+  assert.equal(currentMode.body.total, 1)
+  assert.ok(currentMode.body.projects[0].name.includes('已否项目'))
+
+  // current 口径对普通阶段同样生效（当前在 PRE_DD 的只有项目乙）
+  const preDd = await fetchJson({ page: 1, pageSize: 50, stage: 'PRE_DD', stageMatch: 'current' })
+  assert.equal(preDd.body.total, 1)
+  assert.ok(preDd.body.projects[0].name.includes('项目乙'))
+
+  // 与 scope=mine 组合：访客的已否项目（工作台"我的"视图）——本例无访客已否项目，应 0
+  asVisitor()
+  const mineRejected = await fetchJson({ scope: 'mine', stage: 'REJECTED', stageMatch: 'current' })
+  assert.equal(mineRejected.body.total, 0)
 })
 
 test('industry 筛选 + year 筛选下推', async () => {
@@ -198,8 +225,8 @@ test('facets：industries/years 完整；stageCounts 随 industry 联动', async
   assert.deepEqual(all.body.facets.industries, ['AI应用', '半导体芯片'])
   assert.deepEqual(all.body.facets.years, [year, year - 1])
 
-  // 不筛选：PRE_DD 累计 = 2
-  assert.equal(all.body.facets.stageCounts['PRE_DD'], 2)
+  // 不筛选：PRE_DD 累计 = 3（项目乙/项目丙/已否项目都经过 PRE_DD）
+  assert.equal(all.body.facets.stageCounts['PRE_DD'], 3)
 
   // 半导体芯片行业：只有项目乙经过 PRE_DD → 1
   const semi = await fetchJson({ page: 1, pageSize: 1, industry: '半导体芯片' })
@@ -208,10 +235,10 @@ test('facets：industries/years 完整；stageCounts 随 industry 联动', async
 
 test('facets.totalCount：项目总数不随分页截断，随 industry/year 联动、不随 keyword/stage 联动', async () => {
   asAdmin()
-  // 分页 pageSize=1 时 totalCount 仍为全集 6（不随分页截断）
+  // 分页 pageSize=1 时 totalCount 仍为全集 7（不随分页截断）
   const paged = await fetchJson({ page: 1, pageSize: 1 })
   assert.equal(paged.body.projects.length, 1)
-  assert.equal(paged.body.facets.totalCount, 6)
+  assert.equal(paged.body.facets.totalCount, 7)
 
   // 随 industry 联动：半导体芯片 = 2
   const semi = await fetchJson({ page: 1, pageSize: 1, industry: '半导体芯片' })
@@ -221,15 +248,15 @@ test('facets.totalCount：项目总数不随分页截断，随 industry/year 联
   const lastYear = await fetchJson({ page: 1, pageSize: 1, year: year - 1 })
   assert.equal(lastYear.body.facets.totalCount, 1)
 
-  // 不随 keyword 联动：搜索无结果时 totalCount 仍为 6
+  // 不随 keyword 联动：搜索无结果时 totalCount 仍为 7
   const kw = await fetchJson({ page: 1, pageSize: 1, keyword: '不存在的关键词' })
   assert.equal(kw.body.total, 0)
-  assert.equal(kw.body.facets.totalCount, 6)
+  assert.equal(kw.body.facets.totalCount, 7)
 
   // 不随 stage 联动
   const stage = await fetchJson({ page: 1, pageSize: 1, stage: 'PRE_DD' })
-  assert.equal(stage.body.total, 2)
-  assert.equal(stage.body.facets.totalCount, 6)
+  assert.equal(stage.body.total, 3)
+  assert.equal(stage.body.facets.totalCount, 7)
 })
 
 test('facets=current：currentStageCounts 按 followStage 当前口径 + managerId 联动', async () => {
@@ -252,13 +279,14 @@ test('scope=mine：仅返回自己维护的项目', async () => {
   assert.ok(body.projects[0].name.includes('访客项目'))
 })
 
-test('受限角色回归：TEMP_VISITOR 全量模式看不到他人未公开项目，但能看到 INITIAL_TALK', async () => {
+test('受限角色回归：TEMP_VISITOR 全量模式看不到他人未公开项目，但能看到 INITIAL_TALK 与已否', async () => {
   asVisitor()
   const { body } = await fetchJson()
   const names = body.projects.map(p => p.name)
-  // 访客可见：自己的 + 3 个他人公开 INITIAL_TALK（项目甲/项目丁/Alpha）= 4
-  assert.equal(body.total, 4)
+  // 访客可见：自己的 + 3 个他人公开 INITIAL_TALK（项目甲/项目丁/Alpha）+ 已否（兜底开放）= 5
+  assert.equal(body.total, 5)
   assert.ok(!names.some(n => n.includes('项目乙')), '他人 PRE_DD 非成员不可见')
   assert.ok(!names.some(n => n.includes('项目丙')), '他人 CLOSING 非成员不可见')
   assert.ok(names.some(n => n.includes('项目甲')), '他人 INITIAL_TALK 可见')
+  assert.ok(names.some(n => n.includes('已否项目')), '已否项目兜底开放可见')
 })

@@ -15,6 +15,7 @@ import { POST as INTERPRET } from '@/app/api/project-interpretation/[id]/interpr
 import { POST as QUESTIONS } from '@/app/api/project-interpretation/[id]/questions/route'
 import { POST as VERIFY } from '@/app/api/project-interpretation/[id]/verify/route'
 import { POST as CONCLUSION } from '@/app/api/project-interpretation/[id]/conclusion/route'
+import { POST as CREATE_PROJECT } from '@/app/api/project-interpretation/[id]/create-project/route'
 import { resetMocks, mockState, chatCompletions } from './helpers/setup'
 
 const USER_EMAIL = 'pi2-user@test.com'
@@ -26,8 +27,10 @@ const DOC_TEXT = '光子计算芯片项目。核心团队来自清华，产品�
 
 beforeEach(async () => {
   resetMocks()
+  await prisma.sectorInsight.deleteMany({})
   await prisma.interpretationQuestion.deleteMany({})
   await prisma.projectInterpretation.deleteMany({})
+  await prisma.project.deleteMany({})
   await prisma.user.deleteMany({ where: { email: USER_EMAIL } })
   userId = (await prisma.user.create({
     data: { email: USER_EMAIL, name: '引擎用户', passwordHash: 'x', role: 'INVESTMENT_MANAGER', status: 'ACTIVE' },
@@ -493,4 +496,199 @@ test('conclusion：不足 3 题校验拒绝；≥3 题生成综合结论（UNCOV
 
   const stored = await prisma.projectInterpretation.findUnique({ where: { id: recordId } })
   assert.ok(stored!.conclusionJson!.includes('技术壁垒'))
+})
+
+// ── 赛道知识库：高质量问题沉淀与二次校验 ──
+
+test('verify：HIGH 高质量问题自动沉淀到赛道知识库；二次校验题更新结论与命中数', async () => {
+  asUser()
+  const qs = await seedQuestions()
+
+  // 预插一条同赛道同题的沉淀（模拟历史二次校验题）：verify 后应更新结论 + hitCount
+  await prisma.sectorInsight.create({
+    data: {
+      sector: '半导体芯片',
+      question: '芯片的性能指标和良率数据是什么？', // 与题 1 同文本，mock 结果为 GAP
+      idealAnswer: '应给出算力密度、功耗比与良率百分比，有第三方验证',
+      conclusion: '旧结论',
+      matchLevel: 'HIGH',
+      sourceProjectName: '历史项目',
+      sourceUserId: userId,
+    },
+  })
+  // 题 1 标记为赛道沉淀二次校验题（生成时来自知识库的场景）
+  await prisma.interpretationQuestion.updateMany({
+    where: { interpretationId: recordId, order: 1 },
+    data: { sectorInsight: true },
+  })
+
+  const res = await VERIFY(
+    post(`http://t/api/project-interpretation/${recordId}/verify`, {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: '访谈纪要：我们技术业内领先，指标不方便透露，良率还在爬坡。技术路线有第三方测试报告。订单节奏还在谈。' }),
+    }),
+    { params: { id: recordId } }
+  )
+  assert.equal(res.status, 200)
+
+  // 沉淀断言：题 2（HIGH）新建沉淀；题 1（GAP，但命中预插的二次校验题）更新结论 + hitCount
+  const insights = await prisma.sectorInsight.findMany()
+  assert.equal(insights.length, 2)
+  const high = insights.find(i => i.question === '技术路线的第三方验证情况？')
+  assert.ok(high, 'HIGH 问题应沉淀')
+  assert.equal(high!.sector, '半导体芯片')
+  assert.equal(high!.matchLevel, 'HIGH')
+  assert.ok(high!.conclusion.includes('可信'))
+  assert.equal(high!.hitCount, 1)
+  assert.equal(high!.sourceProjectName, '光子芯片')
+
+  const updated = insights.find(i => i.question === '芯片的性能指标和良率数据是什么？')
+  assert.ok(updated, '预插二次校验题应被更新')
+  assert.ok(updated!.conclusion.includes('技术壁垒')) // 新结论覆盖旧结论
+  assert.equal(updated!.hitCount, 2) // 命中数 +1
+  assert.equal(updated!.matchLevel, 'GAP')
+  void qs
+})
+
+test('questions：同赛道沉淀注入生成二次校验问题（isSectorInsight 标记落库 + prompt 注入）', async () => {
+  asUser()
+  await seedInterpreted()
+  await prisma.sectorInsight.create({
+    data: {
+      sector: '半导体芯片',
+      question: '芯片的流片良率和量产爬坡计划？',
+      idealAnswer: '应给出良率百分比与量产时间表',
+      conclusion: '良率数据是硬指标，回避即存疑',
+      matchLevel: 'HIGH',
+      sourceProjectName: '历史项目',
+      sourceUserId: userId,
+    },
+  })
+
+  // mock：问题清单返回含 isSectorInsight 的题
+  mockState.fetchHandler = (url, body) => {
+    const system = String((body.messages as Array<{ content: string }>)[0]?.content || '')
+    if (system.includes('访谈必问问题')) {
+      const qs = [
+        { category: 'TECH', question: '芯片的流片良率和量产爬坡计划？', idealAnswer: '应给出良率百分比与量产时间表', isSectorInsight: true },
+        ...Array.from({ length: 10 }, (_, i) => ({ category: 'TECH', question: `技术问题${i + 1}`, idealAnswer: `理想${i + 1}`, isSectorInsight: false })),
+        ...Array.from({ length: 5 }, (_, i) => ({ category: 'MARKET', question: `市场问题${i + 1}`, idealAnswer: `理想${i + 1}` })),
+      ]
+      return chatCompletions(JSON.stringify({ questions: qs }))
+    }
+    return chatCompletions('{}')
+  }
+
+  const res = await QUESTIONS(post(`http://t/api/project-interpretation/${recordId}/questions`), { params: { id: recordId } })
+  assert.equal(res.status, 200)
+
+  // isSectorInsight 标记落库
+  const saved = await prisma.interpretationQuestion.findMany({
+    where: { interpretationId: recordId },
+    orderBy: { order: 'asc' },
+  })
+  const marked = saved.filter(q => q.sectorInsight)
+  assert.equal(marked.length, 1)
+  assert.equal(marked[0].question, '芯片的流片良率和量产爬坡计划？')
+  assert.equal(marked[0].order, 1) // 排前部
+
+  // prompt 注入：问题生成调用的 user prompt 含沉淀问题与历史结论
+  const qCall = mockState.fetchCalls.find(
+    c => String((c.body as { messages?: Array<{ content: string }> }).messages?.[0]?.content || '').includes('访谈必问问题')
+  )
+  const userPrompt = String((qCall!.body as { messages: Array<{ content: string }> }).messages[1].content)
+  assert.ok(userPrompt.includes('同赛道历史沉淀的高质量问题'))
+  assert.ok(userPrompt.includes('芯片的流片良率和量产爬坡计划？'))
+  assert.ok(userPrompt.includes('良率数据是硬指标'))
+})
+
+// ── 闭环创建到项目库 ──
+
+async function seedVerified() {
+  await seedQuestions()
+  await prisma.projectInterpretation.update({
+    where: { id: recordId },
+    data: {
+      verifyStatus: 'DONE',
+      conclusionJson: JSON.stringify({
+        summary: '整体回答质量中等',
+        dimensions: [{ aspect: '技术壁垒', gapLevel: 'GAP', conclusion: '技术壁垒不高' }],
+        advice: '建议补充尽调',
+      }),
+    },
+  })
+}
+
+test('create-project：AI 按项目库模板提取并创建（主要产品/核心优势/核心团队截取 BP）；重名 409；重复创建 400', async () => {
+  asUser()
+  await seedVerified()
+
+  // mock 项目库模板提取
+  mockState.fetchHandler = (url, body) => {
+    const system = String((body.messages as Array<{ content: string }>)[0]?.content || '')
+    if (system.includes('项目库创建模板')) {
+      return chatCompletions(
+        JSON.stringify({
+          name: '光子芯片',
+          companyFullName: '光子芯片科技（北京）有限公司',
+          industry: '半导体芯片',
+          companyPosition: '硅光计算加速芯片',
+          mainProducts: '硅光计算加速芯片（BP 原文：产品为硅光计算加速芯片，已获云厂商POC订单）',
+          coreAdvantage: '硅光混合计算路线，有流片经验（BP 原文截取）',
+          coreTeam: '核心团队来自清华（BP 原文截取）',
+          description: '硅光计算芯片项目，已获云厂商 POC 订单',
+          financingRound: 'A轮',
+          totalAmount: '2亿',
+          investmentValuation: 8,
+        })
+      )
+    }
+    return chatCompletions('{}')
+  }
+
+  // 未完成校验的记录 → 400（另建一条新记录验证）
+  const fresh = await prisma.projectInterpretation.create({
+    data: { userId, projectName: '未校验', fileName: 'a.txt', fileUrl: '', fileType: 'text/plain', fileSize: 1, documentText: DOC_TEXT },
+  })
+  let res = await CREATE_PROJECT(post(`http://t/api/project-interpretation/${fresh.id}/create-project`), { params: { id: fresh.id } })
+  assert.equal(res.status, 400)
+  assert.match((await res.json()).error, /先完成访谈校验/)
+
+  // 正常创建 → 项目落库 + linkedProjectId 回写
+  res = await CREATE_PROJECT(post(`http://t/api/project-interpretation/${recordId}/create-project`), { params: { id: recordId } })
+  assert.equal(res.status, 200)
+  const body = await res.json()
+  assert.ok(body.projectId)
+
+  const project = await prisma.project.findUnique({ where: { id: body.projectId } })
+  assert.ok(project)
+  assert.equal(project!.name, '光子芯片')
+  assert.equal(project!.industry, '半导体芯片')
+  assert.ok(project!.mainProducts!.includes('硅光计算加速芯片'))
+  assert.ok(project!.coreAdvantage!.includes('流片'))
+  assert.ok(project!.coreTeam!.includes('清华'))
+  assert.equal(project!.followStage, 'INITIAL_TALK')
+  assert.equal(project!.totalAmount, '2亿')
+  assert.equal(project!.investmentValuation, 8)
+  assert.equal(project!.createdById, userId)
+  assert.ok(project!.passedStages!.includes('INITIAL_TALK'))
+
+  // linkedProjectId 回写
+  const record = await prisma.projectInterpretation.findUnique({ where: { id: recordId } })
+  assert.equal(record!.linkedProjectId, body.projectId)
+
+  // 重复创建 → 400
+  res = await CREATE_PROJECT(post(`http://t/api/project-interpretation/${recordId}/create-project`), { params: { id: recordId } })
+  assert.equal(res.status, 400)
+  assert.match((await res.json()).error, /已创建/)
+
+  // 重名 → 409（新记录 + AI 提取同名）
+  const other = await prisma.projectInterpretation.create({
+    data: { userId, projectName: '光子芯片2', fileName: 'b.txt', fileUrl: '', fileType: 'text/plain', fileSize: 1, documentText: DOC_TEXT, verifyStatus: 'DONE', conclusionJson: '{}' },
+  })
+  res = await CREATE_PROJECT(post(`http://t/api/project-interpretation/${other.id}/create-project`), { params: { id: other.id } })
+  assert.equal(res.status, 409)
+  const dup = await res.json()
+  assert.match(dup.error, /已存在同名项目/)
+  assert.equal(dup.existingProjectId, body.projectId)
 })

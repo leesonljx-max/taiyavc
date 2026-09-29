@@ -37,6 +37,7 @@ interface QuestionView {
   category: string
   question: string
   idealAnswer: string
+  sectorInsight: boolean
   verifyStatus: string
   verifyFileName: string | null
   verifyFileUrl: string | null
@@ -55,6 +56,7 @@ interface InterpretationDetail {
   verifyStatus: string
   interviewFileName: string | null
   interviewFileUrl: string | null
+  linkedProjectId: string | null
   error: string | null
   createdAt: string
   questions: QuestionView[]
@@ -304,18 +306,19 @@ export default function ProjectInterpretationPanel() {
   // 详情视图
   if (detail) {
     return (
-      <Detail
-        detail={detail}
-        busy={busy}
-        error={error}
-        autoChainStep={autoChainStep}
-        onBack={() => { setAutoChainStep('idle'); backToList() }}
-        onInterpret={() => runAction('interpret', '解读')}
-        onQuestions={() => runAction('questions', '生成问题清单')}
-        onConclusion={() => runAction('conclusion', '生成综合结论')}
-        onQuestionVerified={() => fetchDetail(detail.id)}
-      />
-    )
+    <Detail
+      detail={detail}
+      busy={busy}
+      error={error}
+      autoChainStep={autoChainStep}
+      onBack={() => { setAutoChainStep('idle'); backToList() }}
+      onInterpret={() => runAction('interpret', '解读')}
+      onQuestions={() => runAction('questions', '生成问题清单')}
+      onConclusion={() => runAction('conclusion', '生成综合结论')}
+      onQuestionVerified={() => fetchDetail(detail.id)}
+      onProjectCreated={() => fetchDetail(detail.id)}
+    />
+  )
   }
 
   // 列表 + 上传视图
@@ -555,6 +558,7 @@ function Detail({
   onQuestions,
   onConclusion,
   onQuestionVerified,
+  onProjectCreated,
 }: {
   detail: InterpretationDetail
   busy: boolean
@@ -565,10 +569,53 @@ function Detail({
   onQuestions: () => void
   onConclusion: () => void
   onQuestionVerified: () => void
+  onProjectCreated: () => void
 }) {
   const interpretation = useMemoParse<InterpretationResult>(detail.interpretationJson)
   const conclusion = useMemoParse<OverallConclusion>(detail.conclusionJson)
   const verifiedCount = detail.questions.filter(q => q.verifyStatus === 'VERIFIED').length
+  const sectorCount = detail.questions.filter(q => q.sectorInsight).length
+
+  // ── 闭环创建到项目库：校验结论生成后弹窗提醒（每条记录只提醒一次） ──
+  const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [createErr, setCreateErr] = useState('')
+  const [createdProjectId, setCreatedProjectId] = useState<string | null>(null)
+  const promptedRef = useRef<string | null>(null)
+  useEffect(() => {
+    setCreatedProjectId(detail.linkedProjectId)
+  }, [detail.linkedProjectId])
+  useEffect(() => {
+    if (
+      detail.verifyStatus === 'DONE' &&
+      detail.conclusionJson &&
+      !detail.linkedProjectId &&
+      promptedRef.current !== detail.id
+    ) {
+      promptedRef.current = detail.id
+      setCreateModalOpen(true)
+    }
+  }, [detail.id, detail.verifyStatus, detail.conclusionJson, detail.linkedProjectId])
+
+  const handleCreateProject = async () => {
+    if (creating) return
+    setCreating(true)
+    setCreateErr('')
+    try {
+      const res = await fetch(`/api/project-interpretation/${detail.id}/create-project`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        setCreateErr(data.error || '创建失败')
+        return
+      }
+      setCreatedProjectId(data.projectId)
+      onProjectCreated()
+    } catch {
+      setCreateErr('网络错误（AI 提取耗时较长，请稍后重试）')
+    } finally {
+      setCreating(false)
+    }
+  }
 
   // 批量访谈校验（一次上传，自动校验全部问题并生成结论）
   const [ivOpen, setIvOpen] = useState(false)
@@ -714,6 +761,35 @@ function Detail({
           </div>
           {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
           {detail.status === 'FAILED' && detail.error && <p className="mt-2 text-xs text-red-500">上次执行失败：{detail.error}</p>}
+
+          {/* 已创建到项目库（闭环） */}
+          {createdProjectId && (
+            <div className="mt-3 flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-3.5 py-2.5">
+              <span className="text-sm">✅</span>
+              <p className="text-xs text-emerald-700 flex-1">该项目已创建到项目库（初聊阶段）</p>
+              <a
+                href={`/projects/${createdProjectId}`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1.5 bg-emerald-500 text-white text-xs font-bold rounded-lg hover:bg-emerald-600"
+              >
+                查看项目 →
+              </a>
+            </div>
+          )}
+          {/* 结论已生成但尚未创建：手动入口（弹窗关闭后） */}
+          {!createdProjectId && detail.verifyStatus === 'DONE' && detail.conclusionJson && (
+            <div className="mt-3 flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 px-3.5 py-2.5">
+              <span className="text-sm">💡</span>
+              <p className="text-xs text-gray-600 flex-1">校验结论已生成，可将该项目一键创建到项目库（AI 按项目库模板提取 BP 关键信息）</p>
+              <button
+                onClick={() => { setCreateErr(''); setCreateModalOpen(true) }}
+                className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-bold rounded-lg hover:from-blue-700 hover:to-indigo-700"
+              >
+                创建到项目库
+              </button>
+            </div>
+          )}
 
           {/* 访谈纪要批量校验区（一次上传 → 自动校验全部问题 + 综合结论） */}
           {(ivOpen || detail.verifyStatus === 'RUNNING') && (
@@ -863,6 +939,14 @@ function Detail({
               </h4>
               <span className="text-xs text-gray-400">已分析 {verifiedCount}/{detail.questions.length} · 上传一次访谈纪要自动校验</span>
             </div>
+            {sectorCount > 0 && (
+              <div className="mb-3 flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
+                <span className="text-xs">⭐</span>
+                <p className="text-[11px] text-amber-700">
+                  已纳入 <b>{sectorCount}</b> 个<b>赛道沉淀问题</b>（同赛道历史项目访谈验证的高质量问题，为重点二次校验项）
+                </p>
+              </div>
+            )}
             <div className="space-y-2.5">
               {detail.questions.map(q => (
                 <QuestionCard key={q.id} question={q} />
@@ -887,9 +971,10 @@ function Detail({
             </div>
             {conclusion ? (
               <div className="mt-3 space-y-2.5">
-                <div className="rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 p-3.5">
-                  <p className="text-xs font-bold text-blue-700">总体判断</p>
-                  <p className="text-sm text-gray-800 mt-1 leading-relaxed">{conclusion.summary}</p>
+                {/* 新结论高亮展示（含赛道沉淀问题的校验支撑，作为该赛道后续项目的关注重点） */}
+                <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 border-2 border-indigo-200 p-3.5 shadow-sm">
+                  <p className="text-xs font-bold text-indigo-600">★ 新结论 · 总体判断</p>
+                  <p className="text-sm text-indigo-900 font-bold mt-1 leading-relaxed">{conclusion.summary}</p>
                 </div>
                 {conclusion.dimensions.map((d, i) => (
                   <div key={i} className="flex items-start gap-2.5 rounded-xl border border-gray-100 p-3">
@@ -913,6 +998,73 @@ function Detail({
             )}
           </div>
         )}
+
+        {/* 创建到项目库弹窗：校验结论生成后提醒（AI 按项目库模板提取 BP 关键信息） */}
+        {createModalOpen && (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+            onClick={() => { if (!creating) setCreateModalOpen(false) }}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6"
+              onClick={e => e.stopPropagation()}
+            >
+              {createdProjectId ? (
+                <div className="text-center space-y-3">
+                  <span className="text-4xl">🎉</span>
+                  <h4 className="text-base font-bold text-gray-900">已创建到项目库</h4>
+                  <p className="text-xs text-gray-500">
+                    AI 已按项目库模板提取关键信息（主要产品/核心优势/核心团队等），项目为「初聊」阶段，可在项目库中完善跟进。
+                  </p>
+                  <div className="flex items-center gap-2 justify-center pt-1">
+                    <a
+                      href={`/projects/${createdProjectId}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-4 py-2 bg-primary-500 text-white text-sm font-bold rounded-xl hover:bg-primary-600"
+                    >
+                      查看项目 →
+                    </a>
+                    <button
+                      onClick={() => setCreateModalOpen(false)}
+                      className="px-4 py-2 bg-white border border-gray-200 text-gray-600 text-sm font-bold rounded-xl hover:bg-gray-50"
+                    >
+                      留在解读页
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <h4 className="text-base font-bold text-gray-900">将该项目创建到项目库？</h4>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    校验结论已生成。系统将按<b>项目库创建模板</b>，从 BP 与解读结论中提取关键信息——
+                    <b className="text-primary-700">主要产品、核心优势、核心团队</b>等字段将截取 BP 原文对应资料并辅以文字描述，
+                    创建为「初聊」阶段项目（初聊日期取上传日期）。
+                  </p>
+                  {createErr && (
+                    <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{createErr}</p>
+                  )}
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      onClick={handleCreateProject}
+                      disabled={creating}
+                      className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-bold rounded-xl shadow-md hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50"
+                    >
+                      {creating ? 'AI 提取中（约 30 秒）...' : '🚀 AI 提取并创建'}
+                    </button>
+                    <button
+                      onClick={() => setCreateModalOpen(false)}
+                      disabled={creating}
+                      className="px-4 py-2.5 bg-white border border-gray-200 text-gray-600 text-sm font-bold rounded-xl hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      暂不创建
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -925,11 +1077,22 @@ function QuestionCard({ question }: { question: QuestionView }) {
   const verified = question.verifyStatus === 'VERIFIED'
 
   return (
-    <div className={`rounded-xl border p-3.5 ${verified ? 'border-gray-100 bg-slate-50/40' : 'border-gray-200'}`}>
+    <div className={`rounded-xl border p-3.5 ${
+      question.sectorInsight
+        ? 'border-indigo-200 bg-indigo-50/30 border-l-4 border-l-indigo-400' // 赛道沉淀问题：重点二次校验高亮
+        : verified ? 'border-gray-100 bg-slate-50/40' : 'border-gray-200'
+    }`}>
       <div className="flex items-start gap-2.5">
-        <span className="text-xs font-black text-gray-300 flex-shrink-0 mt-0.5">{String(question.order).padStart(2, '0')}</span>
+        <span className={`text-xs font-black flex-shrink-0 mt-0.5 ${question.sectorInsight ? 'text-indigo-400' : 'text-gray-300'}`}>
+          {String(question.order).padStart(2, '0')}
+        </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
+            {question.sectorInsight && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700">
+                ⭐ 赛道沉淀 · 重点校验
+              </span>
+            )}
             <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${CATEGORY_STYLES[question.category] || 'bg-gray-100'}`}>
               {CATEGORY_LABELS[question.category] || question.category}
             </span>
@@ -941,7 +1104,7 @@ function QuestionCard({ question }: { question: QuestionView }) {
             {question.idealAnswer}
           </p>
 
-          {/* 批量校验结果（上传一次访谈纪要后自动生成） */}
+          {/* 批量校验结果（上传一次访谈纪要后自动生成；赛道沉淀题结论高亮展示） */}
           {verified && result && (
             <div className={`mt-2.5 rounded-lg p-2.5 border ${
               result.matchLevel === 'GAP' ? 'bg-red-50/60 border-red-100'
@@ -956,7 +1119,9 @@ function QuestionCard({ question }: { question: QuestionView }) {
               </div>
               {result.answerSummary && <p className="text-xs text-gray-600 mt-1.5">回答要点：{result.answerSummary}</p>}
               <p className="text-xs text-gray-700 mt-1">差距分析：{result.gapAnalysis}</p>
-              <p className="text-xs font-bold text-gray-800 mt-1">结论：{result.conclusion}</p>
+              <p className={`mt-1 text-xs ${question.sectorInsight ? 'text-indigo-700 font-bold' : 'font-bold text-gray-800'}`}>
+                结论：{result.conclusion}
+              </p>
             </div>
           )}
         </div>

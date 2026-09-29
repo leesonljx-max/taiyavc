@@ -124,6 +124,45 @@ export async function POST(
         )
       )
 
+      // ── 赛道知识库沉淀（失败不阻塞校验主流程） ──
+      // HIGH 匹配 = 高质量问题（访谈回答与理想答案高度吻合，问题问得好）→ 按赛道沉淀；
+      // 赛道二次校验题（sectorInsight）→ 用本次新结论覆盖更新，成为该赛道下一个项目的重要关注问题
+      try {
+        let sector: string | null = null
+        if (record.interpretationJson) {
+          sector = (JSON.parse(record.interpretationJson) as { industry?: string }).industry || null
+        }
+        if (sector) {
+          for (let i = 0; i < record.questions.length; i++) {
+            const q = record.questions[i]
+            const r = results[i]
+            if (!r || (r.matchLevel !== 'HIGH' && !q.sectorInsight)) continue
+            await prisma.sectorInsight.upsert({
+              where: { sector_question: { sector, question: q.question } },
+              create: {
+                sector,
+                question: q.question,
+                idealAnswer: q.idealAnswer,
+                conclusion: r.conclusion,
+                matchLevel: r.matchLevel,
+                sourceProjectName: record.projectName,
+                sourceInterpretationId: record.id,
+                sourceUserId: record.userId,
+              },
+              update: {
+                conclusion: r.conclusion,
+                matchLevel: r.matchLevel,
+                sourceProjectName: record.projectName,
+                sourceInterpretationId: record.id,
+                hitCount: { increment: 1 },
+              },
+            })
+          }
+        }
+      } catch (persistErr) {
+        console.error('Sector insight persist error:', persistErr)
+      }
+
       // 覆盖（非 UNCOVERED）问题 ≥3 时自动生成综合结论
       const covered = record.questions
         .map((q, i) => ({ q, r: results[i] }))

@@ -43,6 +43,8 @@ export async function GET(request: Request) {
     const filters = {
       keyword: (searchParams.get('keyword') || '').trim().slice(0, 100) || undefined,
       stage: (searchParams.get('stage') || '').trim().slice(0, 40) || undefined,
+      // 阶段匹配口径：current = followStage 当前阶段（工作台用，含已否）；默认 passed = passedStages 累计（项目库用）
+      stageMatch: searchParams.get('stageMatch') === 'current' ? ('current' as const) : undefined,
       industry: (searchParams.get('industry') || '').trim().slice(0, 50) || undefined,
       managerId: (searchParams.get('managerId') || '').trim() || undefined,
     }
