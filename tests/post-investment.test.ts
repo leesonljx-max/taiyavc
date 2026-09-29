@@ -6,6 +6,9 @@ import './helpers/setup'
 
 import { test, beforeEach, after } from 'node:test'
 import assert from 'node:assert/strict'
+import { writeFile, unlink, mkdir } from 'fs/promises'
+import { join } from 'path'
+import JSZip from 'jszip'
 import prisma from '@/lib/prisma'
 import { resetMocks, mockState, chatCompletions } from './helpers/setup'
 import {
@@ -14,6 +17,7 @@ import {
 
 import { GET as PI_LIST } from '@/app/api/post-investment/route'
 import { POST as DOC_POST, DELETE as DOC_DELETE } from '@/app/api/post-investment/documents/route'
+import { GET as DOC_PREVIEW } from '@/app/api/post-investment/documents/preview/route'
 import { GET as PI_DETAIL } from '@/app/api/post-investment/[projectId]/route'
 import { POST as ANALYZE_POST } from '@/app/api/post-investment/[projectId]/analyze/route'
 
@@ -52,6 +56,8 @@ beforeEach(async () => {
 })
 
 after(async () => {
+  // 清理测试写入的真实文件
+  for (const f of writtenFiles) await unlink(f).catch(() => {})
   await prisma.postInvestAnalysis.deleteMany({})
   await prisma.postInvestMetric.deleteMany({})
   await prisma.postInvestDoc.deleteMany({})
@@ -381,4 +387,144 @@ test('合并分析：分析当期时补齐以往期指标入库 + 历史期文�
     where: { projectId_period: { projectId, period: '2026Q1' } },
   })
   assert.ok(q1Analysis)
+})
+
+// ── V2.1.2：期次页签 = 文档∪指标∪分析 并集（新传以往季度立即出现页签） ──
+
+test('期次页签并集：补传以往季度文档后（尚无指标）详情页立即返回该期次，且最新在前', async () => {
+  asManager()
+  await seedDoc('2025Q2', '2025Q2经营报告内容。')
+  await seedDoc('2026Q3', '2026Q3经营报告内容。')
+
+  const detail = await (await PI_DETAIL(new Request(`http://t/api/post-investment/${projectId}`), { params: { projectId } })).json()
+  assert.ok(detail.periods.includes('2025Q2'), '文档期次（无指标）应出现在页签中')
+  assert.ok(detail.periods.includes('2026Q3'))
+  assert.equal(detail.periods[0], '2026Q3', '最新期次应排在首位（默认选中）')
+  assert.equal(detail.docs.filter((d: { period: string }) => d.period === '2025Q2').length, 1)
+})
+
+// ── V2.1.2：文档在线预览（自渲染） ──
+
+const UPLOAD_DIR = join(process.cwd(), 'public', 'post-investment-docs')
+const writtenFiles: string[] = []
+
+/** 写入真实文件到上传目录并返回文件名 */
+async function writeUploadFile(name: string, buffer: Buffer): Promise<string> {
+  await mkdir(UPLOAD_DIR, { recursive: true })
+  await writeFile(join(UPLOAD_DIR, name), buffer)
+  writtenFiles.push(join(UPLOAD_DIR, name))
+  return name
+}
+
+/** 构造最小合法 docx（mammoth 可解析） */
+async function makeDocx(text: string): Promise<Buffer> {
+  const zip = new JSZip()
+  zip.file('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
+  zip.folder('_rels')!.file('.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
+  zip.folder('word')!.file('document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:body></w:document>`)
+  return zip.generateAsync({ type: 'nodebuffer' }) as unknown as Promise<Buffer>
+}
+
+/** 构造最小 pptx（仅含一页文本） */
+async function makePptx(text: string): Promise<Buffer> {
+  const zip = new JSZip()
+  zip.file('ppt/slides/slide1.xml', `<?xml version="1.0" encoding="UTF-8"?><p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>${text}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`)
+  return zip.generateAsync({ type: 'nodebuffer' }) as unknown as Promise<Buffer>
+}
+
+/** 直接入库文档记录（自定义文件名与地址） */
+async function seedDocWithName(fileName: string, fileUrl: string, text = '') {
+  return prisma.postInvestDoc.create({
+    data: {
+      projectId, docType: 'OPERATION_REPORT', period: '2026Q3',
+      fileName, fileUrl, fileType: 'application/octet-stream', fileSize: 100, text,
+      uploadedById: managerId,
+    },
+  })
+}
+
+test('预览 API：docx→HTML、xlsx→HTML、pdf→文件地址、pptx→文本；权限校验', async () => {
+  asManager()
+
+  // docx（旧格式 fileUrl）→ mammoth 转 HTML
+  const docxName = await writeUploadFile(`test-${Date.now()}-a.docx`, await makeDocx('投后经营报告测试内容'))
+  const docxDoc = await seedDocWithName('2026Q3经营报告.docx', `/post-investment-docs/${docxName}`)
+  let res = await DOC_PREVIEW(new Request(`http://t/api/post-investment/documents/preview?docId=${docxDoc.id}`))
+  assert.equal(res.status, 200)
+  let body = await res.json()
+  assert.equal(body.kind, 'html')
+  assert.ok(body.html.includes('投后经营报告测试内容'), 'docx 预览 HTML 应包含文档文本')
+
+  // xlsx（新格式 fileUrl）→ SheetJS 转 HTML 表格
+  const XLSX = await import('xlsx')
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['指标', '数值'], ['营业收入', 2353]]), 'Sheet1')
+  const xlsxName = await writeUploadFile(`test-${Date.now()}-b.xlsx`, XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer)
+  const xlsxDoc = await seedDocWithName('2026Q3财务报表.xlsx', `/api/uploads/post-investment-docs/${xlsxName}`)
+  res = await DOC_PREVIEW(new Request(`http://t/api/post-investment/documents/preview?docId=${xlsxDoc.id}`))
+  assert.equal(res.status, 200)
+  body = await res.json()
+  assert.equal(body.kind, 'html')
+  assert.ok(body.html.includes('营业收入') && body.html.includes('<td>'), 'xlsx 预览 HTML 应包含表格内容')
+
+  // pdf → 文件地址（/api/uploads 前缀，浏览器原生渲染）
+  const pdfDoc = await seedDocWithName('2026Q3报告.pdf', '/post-investment-docs/legacy.pdf')
+  res = await DOC_PREVIEW(new Request(`http://t/api/post-investment/documents/preview?docId=${pdfDoc.id}`))
+  assert.equal(res.status, 200)
+  body = await res.json()
+  assert.equal(body.kind, 'file')
+  assert.equal(body.url, '/api/uploads/post-investment-docs/legacy.pdf')
+
+  // pptx → 按页提取文本
+  const pptxDoc = await seedDocWithName('路演材料.pptx', '/api/uploads/post-investment-docs/x.pptx', '【第 1 页】\n营收增长')
+  res = await DOC_PREVIEW(new Request(`http://t/api/post-investment/documents/preview?docId=${pptxDoc.id}`))
+  assert.equal(res.status, 200)
+  body = await res.json()
+  assert.equal(body.kind, 'text')
+  assert.ok(body.text.includes('第 1 页'))
+
+  // 文件丢失的 docx → 回退提取文本
+  const missingDoc = await seedDocWithName('丢失.docx', '/api/uploads/post-investment-docs/not-exist.docx', '回退文本内容')
+  res = await DOC_PREVIEW(new Request(`http://t/api/post-investment/documents/preview?docId=${missingDoc.id}`))
+  assert.equal(res.status, 200)
+  body = await res.json()
+  assert.equal(body.kind, 'text')
+  assert.ok(body.text.includes('回退文本内容'))
+
+  // 路人（非维护人）403
+  asUser(outsiderId, 'INVESTMENT_MANAGER')
+  res = await DOC_PREVIEW(new Request(`http://t/api/post-investment/documents/preview?docId=${docxDoc.id}`))
+  assert.equal(res.status, 403)
+
+  // 未登录 401；缺 docId 400
+  mockState.session = null
+  res = await DOC_PREVIEW(new Request(`http://t/api/post-investment/documents/preview?docId=${docxDoc.id}`))
+  assert.equal(res.status, 401)
+  asManager()
+  res = await DOC_PREVIEW(new Request(`http://t/api/post-investment/documents/preview`))
+  assert.equal(res.status, 400)
+})
+
+test('上传 pptx：自动按页提取文本入库（供 AI 分析与文本阅览）', async () => {
+  asManager()
+  const pptxBuffer = await makePptx('本季度订单大幅增长')
+  const fd = new FormData()
+  fd.append('projectId', projectId)
+  fd.append('period', '2026Q3')
+  fd.append('docType', 'OPERATION_REPORT')
+  fd.append('file', new File([pptxBuffer], '2026Q3路演.pptx', { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }))
+
+  const res = await DOC_POST(new Request('http://t/api/post-investment/documents', { method: 'POST', body: fd }))
+  assert.equal(res.status, 200)
+  const body = await res.json()
+  assert.equal(body.doc.hasText, true)
+
+  const doc = await prisma.postInvestDoc.findFirst({ where: { projectId, fileName: '2026Q3路演.pptx' } })
+  assert.ok(doc)
+  assert.ok(doc.text.includes('第 1 页') && doc.text.includes('本季度订单大幅增长'))
+  assert.ok(doc.fileUrl.startsWith('/api/uploads/post-investment-docs/'), '新上传文件应存 /api/uploads 前缀（生产可达）')
+
+  // 清理上传的真实文件
+  const m = doc.fileUrl.match(/post-investment-docs\/([A-Za-z0-9._-]+)$/)
+  if (m) writtenFiles.push(join(UPLOAD_DIR, m[1]))
 })

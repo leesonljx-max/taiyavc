@@ -21,7 +21,7 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   BP: 'BP',
   OTHER: '其他',
 }
-const DOC_EXTENSIONS = ['.pdf', '.docx', '.xlsx', '.txt', '.md']
+const DOC_EXTENSIONS = ['.pdf', '.docx', '.xlsx', '.pptx', '.txt', '.md']
 const MAX_SIZE = 50 * 1024 * 1024
 
 /**
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
 
     const ext = '.' + (file.name.toLowerCase().split('.').pop() || '')
     if (!DOC_EXTENSIONS.includes(ext)) {
-      return NextResponse.json({ error: `不支持的文件类型: ${ext}，仅支持 PDF/Word/Excel/txt/md` }, { status: 400 })
+      return NextResponse.json({ error: `不支持的文件类型: ${ext}，仅支持 PDF/Word/Excel/PPT/txt/md` }, { status: 400 })
     }
     if (file.size > MAX_SIZE) {
       return NextResponse.json({ error: '文件大小超过 50MB 限制' }, { status: 400 })
@@ -94,7 +94,7 @@ export async function POST(request: Request) {
         docType,
         period,
         fileName: file.name,
-        fileUrl: `/post-investment-docs/${uniqueName}`,
+        fileUrl: `/api/uploads/post-investment-docs/${uniqueName}`,
         fileType: file.type || 'application/octet-stream',
         fileSize: file.size,
         text,
@@ -184,8 +184,8 @@ export async function DELETE(request: Request) {
     }
 
     await prisma.postInvestDoc.delete({ where: { id: doc.id } })
-    // 清理本地文件（失败不阻塞）
-    const m = doc.fileUrl.match(/^\/post-investment-docs\/([A-Za-z0-9._-]+)$/)
+    // 清理本地文件（失败不阻塞；兼容新旧 fileUrl 格式）
+    const m = doc.fileUrl.match(/\/(?:api\/uploads\/)?post-investment-docs\/([A-Za-z0-9._-]+)$/)
     if (m) await unlink(join(UPLOAD_DIR, m[1])).catch(() => {})
 
     return NextResponse.json({ ok: true })

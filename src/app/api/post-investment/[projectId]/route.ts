@@ -48,13 +48,19 @@ export async function GET(
       prisma.postInvestAnalysis.findMany({ where: { projectId: params.projectId }, orderBy: { period: 'desc' } }),
     ])
 
+    // 期次页签 = 文档 ∪ 指标 ∪ 分析 的并集（新上传的以往季度立即出现页签，可直接分析），最新在前
+    const periodSet = new Set<string>()
+    docs.forEach(d => periodSet.add(d.period))
+    metrics.forEach(m => periodSet.add(m.period))
+    analyses.forEach(a => periodSet.add(a.period))
+    const periods = Array.from(periodSet).sort((a, b) => b.localeCompare(a))
+
     // 指标时序：period → metricKey → value
     const historyByPeriod = new Map<string, Map<string, number>>()
     for (const m of metrics) {
       if (!historyByPeriod.has(m.period)) historyByPeriod.set(m.period, new Map())
       historyByPeriod.get(m.period)!.set(m.metricKey, m.value)
     }
-    const periods = Array.from(historyByPeriod.keys()).sort()
 
     // 各期带同比环比的指标
     const metricsByPeriod: Record<string, MetricWithChange[]> = {}

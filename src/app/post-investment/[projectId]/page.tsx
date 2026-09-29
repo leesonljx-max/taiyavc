@@ -82,7 +82,7 @@ const RISK_STYLES: Record<string, string> = {
   low: 'bg-emerald-50 text-emerald-700 border-emerald-200',
 }
 
-/** 报告期下拉选项：近 8 个季度 + 当前年 H1/FY */
+/** 报告期下拉选项：近 12 个季度 + 当前年 H1/FY（支持补传更早的以往季度） */
 function periodOptions(): string[] {
   const now = new Date()
   const year = now.getFullYear()
@@ -90,7 +90,7 @@ function periodOptions(): string[] {
   const opts: string[] = []
   let y = year
   let q = quarter
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 12; i++) {
     opts.push(`${y}Q${q}`)
     q--
     if (q === 0) { q = 4; y-- }
@@ -132,19 +132,24 @@ export default function PostInvestmentDetailPage() {
   const [analyzeMsg, setAnalyzeMsg] = useState('')
   const [analyzeErr, setAnalyzeErr] = useState('')
 
-  const [previewDoc, setPreviewDoc] = useState<{ fileName: string; fileUrl: string; fileType: string; textContent?: string } | null>(null)
+  const [previewDoc, setPreviewDoc] = useState<{ fileName: string; fileUrl: string; fileType: string; textContent?: string; previewHtml?: string } | null>(null)
 
-  /** 打开文档预览：异步加载提取全文（本地环境 Office 文档的文本阅览回退） */
+  /** 打开文档预览：调用预览 API（docx/xlsx→HTML、pptx→文本、pdf/txt→文件地址） */
   const openPreviewDoc = async (d: PIDoc) => {
+    // 兼容历史记录的 fileUrl（旧格式无 /api/uploads 前缀，生产环境不可直达）
+    const fileUrl = d.fileUrl.startsWith('/api/uploads/') || d.fileUrl.startsWith('http') ? d.fileUrl : `/api/uploads${d.fileUrl}`
     let textContent: string | undefined
+    let previewHtml: string | undefined
     try {
-      const r = await fetch(`/api/post-investment/documents/content?docId=${d.id}`)
+      const r = await fetch(`/api/post-investment/documents/preview?docId=${d.id}`)
       if (r.ok) {
         const j = await r.json()
-        if (j.text) textContent = j.text
+        if (j.kind === 'html' && j.html) previewHtml = j.html
+        else if (j.kind === 'text' && j.text) textContent = j.text
+        else if (j.kind === 'file' && j.url) { setPreviewDoc({ fileName: d.fileName, fileUrl: j.url, fileType: d.fileType }); return }
       }
     } catch { /* 加载失败不阻塞预览 */ }
-    setPreviewDoc({ fileName: d.fileName, fileUrl: d.fileUrl, fileType: d.fileType, textContent })
+    setPreviewDoc({ fileName: d.fileName, fileUrl, fileType: d.fileType, textContent, previewHtml })
   }
 
   const load = useCallback(async () => {
@@ -304,7 +309,7 @@ export default function PostInvestmentDetailPage() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".pdf,.docx,.xlsx,.txt,.md"
+                    accept=".pdf,.docx,.xlsx,.pptx,.txt,.md"
                     className="hidden"
                     onChange={e => {
                       const f = e.target.files?.[0]
@@ -313,7 +318,7 @@ export default function PostInvestmentDetailPage() {
                     }}
                   />
                 </label>
-                <span className="text-[11px] text-gray-400">支持 PDF / Word / Excel / txt（≤50MB）；经营报告或财务报表任一项即可触发 AI 分析</span>
+                <span className="text-[11px] text-gray-400">支持 PDF / Word / Excel / PPT / txt（≤50MB），上传后可在线阅览；经营报告或财务报表任一项即可触发 AI 分析</span>
               </div>
               {uploadErr && <p className="mt-2.5 text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{uploadErr}</p>}
             </div>
@@ -575,7 +580,15 @@ export default function PostInvestmentDetailPage() {
       )}
 
       {previewDoc && (
-        <DocumentPreviewModal open={!!previewDoc} onClose={() => setPreviewDoc(null)} fileName={previewDoc.fileName} fileUrl={previewDoc.fileUrl} fileType={previewDoc.fileType} />
+        <DocumentPreviewModal
+          open={!!previewDoc}
+          onClose={() => setPreviewDoc(null)}
+          fileName={previewDoc.fileName}
+          fileUrl={previewDoc.fileUrl}
+          fileType={previewDoc.fileType}
+          textContent={previewDoc.textContent}
+          previewHtml={previewDoc.previewHtml}
+        />
       )}
     </DashboardLayout>
   )
