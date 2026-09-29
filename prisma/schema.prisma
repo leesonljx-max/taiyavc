@@ -58,6 +58,8 @@ model Project {
   researchModules  ResearchModule[]
   ddReport         DDReport?
   ddBatches        DDBatch[]
+  ddModuleResources DDModuleResource[]
+  ddInvestmentDecisions DDInvestmentDecision[]
   createdBy        User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   @@index([name])
@@ -153,6 +155,7 @@ model User {
   aiChatSessions     AIChatSession[]
   // 尽调批次：作为发起人
   ddBatchesInitiated DDBatch[] @relation("DDBatchInitiator")
+  ddInvestmentDecisions DDInvestmentDecision[] @relation("DDInvestmentDecisions")
   // 尽调模块任务：作为负责人
   ddTasksOwned       DDTask[] @relation("DDTaskOwner")
   // 尽调证据：作为创建人
@@ -748,6 +751,52 @@ model SectorInsight {
 
   @@unique([sector, question])
   @@index([sector])
+}
+
+// ═══════════════════════════════════════════════════════════
+// 尽调工作台 v2：模块资料中心 + 分模块报告 + 投资决策
+// ═══════════════════════════════════════════════════════════
+
+// 模块资料（每个项目 × 九大模块一份）：文档/文本框/截图 + 分模块 AI 报告
+// 工作台"资料中心"（3D 翻转背面）管理，前台点击模块展示，报告生成时汇总提取
+model DDModuleResource {
+  id        String   @id @default(cuid())
+  projectId String
+  moduleKey String   // 九大模块标识（PROJECT_ENTITY/PRODUCT_TECHNOLOGY/.../VALUATION）
+  // 上传的文档：[{ id, fileName, fileUrl, fileType, fileSize, text, uploadedAt }]
+  documents String?  // JSON 数组（text 为上传时提取的全文，供报告生成）
+  // 文本框（可动态添加多个）：[{ id, content, createdAt }]
+  textBlocks String? // JSON 数组
+  // 截图：[{ id, url, fileName, uploadedAt }]
+  screenshots String? // JSON 数组
+  // 分模块 AI 报告：{ summary, opportunities: string[], risks: string[], generatedAt }
+  reportJson String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, moduleKey])
+  @@index([projectId])
+}
+
+// 投资决策（报告生成后，投资合伙人每人一票）
+// 规则：≥3 位合伙人全部选"投资" → 最终"投资"（显示各合伙人+金额）；任一"不投资/纠结中" → 最终"不投资"
+model DDInvestmentDecision {
+  id        String   @id @default(cuid())
+  projectId String
+  partnerId String   // 投资合伙人（或管理员代投）
+  decision  String   // INVEST / NO_INVEST / UNDECIDED
+  amount    Float?   // 投资金额（decision=INVEST 时必填，万元）
+  reason    String?  // 投资理由 / 不投资理由 / 纠结理由
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  partner User    @relation("DDInvestmentDecisions", fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, partnerId])
+  @@index([projectId])
 }
 
 // ═══════════════════════════════════════════════════════════

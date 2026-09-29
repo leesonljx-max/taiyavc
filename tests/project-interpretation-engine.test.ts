@@ -692,3 +692,67 @@ test('create-project：AI 按项目库模板提取并创建（主要产品/核�
   assert.match(dup.error, /已存在同名项目/)
   assert.equal(dup.existingProjectId, body.projectId)
 })
+
+test('create-project：BP 原文自动转存到项目文档（ProjectDocument + 文件复制到 project-docs）', async () => {
+  asUser()
+  await seedVerified()
+
+  // 造真实 BP 文件（interpretation-docs 下），fileUrl 指向它
+  const { writeFile, mkdir, unlink } = await import('fs/promises')
+  const { join } = await import('path')
+  const dir = join(process.cwd(), 'public', 'interpretation-docs')
+  await mkdir(dir, { recursive: true })
+  const uniqueName = `test-bp-${Date.now()}.txt`
+  await writeFile(join(dir, uniqueName), DOC_TEXT, 'utf8')
+
+  await prisma.projectInterpretation.update({
+    where: { id: recordId },
+    data: {
+      fileName: '光子芯片BP.txt',
+      fileUrl: `/api/uploads/interpretation-docs/${uniqueName}`,
+      fileType: 'text/plain',
+      fileSize: DOC_TEXT.length,
+    },
+  })
+
+  mockState.fetchHandler = (url, body) => {
+    const system = String((body.messages as Array<{ content: string }>)[0]?.content || '')
+    if (system.includes('项目库创建模板')) {
+      return chatCompletions(
+        JSON.stringify({
+          name: '光子芯片',
+          companyFullName: '光子芯片科技有限公司',
+          industry: '半导体芯片',
+          companyPosition: '硅光计算芯片',
+          mainProducts: '硅光计算加速芯片',
+          coreAdvantage: '硅光路线',
+          coreTeam: '清华团队',
+          description: '硅光计算芯片项目',
+          financingRound: 'A轮',
+          totalAmount: '2亿',
+          investmentValuation: null,
+        })
+      )
+    }
+    return chatCompletions('{}')
+  }
+
+  const res = await CREATE_PROJECT(post(`http://t/api/project-interpretation/${recordId}/create-project`), { params: { id: recordId } })
+  assert.equal(res.status, 200)
+  const body = await res.json()
+
+  // ProjectDocument 转存断言
+  const doc = await prisma.projectDocument.findFirst({ where: { projectId: body.projectId } })
+  assert.ok(doc, 'BP 应转存为项目文档')
+  assert.equal(doc!.fileName, '光子芯片BP.txt')
+  assert.ok(doc!.fileUrl.includes('/project-docs/'))
+  assert.equal(doc!.fileType, 'text/plain')
+
+  // 转存文件真实存在（project-docs 下）并清理
+  const { readFile } = await import('fs/promises')
+  const copiedName = doc!.fileUrl.replace(/^\/project-docs\//, '')
+  const copied = await readFile(join(process.cwd(), 'public', 'project-docs', copiedName), 'utf8')
+  assert.ok(copied.includes('光子计算芯片'))
+  await unlink(join(process.cwd(), 'public', 'project-docs', copiedName))
+  await unlink(join(dir, uniqueName))
+})

@@ -312,7 +312,7 @@ export async function runQuestionGeneration(input: {
 
 // ═══════════ 固定模板：闭环创建项目库草稿 ═══════════
 
-const PROJECT_DRAFT_SYSTEM_PROMPT = `你是一级市场投资经理。基于项目解读的全量材料（BP 文档原文、七维解读、访谈校验综合结论），按项目库创建模板提取项目关键信息。
+const PROJECT_DRAFT_SYSTEM_PROMPT = `你是一级市场投资经理。基于项目解读的全量材料（BP 文档原文、七维解读、访谈纪要、访谈校验综合结论），按项目库创建模板尽可能完整地提取项目关键信息。
 严格输出 JSON（不要 markdown 代码块），结构：
 {
   "name": "项目简称（与 BP 中项目名一致，2-20字）",
@@ -321,18 +321,19 @@ const PROJECT_DRAFT_SYSTEM_PROMPT = `你是一级市场投资经理。基于项�
   "companyPosition": "公司定位一句话（30字内）",
   "mainProducts": "主要产品：从 BP 原文截取产品/服务相关核心段落（保留原文关键表述与量化指标，200字内，可轻度组织成通顺文字）",
   "coreAdvantage": "核心优势：从 BP 原文截取技术壁垒/差异化/里程碑相关段落（保留原文关键表述，200字内）",
-  "coreTeam": "核心团队：从 BP 原文截取创始人及核心成员背景段落（姓名/背景/履历要点，200字内）",
-  "description": "项目描述：综合 BP 与解读结论的一段项目综述（150字内）",
+  "coreTeam": "核心团队：BP 中提到的核心团队成员必须全部列出（姓名/职务/背景/履历要点，一人一行）；并总结访谈纪要中关于团队的补充信息（团队成员之间怎么认识的、创业契机/合作渊源等），一并写入本字段（500字内）",
+  "description": "项目描述：综合 BP、访谈纪要与解读结论的一段项目综述（200字内）",
   "financingRound": "本轮融资轮次（如 天使轮/A轮/Pre-A轮；未披露则空字符串）",
   "totalAmount": "本轮融资金额（如 8000万/2亿；未披露则'待补充'）",
   "investmentValuation": 投资估值（亿元，数字；未披露则 null）
 }
 要求：
 - mainProducts / coreAdvantage / coreTeam 三个字段必须优先使用 BP 原文中的对应资料（截取关键句），再辅以文字描述串联，不得凭空编造
-- 文档与解读均未提及的信息：字符串字段写"未披露"，估值写 null
+- coreTeam 必须穷尽 BP 中出现的所有核心成员（不得只写创始人），并融合访谈纪要中的团队认识方式、创业契机等信息
+- 其他字段（行业/定位/轮次/金额/估值等）也应尽量从 BP 与访谈纪要中提取完整，文档确实未提及才写"未披露"/null
 - 结论克制、可核验`
 
-/** 项目库草稿（AI 按项目库模板从 BP/解读/结论提取） */
+/** 项目库草稿（AI 按项目库模板从 BP/解读/访谈纪要/结论提取） */
 export interface ProjectDraft {
   name: string
   companyFullName: string
@@ -349,11 +350,12 @@ export interface ProjectDraft {
 
 /**
  * 闭环创建：从解读全量材料提取项目库模板字段
- * （主要产品/核心优势/核心团队 截取 BP 原文对应资料 + 文字描述）
+ * （主要产品/核心优势/核心团队 截取 BP 原文对应资料 + 文字描述；访谈纪要补充团队认识/创业契机等）
  */
 export async function runProjectDraftExtraction(input: {
   projectName: string
   documentText: string
+  interviewText?: string | null
   interpretation: InterpretationResult | null
   conclusionSummary: string
 }): Promise<ProjectDraft> {
@@ -363,6 +365,9 @@ export async function runProjectDraftExtraction(input: {
     digestParts.push(
       `七维解读：\n行业：${input.interpretation.industry}\n市场地位：${input.interpretation.marketPosition}\n技术领先性：${input.interpretation.techLeadership}\n团队咖位：${input.interpretation.teamStanding}\n竞争分析：${input.interpretation.competitionAnalysis}`
     )
+  }
+  if (input.interviewText && input.interviewText.trim()) {
+    digestParts.push(`访谈纪要（含团队认识方式、创业契机、业务细节等补充信息）：\n${input.interviewText.slice(0, 8000)}`)
   }
   if (input.conclusionSummary) {
     digestParts.push(`访谈校验综合结论：${input.conclusionSummary}`)
@@ -384,7 +389,7 @@ export async function runProjectDraftExtraction(input: {
     companyPosition: parsed.companyPosition ? String(parsed.companyPosition).slice(0, 100) : '',
     mainProducts: String(parsed.mainProducts).slice(0, 2000),
     coreAdvantage: parsed.coreAdvantage ? String(parsed.coreAdvantage).slice(0, 2000) : '未披露',
-    coreTeam: parsed.coreTeam ? String(parsed.coreTeam).slice(0, 2000) : '未披露',
+    coreTeam: parsed.coreTeam ? String(parsed.coreTeam).slice(0, 4000) : '未披露',
     description: parsed.description ? String(parsed.description).slice(0, 1000) : '',
     financingRound: parsed.financingRound ? String(parsed.financingRound).slice(0, 30) : '',
     totalAmount: parsed.totalAmount ? String(parsed.totalAmount).slice(0, 30) : '待补充',

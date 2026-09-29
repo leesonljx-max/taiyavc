@@ -13,7 +13,6 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import DashboardLayout from '@/components/DashboardLayout'
-import ProjectInterpretationPanel from '@/components/ai-research/ProjectInterpretationPanel'
 
 interface ChatSession {
   id: string
@@ -48,8 +47,6 @@ export default function AIResearchPage() {
   const [loadingSessions, setLoadingSessions] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  // 模式切换：对话研究 | 项目解读
-  const [mode, setMode] = useState<'chat' | 'interpretation'>('chat')
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -211,35 +208,7 @@ export default function AIResearchPage() {
 
   return (
     <DashboardLayout title="AI行研" subtitle="一级市场投资研究助手 · 项目库优先 · 分层记忆">
-      {/* 模式切换：对话研究 | 项目解读 */}
-      <div className="flex items-center gap-1.5 mb-4 bg-white rounded-xl border border-primary-100 p-1 w-fit shadow-sm">
-        {([
-          { key: 'chat' as const, label: '💬 对话研究' },
-          { key: 'interpretation' as const, label: '📄 项目解读' },
-        ]).map(m => (
-          <button
-            key={m.key}
-            onClick={() => setMode(m.key)}
-            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-              mode === m.key
-                ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md shadow-primary-500/25'
-                : 'text-gray-500 hover:text-primary-600'
-            }`}
-          >
-            {m.label}
-          </button>
-        ))}
-        <span className="px-2 text-[10px] text-gray-400 hidden md:inline">
-          {mode === 'chat' ? '问答式投研' : '上传文档 · 固定框架解读 · 访谈闭环校验'}
-        </span>
-      </div>
-
-      {/* 项目解读模式 */}
-      {mode === 'interpretation' ? (
-        <div style={{ height: 'calc(100vh - 210px)' }}>
-          <ProjectInterpretationPanel />
-        </div>
-      ) : (
+      {/* 项目解读已独立为一级栏目（/project-interpretation），此处仅保留对话研究 */}
       <div className="flex gap-4" style={{ height: 'calc(100vh - 210px)' }}>
         {/* ── 左：会话列表 ── */}
         {sidebarOpen && (
@@ -389,7 +358,6 @@ export default function AIResearchPage() {
           </div>
         </div>
       </div>
-      )}
     </DashboardLayout>
   )
 }

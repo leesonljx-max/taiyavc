@@ -1,0 +1,65 @@
+export const dynamic = 'force-dynamic'
+
+import { NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import prisma from '@/lib/prisma'
+import { authOptions, type UserRole } from '@/lib/auth'
+import type { PermissionUser } from '@/lib/permissions'
+import { canEditResearchProject } from '@/lib/research-permissions'
+import { upsertModuleResource, isValidModuleKey } from '@/lib/dd-workbench/resources'
+
+/**
+ * PUT /api/dd/resources/[projectId]/[moduleKey]
+ * 保存模块文本框（可动态添加多个；全量覆盖保存）
+ * body: { textBlocks: [{ content: string }] }
+ */
+export async function PUT(
+  request: Request,
+  { params }: { params: { projectId: string; moduleKey: string } }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: '登录已过期，请退出后重新登录' }, { status: 401 })
+    }
+    const currentUser: PermissionUser = { id: session.user.id, role: session.user.role as UserRole }
+
+    const { projectId, moduleKey } = params
+    if (!isValidModuleKey(moduleKey)) {
+      return NextResponse.json({ error: `无效的模块标识: ${moduleKey}` }, { status: 400 })
+    }
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { createdById: true, members: { select: { userId: true } } },
+    })
+    if (!project) return NextResponse.json({ error: '项目不存在' }, { status: 404 })
+
+    const memberIds = project.members.map(m => m.userId)
+    if (!canEditResearchProject(currentUser, { createdById: project.createdById, memberIds })) {
+      return NextResponse.json({ error: '无权编辑该项目' }, { status: 403 })
+    }
+
+    const body = (await request.json().catch(() => ({}))) as { textBlocks?: Array<{ content?: string }> }
+    const blocks = (Array.isArray(body.textBlocks) ? body.textBlocks : [])
+      .map(b => (typeof b?.content === 'string' ? b.content : ''))
+      .map(content => content.slice(0, 20000))
+    if (blocks.length > 20) {
+      return NextResponse.json({ error: '文本框数量超过上限（20 个）' }, { status: 400 })
+    }
+
+    const record = await upsertModuleResource(projectId, moduleKey)
+    const now = new Date().toISOString()
+    const textBlocks = blocks.map((content, i) => ({ id: `tb-${Date.now()}-${i}`, content, createdAt: now }))
+
+    await prisma.dDModuleResource.update({
+      where: { id: record.id },
+      data: { textBlocks: JSON.stringify(textBlocks) },
+    })
+
+    return NextResponse.json({ ok: true, count: textBlocks.length })
+  } catch (error) {
+    console.error('DD textBlocks save error:', error)
+    return NextResponse.json({ error: '保存文本内容失败' }, { status: 500 })
+  }
+}
