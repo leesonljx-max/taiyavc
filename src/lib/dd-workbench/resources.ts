@@ -41,14 +41,32 @@ export interface DDModuleReport {
   generatedAt: string
 }
 
+/** 单模块 AI 分析（上传资料后单独分析）：事实卡 + 下一步行动 */
+export interface DDFact {
+  id: string
+  fact: string
+  source: string
+  grade: 'A' | 'B' | 'C' | 'D'
+  status: 'PENDING' | 'CONFIRMED' | 'CONFLICT'
+}
+
+export interface DDModuleAnalysis {
+  facts: DDFact[]
+  actions: string[]
+  analyzedAt: string
+}
+
 /** 解析后的模块资料 */
 export interface ParsedModuleResource {
   moduleKey: string
   moduleName: string
+  coreQuestion: string
   documents: DDResourceDoc[]
   textBlocks: DDTextBlock[]
   screenshots: DDScreenshot[]
   report: DDModuleReport | null
+  analysis: DDModuleAnalysis | null
+  conclusion: string | null
   updatedAt: string
 }
 
@@ -60,6 +78,15 @@ function safeParseArray<T>(raw: string | null | undefined): T[] {
   } catch {
     return []
   }
+}
+
+/** 模块资料完整度（0-100）：文档/非空文本/截图三类各占 1/3（进度条数据源） */
+export function moduleProgress(res: Pick<ParsedModuleResource, 'documents' | 'textBlocks' | 'screenshots'>): number {
+  let score = 0
+  if (res.documents.length > 0) score += 34
+  if (res.textBlocks.some(t => t.content.trim())) score += 33
+  if (res.screenshots.length > 0) score += 33
+  return Math.min(100, score)
 }
 
 /** 模块是否资料完整（任一：文档 ≥1 / 非空文本框 ≥1 / 截图 ≥1） */
@@ -98,13 +125,35 @@ export async function getProjectModuleResources(projectId: string): Promise<Pars
         if (parsed && typeof parsed.summary === 'string') report = parsed
       } catch { report = null }
     }
+    let analysis: DDModuleAnalysis | null = null
+    if (r?.analysisJson) {
+      try {
+        const parsed = JSON.parse(r.analysisJson) as DDModuleAnalysis
+        if (parsed && Array.isArray(parsed.facts)) {
+          analysis = {
+            facts: parsed.facts.map((f, i) => ({
+              id: typeof f?.id === 'string' ? f.id : `fact-${i}`,
+              fact: String(f?.fact || ''),
+              source: String(f?.source || '—'),
+              grade: (['A', 'B', 'C', 'D'] as const).includes(f?.grade) ? f.grade : 'C',
+              status: (['PENDING', 'CONFIRMED', 'CONFLICT'] as const).includes(f?.status) ? f.status : 'PENDING',
+            })),
+            actions: Array.isArray(parsed.actions) ? parsed.actions.map(String) : [],
+            analyzedAt: parsed.analyzedAt || new Date().toISOString(),
+          }
+        }
+      } catch { analysis = null }
+    }
     return {
       moduleKey: tpl.key,
       moduleName: tpl.name,
+      coreQuestion: tpl.coreQuestion,
       documents,
       textBlocks,
       screenshots,
       report,
+      analysis,
+      conclusion: r?.conclusion || null,
       updatedAt: (r?.updatedAt || new Date()).toISOString(),
     }
   })

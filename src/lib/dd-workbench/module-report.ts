@@ -8,7 +8,7 @@
 import prisma from '@/lib/prisma'
 import { parseAgentJson } from '@/lib/dd-harness/agent'
 import { recordTokenUsage } from '@/lib/token-accounting'
-import { getProjectModuleResources, isModuleComplete, findMissingModules, type ParsedModuleResource, type DDModuleReport } from './resources'
+import { getProjectModuleResources, isModuleComplete, findMissingModules, type ParsedModuleResource, type DDModuleReport, type DDModuleAnalysis } from './resources'
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
 const DEEPSEEK_MODEL = 'deepseek-v4-flash'
@@ -153,4 +153,110 @@ export async function runModuleReportGeneration(projectId: string, projectName: 
   }
 
   return { ok: true, missing: [], resources: await getProjectModuleResources(projectId) }
+}
+
+// ═══════════ 单模块分析（事实卡 + 证据与行动） ═══════════
+
+const MODULE_ANALYSIS_SYSTEM_PROMPT = `你是一级市场资深尽调分析师。基于该尽调模块上传的资料，提取事实卡与下一步行动。
+严格输出 JSON（不要 markdown 代码块），结构：
+{
+  "facts": [
+    {
+      "fact": "一条可核验的关键事实（数据/事件/表述，60字内，摘自资料原文或忠实概括）",
+      "source": "来源（如：文档《技术架构.txt》/ 维护人填写 / 访谈纪要）",
+      "grade": "证据等级：A=文档原文可定位；B=维护人说明/访谈内容；C=由资料推断；D=待核验（资料中仅有间接线索）"
+    }
+  ],
+  "actions": ["下一步行动 1（如：补充良率验证报告、向项目方确认订单金额）", "行动 2"]
+}
+要求：
+- facts 提取 5-12 条，覆盖该模块的关键信息点；只基于给定资料，不编造
+- grade 只能取 A/B/C/D 单字母
+- actions 2-5 条，针对资料缺口与待核验项给出可执行的下一步`
+
+/** 单模块分析：AI 从模块资料提取事实卡（facts）与下一步行动（actions） */
+export async function runModuleAnalysis(projectId: string, moduleKey: string): Promise<{
+  ok: boolean
+  error?: string
+  analysis?: DDModuleAnalysis
+}> {
+  const resources = await getProjectModuleResources(projectId)
+  const res = resources.find(r => r.moduleKey === moduleKey)
+  if (!res) return { ok: false, error: '无效的模块标识' }
+  if (!isModuleComplete(res)) {
+    return { ok: false, error: `「${res.moduleName}」模块暂无资料，请先到资料中心上传文档/填写文本/上传截图` }
+  }
+
+  const apiKey = process.env.DEEPSEEK_API_KEY
+  if (!apiKey) throw new Error('DeepSeek API Key 未配置')
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 90000)
+  try {
+    const response = await fetch(DEEPSEEK_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: DEEPSEEK_MODEL,
+        messages: [
+          { role: 'system', content: MODULE_ANALYSIS_SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: `尽调模块：${res.moduleName}\n模块核心问题：${res.coreQuestion}\n\n该模块资料：\n\n${buildContentDigest(res)}\n\n请输出事实卡与下一步行动 JSON。`,
+          },
+        ],
+        temperature: 0.3,
+        max_tokens: 3000,
+        thinking: { type: 'disabled' },
+      }),
+      signal: controller.signal,
+    })
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '')
+      throw new Error(`DeepSeek 调用失败: ${response.status} ${errText.substring(0, 150)}`)
+    }
+    const data = (await response.json()) as {
+      usage?: unknown
+      choices?: Array<{ message?: { content?: string } }>
+    }
+    recordTokenUsage('dd-harness', data.usage as Parameters<typeof recordTokenUsage>[1])
+    const parsed = parseAgentJson<{ facts?: Array<{ fact?: string; source?: string; grade?: string }>; actions?: string[] }>(
+      data.choices?.[0]?.message?.content || ''
+    )
+    const rawFacts = Array.isArray(parsed?.facts) ? parsed!.facts : []
+    if (rawFacts.length === 0) {
+      return { ok: false, error: `「${res.moduleName}」分析结果为空，请重试` }
+    }
+    const analysis: DDModuleAnalysis = {
+      facts: rawFacts
+        .filter(f => f && typeof f.fact === 'string' && f.fact.trim())
+        .slice(0, 15)
+        .map((f, i) => ({
+          id: `fact-${Date.now()}-${i}`,
+          fact: f.fact!.trim().slice(0, 200),
+          source: (f.source || '—').slice(0, 60),
+          grade: (['A', 'B', 'C', 'D'] as const).includes(f.grade as 'A') ? (f.grade as 'A' | 'B' | 'C' | 'D') : 'C',
+          status: 'PENDING' as const,
+        })),
+      actions: (Array.isArray(parsed?.actions) ? parsed!.actions : []).map(String).slice(0, 5),
+      analyzedAt: new Date().toISOString(),
+    }
+    if (analysis.facts.length === 0) {
+      return { ok: false, error: `「${res.moduleName}」分析结果为空，请重试` }
+    }
+
+    const record = await prisma.dDModuleResource.upsert({
+      where: { projectId_moduleKey: { projectId, moduleKey } },
+      create: { projectId, moduleKey },
+      update: {},
+    })
+    await prisma.dDModuleResource.update({
+      where: { id: record.id },
+      data: { analysisJson: JSON.stringify(analysis) },
+    })
+
+    return { ok: true, analysis }
+  } finally {
+    clearTimeout(timeoutId)
+  }
 }

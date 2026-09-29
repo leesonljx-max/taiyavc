@@ -107,7 +107,12 @@ export default function ResearchDetailPage() {
       }
     >
       {/* 页面仅保留尽调工作台：模块资料中心（3D 翻转）+ 分模块报告 + 投资决策 */}
-      <DDWorkbenchShell projectId={params.projectId} projectName={project.name} canEdit={canEdit} />
+      <DDWorkbenchShell
+        projectId={params.projectId}
+        projectName={project.name}
+        canEdit={canEdit}
+        userRole={(session?.user?.role as string) || ''}
+      />
     </DashboardLayout>
   )
 }

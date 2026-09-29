@@ -59,6 +59,7 @@ model Project {
   ddReport         DDReport?
   ddBatches        DDBatch[]
   ddModuleResources DDModuleResource[]
+  ddModuleQAs      DDModuleQA[]
   ddInvestmentDecisions DDInvestmentDecision[]
   createdBy        User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
@@ -156,6 +157,8 @@ model User {
   // 尽调批次：作为发起人
   ddBatchesInitiated DDBatch[] @relation("DDBatchInitiator")
   ddInvestmentDecisions DDInvestmentDecision[] @relation("DDInvestmentDecisions")
+  ddModuleQuestionsAsked DDModuleQA[] @relation("DDModuleQAQuestioner")
+  ddModuleAnswersGiven DDModuleQA[] @relation("DDModuleQAAnswerer")
   // 尽调模块任务：作为负责人
   ddTasksOwned       DDTask[] @relation("DDTaskOwner")
   // 尽调证据：作为创建人
@@ -771,13 +774,38 @@ model DDModuleResource {
   screenshots String? // JSON 数组
   // 分模块 AI 报告：{ summary, opportunities: string[], risks: string[], generatedAt }
   reportJson String?
+  // 单模块 AI 分析（上传资料后单独分析）：{ facts: [{ id, fact, source, grade, status }], actions: string[], analyzedAt }
+  analysisJson String?
+  // 维护人人工结论（回答模块核心问题，进入正式报告）
+  conclusion  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  questions DDModuleQA[]
 
   @@unique([projectId, moduleKey])
   @@index([projectId])
+}
+
+// 模块问答（事实卡内的投委会追问）：投资合伙人发布问题，项目维护人回答
+model DDModuleQA {
+  id            String    @id @default(cuid())
+  projectId     String
+  moduleKey     String
+  questionerId  String
+  question      String
+  answer        String?
+  answererId    String?
+  createdAt     DateTime  @default(now())
+  answeredAt    DateTime?
+
+  project    Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  questioner User                @relation("DDModuleQAQuestioner", fields: [questionerId], references: [id], onDelete: Cascade)
+  answerer   User?               @relation("DDModuleQAAnswerer", fields: [answererId], references: [id], onDelete: SetNull)
+  resource   DDModuleResource    @relation(fields: [projectId, moduleKey], references: [projectId, moduleKey], onDelete: Cascade)
+
+  @@index([projectId, moduleKey])
 }
 
 // 投资决策（报告生成后，投资合伙人每人一票）

@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import type {
   InterpretationResult,
   VerifyResult,
@@ -575,6 +576,7 @@ function Detail({
   const conclusion = useMemoParse<OverallConclusion>(detail.conclusionJson)
   const verifiedCount = detail.questions.filter(q => q.verifyStatus === 'VERIFIED').length
   const sectorCount = detail.questions.filter(q => q.sectorInsight).length
+  const router = useRouter()
 
   // ── 闭环创建到项目库：校验结论生成后弹窗提醒（每条记录只提醒一次） ──
   const [createModalOpen, setCreateModalOpen] = useState(false)
@@ -610,6 +612,8 @@ function Detail({
       }
       setCreatedProjectId(data.projectId)
       onProjectCreated()
+      // 创建成功后跳转到项目详情页，由维护人确认/修改 AI 提取的信息
+      router.push(`/projects/${data.projectId}`)
     } catch {
       setCreateErr('网络错误（AI 提取耗时较长，请稍后重试）')
     } finally {

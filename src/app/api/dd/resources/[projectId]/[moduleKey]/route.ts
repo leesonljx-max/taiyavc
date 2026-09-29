@@ -10,8 +10,9 @@ import { upsertModuleResource, isValidModuleKey } from '@/lib/dd-workbench/resou
 
 /**
  * PUT /api/dd/resources/[projectId]/[moduleKey]
- * 保存模块文本框（可动态添加多个；全量覆盖保存）
- * body: { textBlocks: [{ content: string }] }
+ * 保存模块内容：
+ * - body: { textBlocks: [{ content }] } 文本框（全量覆盖保存）
+ * - body: { conclusion: string } 人工结论（回答模块核心问题，进入正式报告）
  */
 export async function PUT(
   request: Request,
@@ -40,7 +41,22 @@ export async function PUT(
       return NextResponse.json({ error: '无权编辑该项目' }, { status: 403 })
     }
 
-    const body = (await request.json().catch(() => ({}))) as { textBlocks?: Array<{ content?: string }> }
+    const body = (await request.json().catch(() => ({}))) as {
+      textBlocks?: Array<{ content?: string }>
+      conclusion?: string
+    }
+
+    const record = await upsertModuleResource(projectId, moduleKey)
+
+    // 人工结论（单独保存，不覆盖文本框）
+    if (typeof body.conclusion === 'string') {
+      await prisma.dDModuleResource.update({
+        where: { id: record.id },
+        data: { conclusion: body.conclusion.slice(0, 5000) },
+      })
+      return NextResponse.json({ ok: true })
+    }
+
     const blocks = (Array.isArray(body.textBlocks) ? body.textBlocks : [])
       .map(b => (typeof b?.content === 'string' ? b.content : ''))
       .map(content => content.slice(0, 20000))
@@ -48,7 +64,6 @@ export async function PUT(
       return NextResponse.json({ error: '文本框数量超过上限（20 个）' }, { status: 400 })
     }
 
-    const record = await upsertModuleResource(projectId, moduleKey)
     const now = new Date().toISOString()
     const textBlocks = blocks.map((content, i) => ({ id: `tb-${Date.now()}-${i}`, content, createdAt: now }))
 
