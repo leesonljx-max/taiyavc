@@ -108,9 +108,10 @@ function buildDocsDigest(docs: Array<{ fileName: string; docType: string; text: 
   return parts.join('\n\n') || '（无文档）'
 }
 
-/** 从文档中提取指标并 upsert 入库，返回提取的指标 */
-async function extractAndSaveMetrics(projectId: string, period: string): Promise<number> {
+/** 从指定期文档中提取指标并 upsert 入库，返回提取的指标数 */
+async function extractMetricsForPeriod(projectId: string, period: string): Promise<number> {
   const docs = await prisma.postInvestDoc.findMany({ where: { projectId, period } })
+  if (docs.length === 0) return 0
   const content = buildDocsDigest(docs)
   const raw = await callDeepSeek(
     EXTRACT_SYSTEM_PROMPT.replace('${METRIC_DICTIONARY}', metricDictionaryText()),
@@ -150,7 +151,8 @@ async function extractAndSaveMetrics(projectId: string, period: string): Promise
 // ── AI 经营分析 ──
 
 const ANALYSIS_SYSTEM_PROMPT = `你是投资机构的投后管理分析 Agent。基于企业提交的经营资料与结构化指标数据，分析企业本报告期的经营情况。
-你的任务不是评价项目投资价值，而是客观分析经营、财务、现金流、业务进展和潜在风险。
+你会收到：本期指标（含程序计算的同比/环比）、历史各期指标、本期文档全文、以及历史各期文档全文。
+你的任务不是评价项目投资价值，而是客观分析经营、财务、现金流、业务进展和潜在风险，并结合历史期数据做趋势判断。
 严格输出 JSON（不要 markdown 代码块），结构：
 {
   "executive_summary": "本报告期经营情况核心结论（150字内，区分改善/正常/关注）",
@@ -173,7 +175,8 @@ const ANALYSIS_SYSTEM_PROMPT = `你是投资机构的投后管理分析 Agent。
 2. 每条异常/风险必须引用具体数据作为证据
 3. 事实与判断分离：先陈述数据，再给判断
 4. 输入数据未覆盖的领域（如无订单信息），business_progress 中不输出该项
-5. 收入增长但经营现金流为负/下降时，必须提示"收入增长与现金流背离，关注回款质量"`
+5. 收入增长但经营现金流为负/下降时，必须提示"收入增长与现金流背离，关注回款质量"
+6. 结合历史各期数据做趋势判断：如经营现金流连续两期为负、收入持续增长、订单波动、亏损持续收窄/扩大等，趋势结论必须注明涉及的具体期数与数据`
 
 /** 格式化指标（带同比环比）为 AI 输入 */
 function formatMetricsInput(metrics: MetricWithChange[]): string {
@@ -186,7 +189,8 @@ function formatMetricsInput(metrics: MetricWithChange[]): string {
     .join('\n')
 }
 
-/** 投后分析主流程：提取指标 → 计算同比环比 → AI 分析 → 落库 */
+/** 投后分析主流程：补齐各期指标 → 计算同比环比 → 合并历史期文档做 AI 分析 → 落库
+ *  分析任一期（当季或以往季）时，会把项目全部历史期文档纳入分析上下文（趋势与连续性判断） */
 export async function runPostInvestAnalysis(projectId: string, period: string): Promise<{
   ok: boolean
   error?: string
@@ -201,13 +205,23 @@ export async function runPostInvestAnalysis(projectId: string, period: string): 
     return { ok: false, error: `「${period}」尚未上传任何投后资料（经营报告 / 财务报表，任一项即可）` }
   }
 
-  // 1. 指标提取入库
-  const saved = await extractAndSaveMetrics(projectId, period)
-  if (saved === 0) {
+  // 1. 补齐历史期指标：以往季上传的报告（如补传 2026Q1）在分析时任一期都会被提取入库，形成完整时序
+  const allDocPeriods = await prisma.postInvestDoc.groupBy({ by: ['period'], where: { projectId } })
+  for (const { period: p } of allDocPeriods) {
+    if (p === period) continue
+    const existing = await prisma.postInvestMetric.count({ where: { projectId, period: p } })
+    if (existing === 0) {
+      await extractMetricsForPeriod(projectId, p).catch(() => 0)
+    }
+  }
+
+  // 2. 本期指标强制提取（重新分析覆盖刷新）
+  const saved = await extractMetricsForPeriod(projectId, period)
+  if (saved === 0 && (await prisma.postInvestMetric.count({ where: { projectId, period } })) === 0) {
     return { ok: false, error: `未能从「${period}」的资料中提取出有效指标，请检查文档内容（扫描件暂不支持）` }
   }
 
-  // 2. 读全部历史指标 → 程序计算同比/环比
+  // 3. 读全部历史指标 → 程序计算同比/环比
   const allMetrics = await prisma.postInvestMetric.findMany({ where: { projectId } })
   const historyByPeriod = new Map<string, Map<string, number>>()
   for (const m of allMetrics) {
@@ -219,18 +233,37 @@ export async function runPostInvestAnalysis(projectId: string, period: string): 
     .map(m => ({ metricKey: m.metricKey, metricName: m.metricName, category: m.category, unit: m.unit, value: m.value, sourceText: m.sourceText }))
   const metricsWithChange = computeMetricsWithChange(period, currentRows, historyByPeriod)
 
-  // 3. 现金覆盖月数（程序计算）
+  // 历史各期指标汇总（供趋势判断）
+  const otherPeriods = Array.from(historyByPeriod.keys()).filter(p => p !== period).sort()
+  const historyMetricsText = otherPeriods.length > 0
+    ? otherPeriods.map(p => {
+        const rows = allMetrics.filter(m => m.period === p)
+        return `【${p}】${rows.map(m => `${m.metricName}=${m.value}${m.unit}`).join('、') || '（无指标）'}`
+      }).join('\n')
+    : ''
+
+  // 4. 现金覆盖月数（程序计算）
   const getByKey = (key: string) => metricsWithChange.find(m => m.metricKey === key)
   const runway = calcRunwayMonths(getByKey('cash_balance')?.value, getByKey('operating_cash_flow')?.value, period)
 
-  // 4. 文档要点摘要（供业务进展分析）
-  const docs = await prisma.postInvestDoc.findMany({ where: { projectId, period } })
-  const docsDigest = buildDocsDigest(docs).slice(0, 12000)
+  // 5. 文档全文：本期 + 历史各期合并（趋势与连续性分析的上下文）
+  const allDocs = await prisma.postInvestDoc.findMany({
+    where: { projectId },
+    orderBy: [{ period: 'asc' }, { createdAt: 'asc' }],
+  })
+  const currentDocs = allDocs.filter(d => d.period === period)
+  const historyDocs = allDocs.filter(d => d.period !== period)
+  const docsDigest = buildDocsDigest(currentDocs).slice(0, 12000)
+  const historyDocsDigest = historyDocs.length > 0
+    ? `\n\n【历史各期资料（合并分析：趋势与连续性判断）】\n${historyDocs
+        .map(d => `【${d.period}·${d.fileName}】\n${(d.text || '（未能提取文本）').replace(/<img[^>]*>/g, '[截图]').slice(0, 6000)}`)
+        .join('\n\n')}`.slice(0, 30000)
+    : ''
 
-  // 5. AI 分析
+  // 6. AI 分析（合并本期 + 历史期数据）
   const raw = await callDeepSeek(
     ANALYSIS_SYSTEM_PROMPT,
-    `报告期：${period}\n\n【结构化指标（同比环比已由程序计算，直接引用，禁止自行计算）】\n${formatMetricsInput(metricsWithChange)}\n\n【现金覆盖月数（程序计算）】${runway !== null ? `${runway} 个月` : '无法计算（现金余额或经营现金流缺失/为正）'}\n\n【本期上传文档全文（供业务进展与风险识别）】\n${docsDigest}`,
+    `报告期：${period}\n\n【本期结构化指标（同比环比已由程序计算，直接引用，禁止自行计算）】\n${formatMetricsInput(metricsWithChange)}${historyMetricsText ? `\n\n【历史各期指标时序】\n${historyMetricsText}` : ''}\n\n【现金覆盖月数（程序计算）】${runway !== null ? `${runway} 个月` : '无法计算（现金余额或经营现金流缺失/为正）'}\n\n【本期上传文档全文】\n${docsDigest}${historyDocsDigest}`,
     3500
   )
   const parsed = parseAgentJson<PostInvestAnalysisResult>(raw)
@@ -250,7 +283,7 @@ export async function runPostInvestAnalysis(projectId: string, period: string): 
     risk_alerts: Array.isArray(parsed.risk_alerts) ? parsed.risk_alerts.slice(0, 10) : [],
   }
 
-  // 6. 落库（upsert 覆盖旧分析）
+  // 7. 落库（upsert 覆盖旧分析）
   await prisma.postInvestAnalysis.upsert({
     where: { projectId_period: { projectId, period } },
     create: { projectId, period, summaryJson: JSON.stringify(analysis) },

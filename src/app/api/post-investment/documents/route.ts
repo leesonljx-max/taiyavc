@@ -120,6 +120,42 @@ export async function POST(request: Request) {
 }
 
 /**
+ * GET /api/post-investment/documents/content?docId=xxx
+ * 获取文档提取全文（本地环境的 Office 文档文本阅览回退）
+ */
+export async function GET(request: Request) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: '登录已过期，请退出后重新登录' }, { status: 401 })
+    }
+    const currentUser: PermissionUser = { id: session.user.id, role: session.user.role as UserRole }
+
+    const docId = new URL(request.url).searchParams.get('docId')
+    if (!docId) return NextResponse.json({ error: '缺少 docId' }, { status: 400 })
+
+    const doc = await prisma.postInvestDoc.findUnique({ where: { id: docId } })
+    if (!doc) return NextResponse.json({ error: '文档不存在' }, { status: 404 })
+
+    const project = await prisma.project.findUnique({
+      where: { id: doc.projectId },
+      select: { createdById: true, members: { select: { userId: true } } },
+    })
+    if (!project) return NextResponse.json({ error: '项目不存在' }, { status: 404 })
+    const memberIds = project.members.map(m => m.userId)
+    if (!canEditResearchProject(currentUser, { createdById: project.createdById, memberIds }) &&
+        !['ADMIN', 'INVESTMENT_PARTNER'].includes(currentUser.role)) {
+      return NextResponse.json({ error: '无权查看该文档' }, { status: 403 })
+    }
+
+    return NextResponse.json({ text: doc.text || '' })
+  } catch (error) {
+    console.error('Post-investment doc content error:', error)
+    return NextResponse.json({ error: '获取文档内容失败' }, { status: 500 })
+  }
+}
+
+/**
  * DELETE /api/post-investment/documents?docId=xxx
  * 删除投后文档（同时清理本地文件）
  */

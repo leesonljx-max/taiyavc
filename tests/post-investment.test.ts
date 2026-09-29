@@ -290,7 +290,7 @@ test('列表：仅显示 POST_INVESTMENT 项目 + 最新分析摘要与风险', 
     { params: { projectId } }
   )
 
-  const res = await PI_LIST(new Request('http://t/api/post-investment'))
+  const res = await PI_LIST()
   assert.equal(res.status, 200)
   const body = await res.json()
   assert.equal(body.projects.length, 1)
@@ -303,7 +303,82 @@ test('列表：仅显示 POST_INVESTMENT 项目 + 最新分析摘要与风险', 
 
   // 路人（非维护人）看不到该投后项目
   asUser(outsiderId, 'INVESTMENT_MANAGER')
-  const res2 = await PI_LIST(new Request('http://t/api/post-investment'))
+  const res2 = await PI_LIST()
   const body2 = await res2.json()
   assert.equal(body2.projects.length, 0)
+})
+
+// ── 合并分析（V2.1.1：以往期补传 + 历史文档合并） ──
+
+test('合并分析：分析当期时补齐以往期指标入库 + 历史期文档进入分析上下文；以往期可直接分析', async () => {
+  asManager()
+  // 补传以往期（2026Q1）经营报告
+  await seedDoc('2026Q1', '2026Q1经营情况：营业收入2353万元，同比增长52%。经营现金流-2666万元。期末现金余额11700万元。')
+  // 当前季度文档（若当前即 Q1 则用 Q2 避免冲突）
+  const now = new Date()
+  let cur = `${now.getFullYear()}Q${Math.floor(now.getMonth() / 3) + 1}`
+  if (cur === '2026Q1') cur = '2026Q2'
+  await seedDoc(cur, `${cur}经营情况：营业收入3856万元，同比增长48%。`)
+
+  // mock：指标提取按报告期分发；分析调用时记录输入是否包含 Q1 历史内容
+  let analysisSawHistory = false
+  mockState.fetchHandler = (url: string, body: Record<string, unknown>) => {
+    const messages = body.messages as Array<{ content: string }>
+    const system = String(messages[0]?.content || '')
+    const user = String(messages[1]?.content || '')
+    if (system.includes('投后数据抽取引擎')) {
+      if (user.includes('报告期：2026Q1')) {
+        return chatCompletions(JSON.stringify({
+          metrics: [
+            { metricKey: 'revenue', value: 2353, unit: '万元', sourceText: '营业收入2353万元，同比增长52%。' },
+            { metricKey: 'operating_cash_flow', value: -2666, unit: '万元', sourceText: '经营现金流-2666万元。' },
+            { metricKey: 'cash_balance', value: 11700, unit: '万元', sourceText: '期末现金余额11700万元。' },
+          ],
+        }))
+      }
+      return chatCompletions(JSON.stringify({
+        metrics: [{ metricKey: 'revenue', value: 3856, unit: '万元', sourceText: '营业收入3856万元，同比增长48%。' }],
+      }))
+    }
+    if (system.includes('投后管理分析 Agent')) {
+      analysisSawHistory = user.includes('2026Q1') && user.includes('2353')
+      return chatCompletions(JSON.stringify({
+        executive_summary: '收入持续增长，经营现金流连续为负需关注。',
+        financial_analysis: [], anomalies: [],
+        cashflow_analysis: { cash_balance: 'x', runway_months: null, assessment: 'x' },
+        business_progress: [], risk_alerts: [],
+      }))
+    }
+    return chatCompletions('{}')
+  }
+
+  // 分析当期 → 以往期（Q1）指标被自动补齐提取入库
+  let res: Response = await ANALYZE_POST(
+    new Request(`http://t/api/post-investment/${projectId}/analyze`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ period: cur }),
+    }),
+    { params: { projectId } }
+  )
+  assert.equal(res.status, 200)
+
+  const q1Metrics = await prisma.postInvestMetric.findMany({ where: { projectId, period: '2026Q1' } })
+  assert.equal(q1Metrics.length, 3)
+  const q1Revenue = q1Metrics.find(m => m.metricKey === 'revenue')!
+  assert.equal(q1Revenue.value, 2353)
+
+  // 分析输入包含历史期文档内容与指标
+  assert.ok(analysisSawHistory, 'AI 分析输入应包含 2026Q1 历史文档内容')
+
+  // 以往期（Q1）也可以直接分析
+  res = await ANALYZE_POST(
+    new Request(`http://t/api/post-investment/${projectId}/analyze`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ period: '2026Q1' }),
+    }),
+    { params: { projectId } }
+  )
+  assert.equal(res.status, 200)
+  const q1Analysis = await prisma.postInvestAnalysis.findUnique({
+    where: { projectId_period: { projectId, period: '2026Q1' } },
+  })
+  assert.ok(q1Analysis)
 })

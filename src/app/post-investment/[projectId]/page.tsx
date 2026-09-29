@@ -132,7 +132,20 @@ export default function PostInvestmentDetailPage() {
   const [analyzeMsg, setAnalyzeMsg] = useState('')
   const [analyzeErr, setAnalyzeErr] = useState('')
 
-  const [previewDoc, setPreviewDoc] = useState<{ fileName: string; fileUrl: string; fileType: string } | null>(null)
+  const [previewDoc, setPreviewDoc] = useState<{ fileName: string; fileUrl: string; fileType: string; textContent?: string } | null>(null)
+
+  /** 打开文档预览：异步加载提取全文（本地环境 Office 文档的文本阅览回退） */
+  const openPreviewDoc = async (d: PIDoc) => {
+    let textContent: string | undefined
+    try {
+      const r = await fetch(`/api/post-investment/documents/content?docId=${d.id}`)
+      if (r.ok) {
+        const j = await r.json()
+        if (j.text) textContent = j.text
+      }
+    } catch { /* 加载失败不阻塞预览 */ }
+    setPreviewDoc({ fileName: d.fileName, fileUrl: d.fileUrl, fileType: d.fileType, textContent })
+  }
 
   const load = useCallback(async () => {
     try {
@@ -330,7 +343,7 @@ export default function PostInvestmentDetailPage() {
                       ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-500/25'
                       : 'bg-gray-200 text-gray-500 cursor-not-allowed shadow-none'
                   }`}
-                  title={docsOfPeriod.length === 0 ? '该期尚未上传资料' : '提取指标 + 程序计算同比环比 + AI 经营分析'}
+                  title={docsOfPeriod.length === 0 ? '该期尚未上传资料' : '提取指标 + 程序计算同比环比 + 合并全部历史期资料做 AI 趋势分析（当季/以往季均可分析）'}
                 >
                   {analyzing ? '⏳ AI 分析中...' : analysis ? '🔄 重新分析' : '🔍 AI 分析本期'}
                 </button>
@@ -345,7 +358,7 @@ export default function PostInvestmentDetailPage() {
                 {docsOfPeriod.map(d => (
                   <button
                     key={d.id}
-                    onClick={() => setPreviewDoc({ fileName: d.fileName, fileUrl: d.fileUrl, fileType: d.fileType })}
+                    onClick={() => openPreviewDoc(d)}
                     className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-gray-100 rounded-lg text-xs hover:border-blue-300"
                   >
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${DOC_TYPE_META[d.docType]?.badge || ''}`}>{DOC_TYPE_META[d.docType]?.label || d.docType}</span>
@@ -533,7 +546,7 @@ export default function PostInvestmentDetailPage() {
                               ) : (
                                 <div className="space-y-1">
                                   {docs.map(d => (
-                                    <DocChip key={d.id} doc={d} canEdit={canEdit} onPreview={() => setPreviewDoc({ fileName: d.fileName, fileUrl: d.fileUrl, fileType: d.fileType })} onDelete={() => deleteDoc(d.id)} />
+                                    <DocChip key={d.id} doc={d} canEdit={canEdit} onPreview={() => openPreviewDoc(d)} onDelete={() => deleteDoc(d.id)} />
                                   ))}
                                 </div>
                               )}
@@ -546,7 +559,7 @@ export default function PostInvestmentDetailPage() {
                           ) : (
                             <div className="space-y-1">
                               {annualDocs.map(d => (
-                                <DocChip key={d.id} doc={d} canEdit={canEdit} label={d.period} onPreview={() => setPreviewDoc({ fileName: d.fileName, fileUrl: d.fileUrl, fileType: d.fileType })} onDelete={() => deleteDoc(d.id)} />
+                                <DocChip key={d.id} doc={d} canEdit={canEdit} label={d.period} onPreview={() => openPreviewDoc(d)} onDelete={() => deleteDoc(d.id)} />
                               ))}
                             </div>
                           )}
