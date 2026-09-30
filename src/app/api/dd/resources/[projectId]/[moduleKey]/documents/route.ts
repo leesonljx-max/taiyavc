@@ -7,6 +7,7 @@ import { authOptions, type UserRole } from '@/lib/auth'
 import type { PermissionUser } from '@/lib/permissions'
 import { canEditResearchProject } from '@/lib/research-permissions'
 import { upsertModuleResource, isValidModuleKey, type DDResourceDoc } from '@/lib/dd-workbench/resources'
+import { maybeAutoGenerateTeamEvaluation } from '@/lib/dd-workbench/team-evaluation'
 import { extractTextFromFile } from '@/lib/document-extract'
 import { writeFile, mkdir, unlink } from 'fs/promises'
 import { join } from 'path'
@@ -121,6 +122,11 @@ export async function POST(
       where: { id: record.id },
       data: { documents: JSON.stringify(docs) },
     })
+
+    // 团队与治理：上传简历文档后自动生成团队评分表（后台执行，不阻塞上传）
+    if (moduleKey === 'TEAM_GOVERNANCE') {
+      void maybeAutoGenerateTeamEvaluation(projectId)
+    }
 
     return NextResponse.json({ ok: true, count: docs.length })
   } catch (error) {

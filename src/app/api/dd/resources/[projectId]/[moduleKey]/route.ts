@@ -7,6 +7,7 @@ import { authOptions, type UserRole } from '@/lib/auth'
 import type { PermissionUser } from '@/lib/permissions'
 import { canEditResearchProject } from '@/lib/research-permissions'
 import { upsertModuleResource, isValidModuleKey } from '@/lib/dd-workbench/resources'
+import { maybeAutoGenerateTeamEvaluation } from '@/lib/dd-workbench/team-evaluation'
 
 /**
  * PUT /api/dd/resources/[projectId]/[moduleKey]
@@ -71,6 +72,11 @@ export async function PUT(
       where: { id: record.id },
       data: { textBlocks: JSON.stringify(textBlocks) },
     })
+
+    // 团队与治理：识别到团队资料（含文本框粘贴的简历截图）且尚无评价表时，自动生成团队评分表（后台执行，不阻塞保存）
+    if (moduleKey === 'TEAM_GOVERNANCE') {
+      void maybeAutoGenerateTeamEvaluation(projectId)
+    }
 
     return NextResponse.json({ ok: true, count: textBlocks.length })
   } catch (error) {

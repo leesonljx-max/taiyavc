@@ -1,14 +1,16 @@
 /**
  * 尽调报告生成：按九大模块分别总结
  *
- * 输入：各模块的文档全文 + 文本框内容（截图不进文本模型，随报告原样嵌入展示）
- * 输出：每模块 { summary, opportunities[], risks[] }（含机会与风险），存 DDModuleResource.reportJson
+ * 输入：各模块的文档全文 + 文本框内容（文本框粘贴的截图以图片形式提供给模型理解，报告中按【图N】引用嵌入）
+ * 输出：每模块 { summary, opportunities[], risks[], images[], teamEvaluation? }（含机会与风险），存 DDModuleResource.reportJson
  */
 
 import prisma from '@/lib/prisma'
 import { parseAgentJson } from '@/lib/dd-harness/agent'
 import { recordTokenUsage } from '@/lib/token-accounting'
 import { getProjectModuleResources, isModuleComplete, findMissingModules, type ParsedModuleResource, type DDModuleReport, type DDModuleAnalysis } from './resources'
+import { buildMultimodalDigest, buildMessageContent, type ExtractedImage } from './vision'
+import { parseEvaluation, computeEvaluation } from './team-evaluation'
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
 const DEEPSEEK_MODEL = 'deepseek-v4-flash'
@@ -16,21 +18,32 @@ const DEEPSEEK_MODEL = 'deepseek-v4-flash'
 /** 单模块文档全文参与总结的最大长度 */
 const MAX_DOC_TEXT = 12000
 
-const MODULE_REPORT_SYSTEM_PROMPT = `你是一级市场资深尽调分析师。基于该尽调模块的全部资料（上传文档内容、维护人填写的文本说明），输出该模块的详细尽调分析报告。
+const MODULE_REPORT_SYSTEM_PROMPT = `你是一级市场资深尽调分析师。基于该尽调模块的全部资料（上传文档内容、维护人填写的文本说明、文本框粘贴的截图——截图已按图片原样提供给你），输出该模块的详细尽调分析报告。
 严格输出 JSON（不要 markdown 代码块），结构：
 {
-  "summary": "该模块的详细尽调分析（600-900字，用换行分三段展开：「关键事实」罗列资料中的核心数据与事实；「分析判断」给出条理清晰的专业分析（优势、缺口、逻辑一致性，判断必须援引具体数据）；「核心结论」用 2-3 句话给出该模块整体判断。对最核心的结论、关键数据与重大风险用 **加粗** 标注（Markdown 双星号语法）",
+  "summary": "详细尽调分析（700-1000字）。必须按以下结构分段输出（换行分段，每段以小标题开头）：\\n一、关键事实：逐条罗列资料中的核心数据、事件与表述（每条一行，重要数据加粗）\\n二、分析判断：基于关键事实层层递进分析——先优势、再缺口、后逻辑一致性，每条判断必须援引上文的具体数据\\n三、核心结论：2-3 句话给出该模块整体判断与建议\\n核心结论、关键数据、重大风险一律用 **加粗** 标注；资料中含 [图N] 截图且该图对分析有佐证价值时，在对应分析句后插入【图N】引用（报告会将该图原样嵌入）",
   "opportunities": ["机会点 1（基于资料的具体机会，如技术领先/订单增长/团队强项）", "机会点 2", ...],
   "risks": ["风险点 1（基于资料的具体风险/缺口/待核实项）", "风险点 2", ...]
 }
 要求：
-- 只基于给定资料总结，资料未涉及的信息不编造；关键缺口可作为风险点指出（如"良率数据未提供，需补充验证"）
-- 先事实后判断：分析判断必须援引关键事实中的具体数据，禁止空泛定性
+- 只基于给定资料（含提供的截图内容）总结，资料未涉及的信息不编造；关键缺口可作为风险点指出（如"良率数据未提供，需补充验证"）
+- 层层递推：先事实、再判断、后结论；判断与结论必须援引事实中的具体数据，禁止空泛定性
+- 需要图片佐证解释时在分析中插入【图N】标记（如"产品形态见【图2】"），无佐证价值的图不引用
 - opportunities 与 risks 各 2-5 条，每条具体可核验
-- 核心结论、关键数据、重大风险必须用 **加粗** 标注，便于投委会快速抓住重点
 - 语气克制客观，符合投委会阅读习惯`
 
-async function callModuleReport(moduleName: string, coreQuestion: string, inputsHint: string, contentDigest: string): Promise<DDModuleReport> {
+/** 团队与治理模块附加指令：评分表逻辑分析 */
+const TEAM_EVAL_ANALYSIS_HINT = `\n\n【团队评分表（已确认，必须纳入分析）】
+本模块除常规分析外，还必须在「二、分析判断」中包含一段"评分逻辑分析"：结合简历资料评估各维度打分是否与描述一致（引用 AI 审评结论）、得分分布反映的团队强项与短板；并在「三、核心结论」中给出对团队评分的总体判断（评分是否可信、团队的核心风险点）。`
+
+async function callModuleReport(
+  moduleName: string,
+  coreQuestion: string,
+  inputsHint: string,
+  contentDigest: string,
+  images: ExtractedImage[],
+  extraPrompt = ''
+): Promise<DDModuleReport> {
   const apiKey = process.env.DEEPSEEK_API_KEY
   if (!apiKey) throw new Error('DeepSeek API Key 未配置')
 
@@ -46,7 +59,10 @@ async function callModuleReport(moduleName: string, coreQuestion: string, inputs
           { role: 'system', content: MODULE_REPORT_SYSTEM_PROMPT },
           {
             role: 'user',
-            content: `尽调模块：${moduleName}\n投委会核心问题：${coreQuestion}\n建议输入：${inputsHint}\n\n该模块资料：\n\n${contentDigest}\n\n请输出该模块的尽调总结报告 JSON。`,
+            content: buildMessageContent(
+              `尽调模块：${moduleName}\n投委会核心问题：${coreQuestion}\n建议输入：${inputsHint}\n\n该模块资料：\n\n${contentDigest}${extraPrompt}\n\n请输出该模块的详细尽调分析报告 JSON。`,
+              images
+            ),
           },
         ],
         temperature: 0.3,
@@ -73,31 +89,65 @@ async function callModuleReport(moduleName: string, coreQuestion: string, inputs
       opportunities: (Array.isArray(parsed.opportunities) ? parsed.opportunities : []).map(String).slice(0, 5),
       risks: (Array.isArray(parsed.risks) ? parsed.risks : []).map(String).slice(0, 5),
       generatedAt: new Date().toISOString(),
+      images: images.map(i => ({ marker: i.marker, src: i.src })),
     }
   } finally {
     clearTimeout(timeoutId)
   }
 }
 
-/** 组装单模块的资料摘要（文档全文截断 + 文本框 + 截图说明） */
-function buildContentDigest(res: ParsedModuleResource): string {
+/** 组装单模块的资料摘要：文档全文截断 + 文本框（截图→[图N] 占位并收集图片，随消息以图片形式提供给模型）+ 历史截图 */
+async function buildContentDigest(res: ParsedModuleResource): Promise<{ digest: string; images: ExtractedImage[] }> {
   const parts: string[] = []
   for (const doc of res.documents) {
     const text = (doc.text || '').trim()
     parts.push(`【文档：${doc.fileName}】\n${text ? text.slice(0, MAX_DOC_TEXT) : '（未能提取文本）'}`)
   }
-  const texts = res.textBlocks.filter(t => t.content.trim())
-  if (texts.length > 0) {
-    // 文本框支持粘贴截图（富文本 HTML）：img 转为 [截图] 占位，其余标签剥除，避免噪音进入模型
-    const plain = texts
-      .map((t, i) => `${i + 1}. ${t.content.replace(/<img[^>]*>/g, '[截图]').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').trim()}`)
-      .join('\n')
+  const { plain, images } = await buildMultimodalDigest(res.textBlocks)
+  if (plain) {
     parts.push(`【维护人填写】\n${plain}`)
   }
+  // 历史上传的截图（功能已下线，存量数据仍参与理解与引用）
   if (res.screenshots.length > 0) {
-    parts.push(`【截图材料】共 ${res.screenshots.length} 张截图（随报告原样展示，含关键界面/数据图）`)
+    const legacy = res.screenshots.slice(0, Math.max(0, 6 - images.length))
+    if (legacy.length > 0) {
+      const startIdx = images.length
+      legacy.forEach((s, i) => {
+        images.push({ marker: `图${startIdx + i + 1}`, src: s.url, dataUri: undefined })
+      })
+      parts.push(`【历史截图】${legacy.map((_, i) => `[图${startIdx + i + 1}]`).join('、')}`)
+    }
   }
-  return parts.join('\n\n') || '（无资料）'
+  return { digest: parts.join('\n\n') || '（无资料）', images }
+}
+
+/** 团队与治理：已确认评分表快照（进报告展示与评分逻辑分析） */
+async function buildTeamEvaluationSnapshot(projectId: string): Promise<NonNullable<DDModuleReport['teamEvaluation']> | null> {
+  const record = await prisma.dDTeamEvaluation.findUnique({ where: { projectId } })
+  if (!record || record.status !== 'CONFIRMED') return null
+  const data = parseEvaluation(record.membersJson, record.teamJson)
+  const result = computeEvaluation(data)
+  let aiReview: { rating: number; analysis: string } | null = null
+  if (record.aiReviewJson) {
+    try {
+      const r = JSON.parse(record.aiReviewJson) as { rating?: number; analysis?: string }
+      if (Number.isFinite(Number(r.rating))) aiReview = { rating: Number(r.rating), analysis: String(r.analysis || '') }
+    } catch { aiReview = null }
+  }
+  return {
+    finalScore: record.finalScore ?? result.finalScore,
+    ceoName: result.ceoName,
+    ceoScore: result.ceoScore,
+    execAvg: result.execAvg,
+    teamScore: result.teamScore,
+    members: data.members.map(m => ({
+      name: m.name,
+      identity: m.profileType === 'CEO' ? '实控人/CEO' : m.profileType === 'TECH' ? '联创·产品&技术' : '联创·运营&销售',
+      score: m.profileType === 'CEO' ? result.ceoScore : result.execScores.find(e => e.memberId === m.id)?.score ?? null,
+    })),
+    aiReview,
+    confirmedAt: record.confirmedAt?.toISOString() || null,
+  }
 }
 
 /**
@@ -112,7 +162,7 @@ export async function runModuleReportGeneration(projectId: string, projectName: 
 }> {
   const resources = await getProjectModuleResources(projectId)
 
-  // 完整性检查：九大模块任一缺资料即拒绝
+  // 完整性检查：九大模块任一缺资料即拒绝（团队与治理必须已确认评分表）
   const missing = findMissingModules(resources)
   if (missing.length > 0) {
     return { ok: false, missing, error: `以下模块资料不完整：${missing.join('、')}。请到资料中心补充（上传文档/填写文本（可粘贴截图）任一项即可）` }
@@ -120,6 +170,9 @@ export async function runModuleReportGeneration(projectId: string, projectName: 
 
   const { DD_TEMPLATE_MODULES } = await import('./template')
   const tplByKey = new Map(DD_TEMPLATE_MODULES.map(m => [m.key, m]))
+
+  // 团队与治理：评分表快照（生成时点数据，随报告落库）
+  const teamEvaluation = await buildTeamEvaluationSnapshot(projectId).catch(() => null)
 
   // 并发 3 组（9 模块 ÷ 3），兼顾速度与 API 限流
   const groups: ParsedModuleResource[][] = [[], [], []]
@@ -132,12 +185,26 @@ export async function runModuleReportGeneration(projectId: string, projectName: 
       group.map(async res => {
         try {
           const tpl = tplByKey.get(res.moduleKey)!
+          const { digest, images } = await buildContentDigest(res)
+          // 团队与治理：评分表数据 + 评分逻辑分析指令
+          let extraPrompt = ''
+          if (res.moduleKey === 'TEAM_GOVERNANCE' && teamEvaluation) {
+            const memberText = teamEvaluation.members
+              .map(m => `${m.name}（${m.identity}）${m.score?.toFixed(2) ?? '—'} 分`)
+              .join('、')
+            extraPrompt = `${TEAM_EVAL_ANALYSIS_HINT}\n最终得分 ${teamEvaluation.finalScore}（10 分制）＝CEO ${teamEvaluation.ceoScore} + 高管平均 ${teamEvaluation.execAvg} + 团队整体 ${teamEvaluation.teamScore}\n成员得分：${memberText}\nAI 审评分：${teamEvaluation.aiReview ? `${teamEvaluation.aiReview.rating}（${teamEvaluation.aiReview.analysis}）` : '未生成'}`
+          }
           const report = await callModuleReport(
             `${res.moduleName}（项目：${projectName}）`,
             tpl.coreQuestion,
             tpl.inputs,
-            buildContentDigest(res)
+            digest,
+            images,
+            extraPrompt
           )
+          if (res.moduleKey === 'TEAM_GOVERNANCE' && teamEvaluation) {
+            report.teamEvaluation = teamEvaluation
+          }
           reports.set(res.moduleKey, report)
         } catch (err) {
           failures.push(`${res.moduleName}: ${err instanceof Error ? err.message : '生成失败'}`)
@@ -199,6 +266,7 @@ export async function runModuleAnalysis(projectId: string, moduleKey: string): P
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 90000)
   try {
+    const { digest, images } = await buildContentDigest(res)
     const response = await fetch(DEEPSEEK_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
@@ -208,7 +276,7 @@ export async function runModuleAnalysis(projectId: string, moduleKey: string): P
           { role: 'system', content: MODULE_ANALYSIS_SYSTEM_PROMPT },
           {
             role: 'user',
-            content: `尽调模块：${res.moduleName}\n模块核心问题：${res.coreQuestion}\n\n该模块资料：\n\n${buildContentDigest(res)}\n\n请输出事实卡与下一步行动 JSON。`,
+            content: buildMessageContent(`尽调模块：${res.moduleName}\n模块核心问题：${res.coreQuestion}\n\n该模块资料：\n\n${digest}\n\n请输出事实卡与下一步行动 JSON。`, images),
           },
         ],
         temperature: 0.3,

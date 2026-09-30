@@ -26,6 +26,7 @@ import { PUT as TEXT_PUT } from '@/app/api/dd/resources/[projectId]/[moduleKey]/
 import { GET as EVAL_GET, PUT as EVAL_PUT } from '@/app/api/dd/team-evaluation/[projectId]/route'
 import { POST as EVAL_GENERATE } from '@/app/api/dd/team-evaluation/[projectId]/generate/route'
 import { POST as EVAL_CONFIRM } from '@/app/api/dd/team-evaluation/[projectId]/confirm/route'
+import { POST as REVIEW_POST } from '@/app/api/dd/team-evaluation/[projectId]/review/route'
 
 const SUFFIX = String(Date.now()).slice(-6)
 const MANAGER_EMAIL = `d4-mgr-${SUFFIX}@test.com`
@@ -294,9 +295,9 @@ test('保存与确认：权重校验 400；合法保存 200；确认计算最终
   await prisma.project.delete({ where: { id: otherProject.id } })
 })
 
-// ── 报告门槛 ──
+// ── 报告门槛（V2.3.0：必须已生成并确认团队评价表才可生成尽调报告） ──
 
-test('报告门槛：评价草稿 → 团队模块不完整（missing 提示）；确认后恢复；未生成评价不阻塞', async () => {
+test('报告门槛：未生成评价/草稿 → 团队模块不完整（missing 提示）；确认后恢复', async () => {
   asManager()
   const data = buildScoredData()
 
@@ -313,9 +314,13 @@ test('报告门槛：评价草稿 → 团队模块不完整（missing 提示）�
     assert.equal(res.status, 200)
   }
 
-  // 无评价记录 → 不阻塞
+  // 无评价记录 → 同样阻塞（需生成并确认团队评价表）
   let body = await (await RES_GET(new Request(`http://t/api/dd/resources/${projectId}`), { params: { projectId } })).json()
-  assert.equal(body.allComplete, true)
+  assert.equal(body.allComplete, false)
+  let res: Response = await REPORT_POST(new Request(`http://t/api/dd/resources/${projectId}/report`, { method: 'POST' }), { params: { projectId } })
+  assert.equal(res.status, 400)
+  body = await res.json()
+  assert.ok(body.missing.some((n: string) => n.includes('团队与治理') && n.includes('团队评价表')), '未生成评价应提示需生成并确认团队评价表')
 
   // 生成评价（DRAFT）→ 团队与治理不完整
   await seedEvaluation(data, 'DRAFT')
@@ -325,7 +330,7 @@ test('报告门槛：评价草稿 → 团队模块不完整（missing 提示）�
   assert.equal(teamMod.teamEvaluationConfirmed, false)
 
   // 生成报告 → 400 + missing 提示"需确认团队评价表"
-  let res: Response = await REPORT_POST(new Request(`http://t/api/dd/resources/${projectId}/report`, { method: 'POST' }), { params: { projectId } })
+  res = await REPORT_POST(new Request(`http://t/api/dd/resources/${projectId}/report`, { method: 'POST' }), { params: { projectId } })
   assert.equal(res.status, 400)
   body = await res.json()
   assert.ok(body.missing.some((n: string) => n.includes('团队与治理') && n.includes('团队评价表')))
@@ -334,4 +339,58 @@ test('报告门槛：评价草稿 → 团队模块不完整（missing 提示）�
   await prisma.dDTeamEvaluation.update({ where: { projectId }, data: { status: 'CONFIRMED', finalScore: 8.1, confirmedAt: new Date() } })
   body = await (await RES_GET(new Request(`http://t/api/dd/resources/${projectId}`), { params: { projectId } })).json()
   assert.equal(body.allComplete, true)
+})
+
+// ── AI 审评分（V2.3.0：确认后 Agent 校验打分与简历一致性） ──
+
+/** mock 审评 AI */
+function mockReviewAI(rating: number) {
+  mockState.fetchHandler = (url, body) => {
+    const system = String((body.messages as Array<{ content: string }>)[0]?.content || '')
+    if (system.includes('团队评分复核')) {
+      return chatCompletions(JSON.stringify({
+        rating,
+        analysis: '打分与简历描述基本一致，个别维度依据不足。',
+        issues: ['张三·投入资金：简历未披露出资情况，打分依据不足'],
+      }))
+    }
+    return chatCompletions('{}')
+  }
+}
+
+test('AI 审评分：确认后自动复核入库（GET 返回）；重开清空；review 路由可重评；未确认 400', async () => {
+  asManager()
+  const data = buildScoredData()
+  await seedEvaluation(data, 'DRAFT')
+  mockReviewAI(8.5)
+
+  // 确认 → 自动触发 AI 审评分
+  let res: Response = await EVAL_CONFIRM(new Request(`${evalUrl()}/confirm`, { method: 'POST' }), { params: { projectId } })
+  assert.equal(res.status, 200)
+  let body = await res.json()
+  assert.equal(body.finalScore, 8.1)
+  assert.ok(body.review, '确认响应应包含 AI 审评分')
+  assert.equal(body.review.rating, 8.5)
+  assert.ok(body.review.analysis.includes('一致'))
+
+  // 落库 + GET 返回
+  let record = await prisma.dDTeamEvaluation.findUnique({ where: { projectId } })
+  assert.ok(record!.aiReviewJson!.includes('8.5'))
+  let got = await (await EVAL_GET(new Request(evalUrl()), { params: { projectId } })).json()
+  assert.equal(got.evaluation.aiReview.rating, 8.5)
+  assert.equal(got.evaluation.aiReview.issues.length, 1)
+
+  // review 路由重评（rating 更新）
+  mockReviewAI(9.2)
+  res = await REVIEW_POST(new Request(`${evalUrl()}/review`, { method: 'POST' }), { params: { projectId } })
+  assert.equal(res.status, 200)
+  assert.equal((await res.json()).review.rating, 9.2)
+
+  // 重开 → 审评清空 + review 400
+  res = await EVAL_CONFIRM(new Request(`${evalUrl()}/confirm`, { method: 'POST' }), { params: { projectId } })
+  assert.equal(res.status, 200)
+  record = await prisma.dDTeamEvaluation.findUnique({ where: { projectId } })
+  assert.equal(record!.aiReviewJson, null, '重开应清空 AI 审评分')
+  res = await REVIEW_POST(new Request(`${evalUrl()}/review`, { method: 'POST' }), { params: { projectId } })
+  assert.equal(res.status, 400)
 })

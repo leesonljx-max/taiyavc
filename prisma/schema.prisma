@@ -850,6 +850,8 @@ model DDTeamEvaluation {
   status      String    @default("DRAFT") // DRAFT / CONFIRMED
   finalScore  Float?    // 最终得分（10 分制，确认时计算）
   confirmedAt DateTime?
+  // AI 审评分（确认后 Agent 校验各维度打分与简历描述的一致性）：{ rating, analysis, issues, reviewedAt }
+  aiReviewJson String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

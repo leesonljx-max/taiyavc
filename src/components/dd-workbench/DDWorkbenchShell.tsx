@@ -26,7 +26,25 @@ import { DD_EVIDENCE_GRADE_LABELS, DD_EVIDENCE_STATUS_LABELS } from '@/lib/dd-wo
 interface DDResourceDoc { id: string; fileName: string; fileUrl: string; fileType: string; fileSize: number; text: string; uploadedAt: string }
 interface DDTextBlock { id: string; content: string; createdAt: string }
 interface DDScreenshot { id: string; url: string; fileName: string; uploadedAt: string }
-interface DDModuleReport { summary: string; opportunities: string[]; risks: string[]; generatedAt: string }
+interface DDModuleReport {
+  summary: string
+  opportunities: string[]
+  risks: string[]
+  generatedAt: string
+  /** 文本框截图（summary 中【图N】引用的插图） */
+  images?: Array<{ marker: string; src: string }>
+  /** 仅团队与治理：生成报告时已确认的评分表快照 */
+  teamEvaluation?: {
+    finalScore: number
+    ceoName: string
+    ceoScore: number
+    execAvg: number
+    teamScore: number
+    members: Array<{ name: string; identity: string; score: number | null }>
+    aiReview: { rating: number; analysis: string } | null
+    confirmedAt: string | null
+  }
+}
 
 /** 事实卡条目（AI 从模块资料提取） */
 interface DDFact { id: string; fact: string; source: string; grade: 'A' | 'B' | 'C' | 'D'; status: 'PENDING' | 'CONFIRMED' | 'CONFLICT' }
@@ -91,8 +109,8 @@ function resourceCount(res: ModuleResource) {
 function isComplete(res: ModuleResource) {
   const c = resourceCount(res)
   const hasData = c.docs > 0 || c.texts > 0 || c.shots > 0
-  // 团队与治理：评价表存在但未确认 → 模块视为不完整（阻塞报告生成）
-  if (res.moduleKey === 'TEAM_GOVERNANCE' && res.teamEvaluationConfirmed === false) return false
+  // 团队与治理：必须已生成并确认团队评价表（未生成 / 草稿中均阻塞尽调报告生成）
+  if (res.moduleKey === 'TEAM_GOVERNANCE' && res.teamEvaluationConfirmed !== true) return false
   return hasData
 }
 /** 资料完整度（0-100）：文档 50% + 非空文本 50%（截图功能已下线——文本框支持直接粘贴截图；历史截图兜底计入文本分） */
@@ -285,7 +303,7 @@ export default function DDWorkbenchShell({
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-[10px] font-black text-[#8d84e0]">{String(i + 1).padStart(2, '0')}</span>
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                      res.moduleKey === 'TEAM_GOVERNANCE' && res.teamEvaluationConfirmed === false
+                      res.moduleKey === 'TEAM_GOVERNANCE' && res.teamEvaluationConfirmed !== true
                         ? 'bg-amber-50 text-amber-600'
                         : analyzed
                           ? 'bg-blue-50 text-blue-600'
@@ -293,15 +311,13 @@ export default function DDWorkbenchShell({
                             ? 'bg-amber-50 text-amber-600'
                             : 'bg-gray-100 text-gray-400'
                     }`}>
-                      {res.moduleKey === 'TEAM_GOVERNANCE' && res.teamEvaluationConfirmed === false
-                        ? '📋 待评价'
-                        : res.moduleKey === 'TEAM_GOVERNANCE' && res.teamEvaluationConfirmed === true
-                          ? '📋 已评价'
-                          : analyzed
-                            ? '✓ 已分析'
-                            : complete
-                              ? '待分析'
-                              : '待补充'}
+                      {res.moduleKey === 'TEAM_GOVERNANCE'
+                        ? (res.teamEvaluationConfirmed === true ? '📋 已评分' : '📋 待评分表')
+                        : analyzed
+                          ? '✓ 已分析'
+                          : complete
+                            ? '待分析'
+                            : '待补充'}
                     </span>
                   </div>
                   <p className="text-sm font-bold text-gray-800 leading-tight">{res.moduleName}</p>
@@ -492,17 +508,20 @@ function DDFullReportModal({
                 <h4 className="text-base font-bold text-gray-900">{r.moduleName}</h4>
               </div>
               <p className="text-xs text-gray-400 mb-3">投委会核心问题：{r.coreQuestion}</p>
-              <p
-                className="text-sm text-gray-700 leading-relaxed [&_strong]:text-[#5b4fb5]"
-                dangerouslySetInnerHTML={{ __html: renderBold(r.report!.summary) }}
+              <div
+                className={`text-sm text-gray-700 ${REPORT_RICH_TEXT_CLS}`}
+                dangerouslySetInnerHTML={{ __html: renderReportHtml(r.report!.summary, r.report!.images) }}
               />
+              {r.report!.teamEvaluation && <ReportTeamEvaluationTable te={r.report!.teamEvaluation} />}
               {(r.report!.opportunities.length > 0 || r.report!.risks.length > 0) && (
                 <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                   {r.report!.opportunities.length > 0 && (
                     <div className="px-3.5 py-3 rounded-xl bg-emerald-50/50 border border-emerald-100">
                       <p className="text-[11px] font-bold text-emerald-600 mb-1.5">✦ 机会点</p>
                       {r.report!.opportunities.map((o, j) => (
-                        <p key={j} className="text-xs text-gray-700 leading-relaxed mb-1">{o}</p>
+                        <p key={j} className="text-xs text-gray-700 leading-relaxed mb-1 [&_strong]:font-bold [&_strong]:text-gray-900">
+                          <span dangerouslySetInnerHTML={{ __html: renderInlineRich(o) }} />
+                        </p>
                       ))}
                     </div>
                   )}
@@ -510,7 +529,9 @@ function DDFullReportModal({
                     <div className="px-3.5 py-3 rounded-xl bg-red-50/40 border border-red-100">
                       <p className="text-[11px] font-bold text-red-500 mb-1.5">⚠ 风险点</p>
                       {r.report!.risks.map((rk, j) => (
-                        <p key={j} className="text-xs text-gray-700 leading-relaxed mb-1">{rk}</p>
+                        <p key={j} className="text-xs text-gray-700 leading-relaxed mb-1 [&_strong]:font-bold [&_strong]:text-gray-900">
+                          <span dangerouslySetInnerHTML={{ __html: renderInlineRich(rk) }} />
+                        </p>
                       ))}
                     </div>
                   )}
@@ -1164,31 +1185,118 @@ function ModuleQA({
   )
 }
 
-/** 渲染 **加粗** 标记：先转义 HTML，再把 **x** 转为 <strong>（报告核心内容加粗提亮） */
-function renderBold(text: string): string {
-  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  return escaped.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-bold text-gray-900">$1</strong>')
+/**
+ * 报告富文本渲染：
+ * - 换行分段（每行一个 <p>，段落间距清晰）
+ * - **加粗** → <strong>（核心内容提亮）
+ * - 【图N】/[图N] → 原样嵌入文本框截图（报告插图）
+ */
+function renderReportHtml(summary: string, images?: Array<{ marker: string; src: string }>): string {
+  const imgByMarker = new Map((images || []).map(i => [i.marker, i.src]))
+  const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const renderLine = (line: string) => {
+    let html = escapeHtml(line)
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    html = html.replace(/【(图\d+)】|\[(图\d+)\]/g, (_m, a: string, b: string) => {
+      const marker = a || b
+      const src = imgByMarker.get(marker)
+      return src ? `<img src="${src}" alt="${marker}" />` : `<span class="text-gray-300">（${marker}）</span>`
+    })
+    return html
+  }
+  return summary
+    .split('\n')
+    .map(line => (line.trim() ? `<p>${renderLine(line)}</p>` : ''))
+    .join('')
 }
 
-/** 模块尽调报告卡（总结 + 机会 + 风险；核心内容 **加粗** 提亮） */
+/** 报告正文富文本容器样式（分段 / 加粗提亮 / 插图） */
+const REPORT_RICH_TEXT_CLS =
+  '[&_p]:my-1.5 [&_p]:leading-relaxed [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 ' +
+  '[&_strong]:font-bold [&_strong]:text-[#5b4fb5] ' +
+  '[&_img]:max-w-full [&_img]:rounded-xl [&_img]:my-2.5 [&_img]:border [&_img]:border-gray-100 [&_img]:shadow-sm'
+
+/** 单行富文本（机会/风险条目）：**加粗** 渲染（条目内不会出现插图标记） */
+function renderInlineRich(text: string): string {
+  return text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+}
+
+/** 报告内嵌团队评分表（团队与治理模块报告专用） */
+function ReportTeamEvaluationTable({ te }: { te: NonNullable<DDModuleReport['teamEvaluation']> }) {
+  return (
+    <div className="mt-3 rounded-xl border border-[#ddd7f2] bg-white overflow-hidden">
+      <div className="px-3 py-2 bg-[#efedfb] flex items-center justify-between gap-2 flex-wrap">
+        <span className="text-[11px] font-bold text-[#6f63c9]">
+          📋 团队评分表{te.confirmedAt ? `（确认于 ${new Date(te.confirmedAt).toLocaleDateString('zh-CN')}）` : ''}
+        </span>
+        <span className="text-[11px] font-black text-gray-700">最终 {te.finalScore.toFixed(2)} / 10 分</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="text-gray-400 text-[10px] bg-slate-50/60">
+              <th className="text-left font-bold px-3 py-1.5">成员</th>
+              <th className="text-left font-bold px-2 py-1.5">身份</th>
+              <th className="text-right font-bold px-3 py-1.5">得分</th>
+            </tr>
+          </thead>
+          <tbody>
+            {te.members.map((m, i) => (
+              <tr key={i} className="border-t border-gray-50">
+                <td className="px-3 py-1.5 font-bold text-gray-700">{m.name}</td>
+                <td className="px-2 py-1.5 text-gray-500">{m.identity}</td>
+                <td className="px-3 py-1.5 text-right font-bold text-[#6f63c9]">{m.score?.toFixed(2) ?? '—'}</td>
+              </tr>
+            ))}
+            <tr className="border-t border-gray-100 bg-slate-50/40">
+              <td className="px-3 py-1.5 text-gray-500" colSpan={2}>
+                构成：CEO {te.ceoScore.toFixed(2)} + 高管平均 {te.execAvg.toFixed(2)} + 团队整体 {te.teamScore.toFixed(2)}
+              </td>
+              <td className="px-3 py-1.5 text-right font-black text-gray-800">{te.finalScore.toFixed(2)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      {te.aiReview && (
+        <div className="px-3 py-2 border-t border-[#efedfb] bg-indigo-50/40">
+          <span className="text-[10px] font-bold text-indigo-700">🤖 AI 审评分 {te.aiReview.rating.toFixed(1)} / 10（校验打分与简历一致性）</span>
+          <p className="mt-0.5 text-[10px] text-gray-600 leading-relaxed">{te.aiReview.analysis}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** 模块尽调报告卡（分段条理分析 + 核心加粗 + 插图 + 评分表） */
 function ModuleReportCard({ report }: { report: DDModuleReport }) {
   return (
     <div className="p-3.5 rounded-xl bg-gradient-to-br from-[#efedfb] to-white border border-[#ddd7f2]">
       <p className="text-[11px] font-bold text-[#6f63c9] mb-2">📊 模块尽调报告</p>
-      <p
-        className="text-xs text-gray-700 leading-relaxed [&_strong]:text-[#5b4fb5]"
-        dangerouslySetInnerHTML={{ __html: renderBold(report.summary) }}
+      <div
+        className={`text-xs text-gray-700 ${REPORT_RICH_TEXT_CLS}`}
+        dangerouslySetInnerHTML={{ __html: renderReportHtml(report.summary, report.images) }}
       />
+      {report.teamEvaluation && <ReportTeamEvaluationTable te={report.teamEvaluation} />}
       {report.opportunities.length > 0 && (
         <div className="mt-2.5">
           <p className="text-[10px] font-bold text-emerald-600 mb-1">机会</p>
-          {report.opportunities.map((o, i) => <p key={i} className="text-[11px] text-gray-600 leading-relaxed">✦ {o}</p>)}
+          {report.opportunities.map((o, i) => (
+            <p key={i} className="text-[11px] text-gray-600 leading-relaxed [&_strong]:font-bold [&_strong]:text-gray-900">
+              ✦ <span dangerouslySetInnerHTML={{ __html: renderInlineRich(o) }} />
+            </p>
+          ))}
         </div>
       )}
       {report.risks.length > 0 && (
         <div className="mt-2.5">
           <p className="text-[10px] font-bold text-red-500 mb-1">风险</p>
-          {report.risks.map((r, i) => <p key={i} className="text-[11px] text-gray-600 leading-relaxed">⚠ {r}</p>)}
+          {report.risks.map((r, i) => (
+            <p key={i} className="text-[11px] text-gray-600 leading-relaxed [&_strong]:font-bold [&_strong]:text-gray-900">
+              ⚠ <span dangerouslySetInnerHTML={{ __html: renderInlineRich(r) }} />
+            </p>
+          ))}
         </div>
       )}
       <p className="text-[10px] text-gray-400 mt-2 text-right">生成于 {new Date(report.generatedAt).toLocaleString('zh-CN')}</p>

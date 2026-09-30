@@ -36,12 +36,17 @@ export async function GET(
     const record = await prisma.dDTeamEvaluation.findUnique({ where: { projectId: params.projectId } })
     if (!record) return NextResponse.json({ evaluation: null })
     const data = parseEvaluation(record.membersJson, record.teamJson)
+    let aiReview: { rating: number; analysis: string; issues: string[]; reviewedAt: string } | null = null
+    if (record.aiReviewJson) {
+      try { aiReview = JSON.parse(record.aiReviewJson) } catch { aiReview = null }
+    }
     return NextResponse.json({
       evaluation: {
         ...data,
         status: record.status,
         finalScore: record.finalScore,
         confirmedAt: record.confirmedAt?.toISOString() || null,
+        aiReview,
       },
     })
   } catch (error) {

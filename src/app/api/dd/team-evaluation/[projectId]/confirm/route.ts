@@ -6,12 +6,13 @@ import prisma from '@/lib/prisma'
 import { authOptions, type UserRole } from '@/lib/auth'
 import type { PermissionUser } from '@/lib/permissions'
 import { canEditResearchProject } from '@/lib/research-permissions'
-import { parseEvaluation, validateEvaluation, computeEvaluation, scoreColor } from '@/lib/dd-workbench/team-evaluation'
+import { parseEvaluation, validateEvaluation, computeEvaluation, scoreColor, runScoringReview, type TeamScoringReview } from '@/lib/dd-workbench/team-evaluation'
 
 /**
  * POST /api/dd/team-evaluation/[projectId]/confirm
  * 确认团队评价：校验全部维度已评分 → 计算最终得分（10 分制）→ CONFIRMED
- * 已确认状态再次调用 → 重新打开为 DRAFT（可编辑）
+ * 确认后触发 AI 审评分（0-10，校验各维度打分与简历描述的一致性；失败不影响确认）
+ * 已确认状态再次调用 → 重新打开为 DRAFT（清空审评分，可编辑后再次确认）
  */
 export async function POST(
   _request: Request,
@@ -39,11 +40,11 @@ export async function POST(
       return NextResponse.json({ error: '评价表尚未生成，请先生成团队评价表' }, { status: 400 })
     }
 
-    // 已确认 → 重新打开为 DRAFT
+    // 已确认 → 重新打开为 DRAFT（清空最终得分与 AI 审评分）
     if (record.status === 'CONFIRMED') {
       await prisma.dDTeamEvaluation.update({
         where: { id: record.id },
-        data: { status: 'DRAFT', finalScore: null, confirmedAt: null },
+        data: { status: 'DRAFT', finalScore: null, confirmedAt: null, aiReviewJson: null },
       })
       return NextResponse.json({ ok: true, reopened: true })
     }
@@ -61,14 +62,22 @@ export async function POST(
 
     await prisma.dDTeamEvaluation.update({
       where: { id: record.id },
-      data: { status: 'CONFIRMED', finalScore: result.finalScore, confirmedAt: new Date() },
+      data: { status: 'CONFIRMED', finalScore: result.finalScore, confirmedAt: new Date(), aiReviewJson: null },
     })
+
+    // AI 审评分（0-10：校验各维度打分与简历描述的一致性；失败不影响确认结果）
+    let review: TeamScoringReview | null = null
+    try {
+      const reviewResult = await runScoringReview(params.projectId)
+      if (reviewResult.ok && reviewResult.review) review = reviewResult.review
+    } catch { review = null }
 
     return NextResponse.json({
       ok: true,
       finalScore: result.finalScore,
       color: scoreColor(result.finalScore),
       detail: result,
+      review,
     })
   } catch (error) {
     console.error('Team evaluation confirm error:', error)

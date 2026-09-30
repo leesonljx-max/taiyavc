@@ -39,6 +39,19 @@ export interface DDModuleReport {
   opportunities: string[]
   risks: string[]
   generatedAt: string
+  /** 文本框截图（报告 summary 中【图N】引用的插图）：[{ marker: '图1', src }] */
+  images?: Array<{ marker: string; src: string }>
+  /** 仅团队与治理：生成报告时已确认的评分表快照（报告中原样展示 + 评分逻辑分析） */
+  teamEvaluation?: {
+    finalScore: number
+    ceoName: string
+    ceoScore: number
+    execAvg: number
+    teamScore: number
+    members: Array<{ name: string; identity: string; score: number | null }>
+    aiReview: { rating: number; analysis: string } | null
+    confirmedAt: string | null
+  }
 }
 
 /** 单模块 AI 分析（上传资料后单独分析）：事实卡 + 下一步行动 */
@@ -99,7 +112,8 @@ export function isModuleComplete(
     res.documents.length > 0 ||
     res.screenshots.length > 0 ||
     res.textBlocks.some(t => t.content.trim().length > 0)
-  if (res.moduleKey === 'TEAM_GOVERNANCE' && res.teamEvaluationConfirmed === false) {
+  // 团队与治理：必须已生成并确认团队评价表（未生成 / 草稿中均阻塞尽调报告生成）
+  if (res.moduleKey === 'TEAM_GOVERNANCE' && res.teamEvaluationConfirmed !== true) {
     return false
   }
   return hasData
@@ -109,7 +123,7 @@ export function isModuleComplete(
 export function findMissingModules(resources: ParsedModuleResource[]): string[] {
   return resources
     .filter(r => !isModuleComplete(r))
-    .map(r => r.moduleName + (r.moduleKey === 'TEAM_GOVERNANCE' && r.teamEvaluationConfirmed === false ? '（需确认团队评价表）' : ''))
+    .map(r => r.moduleName + (r.moduleKey === 'TEAM_GOVERNANCE' && r.teamEvaluationConfirmed !== true ? '（需生成并确认团队评价表）' : ''))
 }
 
 /** 报告是否已生成（九大模块全部有 reportJson） */

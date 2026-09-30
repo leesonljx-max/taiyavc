@@ -15,6 +15,7 @@ import assert from 'node:assert/strict'
 import prisma from '@/lib/prisma'
 import { resetMocks, mockState, chatCompletions } from './helpers/setup'
 import { DD_TEMPLATE_MODULES } from '@/lib/dd-workbench/template'
+import { CEO_TEMPLATE, TEAM_TEMPLATE } from '@/lib/dd-workbench/team-evaluation'
 
 import { GET as RES_GET } from '@/app/api/dd/resources/[projectId]/route'
 import { PUT as TEXT_PUT } from '@/app/api/dd/resources/[projectId]/[moduleKey]/route'
@@ -34,6 +35,7 @@ let projectId = ''
 beforeEach(async () => {
   resetMocks()
   await prisma.dDInvestmentDecision.deleteMany({})
+  await prisma.dDTeamEvaluation.deleteMany({})
   await prisma.dDModuleResource.deleteMany({})
   await prisma.project.deleteMany({ where: { name: { startsWith: 'D2测试项目' } } })
   await prisma.user.deleteMany({
@@ -112,6 +114,25 @@ function mockReportAI() {
     }
     return chatCompletions('{}')
   }
+}
+
+/** 直接入库一份已确认的团队评价表（V2.3.0 报告门槛） */
+async function seedConfirmedEvaluation() {
+  await prisma.dDTeamEvaluation.create({
+    data: {
+      projectId,
+      membersJson: JSON.stringify([
+        {
+          id: 'm-ceo', name: '张三', roleLabel: '实控人/CEO', profileType: 'CEO',
+          dimensions: CEO_TEMPLATE.map(d => ({ ...d, score: 8 })),
+        },
+      ]),
+      teamJson: JSON.stringify(TEAM_TEMPLATE.map(d => ({ ...d, score: 8 }))),
+      status: 'CONFIRMED',
+      finalScore: 8.0,
+      confirmedAt: new Date(),
+    },
+  })
 }
 
 // ── 资料中心 ──
@@ -211,7 +232,7 @@ test('文档上传（txt 自动提取全文）与删除；截图上传与删除'
 
 // ── 尽调报告 ──
 
-test('生成报告：资料不完整 400 + 缺失清单；补齐后生成九模块报告（含机会与风险）', async () => {
+test('生成报告：资料不完整 400 + 缺失清单；补齐并确认团队评价后生成九模块报告（含评分表快照）', async () => {
   asManager()
 
   // 不完整 → 400 + missing
@@ -222,6 +243,15 @@ test('生成报告：资料不完整 400 + 缺失清单；补齐后生成九模�
 
   // 补齐全部九模块
   await fillAllModules()
+
+  // 团队与治理：未确认团队评价表 → 仍 400（V2.3.0 严格门槛）
+  res = await REPORT_POST(new Request(`${resUrl()}/report`, { method: 'POST' }), { params: { projectId } })
+  assert.equal(res.status, 400)
+  body = await res.json()
+  assert.ok(body.missing.some((n: string) => n.includes('团队评价表')), '团队与治理未确认评分表应阻塞报告生成')
+
+  // 确认团队评价表（V2.3.0 门槛）
+  await seedConfirmedEvaluation()
 
   // 完整 → mock AI → 生成成功
   mockReportAI()
@@ -238,6 +268,12 @@ test('生成报告：资料不完整 400 + 缺失清单；补齐后生成九模�
     assert.equal(r.report.opportunities.length, 2)
     assert.equal(r.report.risks.length, 1)
   }
+
+  // 团队与治理报告：内嵌评分表快照 + AI 审评分
+  const teamReport = body.resources.find((r: { moduleKey: string }) => r.moduleKey === 'TEAM_GOVERNANCE').report
+  assert.ok(teamReport.teamEvaluation, '团队与治理报告应包含评分表快照')
+  assert.ok(Number.isFinite(teamReport.teamEvaluation.finalScore))
+  assert.ok(teamReport.teamEvaluation.members.length > 0)
 
   // AI 失败（返回空）→ 502
   mockState.fetchHandler = () => chatCompletions('{}')
@@ -269,9 +305,10 @@ test('投资决策：报告未生成不可决策；三人规则（全投→投�
   assert.equal(body.reportReady, false)
   assert.equal(body.finalStatus, 'PENDING')
 
-  // 生成报告
+  // 生成报告（需先确认团队评价表）
   asManager()
   await fillAllModules()
+  await seedConfirmedEvaluation()
   mockReportAI()
   res = await REPORT_POST(new Request(`${resUrl()}/report`, { method: 'POST' }), { params: { projectId } })
   assert.equal(res.status, 200)

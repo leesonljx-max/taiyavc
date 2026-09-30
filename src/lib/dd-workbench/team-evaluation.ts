@@ -12,23 +12,23 @@
 import prisma from '@/lib/prisma'
 import { parseAgentJson } from '@/lib/dd-harness/agent'
 import { recordTokenUsage } from '@/lib/token-accounting'
-import { getProjectModuleResources, isModuleComplete } from './resources'
+import { getProjectModuleResources } from './resources'
+import { buildMultimodalDigest, buildMessageContent, type ExtractedImage } from './vision'
+import {
+  CEO_TEMPLATE, TECH_TEMPLATE, OPS_TEMPLATE, TEAM_TEMPLATE, PROFILE_TEMPLATES,
+  type ProfileType, type DimensionDef,
+} from './team-templates'
+
+// 模板与纯类型统一放在 team-templates.ts（客户端安全），此处重导出保持兼容
+export {
+  CEO_TEMPLATE, TECH_TEMPLATE, OPS_TEMPLATE, TEAM_TEMPLATE, PROFILE_TEMPLATES, PROFILE_LABELS,
+  type ProfileType, type DimensionDef,
+} from './team-templates'
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
 const DEEPSEEK_MODEL = 'deepseek-v4-flash'
 
 // ── 类型 ──
-
-export type ProfileType = 'CEO' | 'TECH' | 'OPS'
-
-/** 维度定义（模板静态结构） */
-export interface DimensionDef {
-  key: string
-  label: string
-  hint: string
-  group: string
-  weight: number
-}
 
 /** 成员打分维度（模板 + 评分） */
 export interface MemberDimension {
@@ -64,74 +64,6 @@ export interface EvaluationResult {
   teamScore: number
   finalScore: number
   allScored: boolean
-}
-
-// ── 评价模板（默认权重源自评价模型 Excel，可调） ──
-
-/** 实控人/CEO 模板（13 维度，区间系数 6，满分 60） */
-export const CEO_TEMPLATE: DimensionDef[] = [
-  { key: 'education', label: '学历背景', hint: '是否与创业方向吻合', group: '创业素质', weight: 0.05 },
-  { key: 'experience', label: '从业经验', hint: '是否与创业方向吻合', group: '创业素质', weight: 0.15 },
-  { key: 'business_sense', label: '商业思维', hint: '利润追求/市场嗅觉/财务功底', group: '创业素质', weight: 0.15 },
-  { key: 'financing', label: '融资能力', hint: '表达能力/形象/逻辑思路', group: '创业素质', weight: 0.10 },
-  { key: 'system_building', label: '制度建设', hint: '内部管理/是否连续创业', group: '创业素质', weight: 0.10 },
-  { key: 'strategy', label: '战略能力', hint: '短中长期是否清晰明了', group: '创业素质', weight: 0.05 },
-  { key: 'rallying', label: '号召力', hint: '找人的能力/是否一呼百应', group: '创业素质', weight: 0.05 },
-  { key: 'character', label: '人品性格', hint: '真诚度/品行修养/过往风评/背调', group: '创业素质', weight: 0.05 },
-  { key: 'vision', label: '格局愿景', hint: '分享精神/对成功的渴望', group: '创业素质', weight: 0.05 },
-  { key: 'capital_invested', label: '投入资金', hint: '投入与身家相关', group: '创业意愿', weight: 0.05 },
-  { key: 'time_invested', label: '投入精力', hint: '上班时间/是否兼职/其他副业', group: '创业意愿', weight: 0.05 },
-  { key: 'family_support', label: '家境支持', hint: '家境实力/家人是否支持创业', group: '创业意愿', weight: 0.05 },
-  { key: 'salary', label: '薪酬', hint: '与发展阶段匹配', group: '创业意愿', weight: 0.10 },
-]
-
-/** 产品&技术画像模板（10 维度，区间系数 2，满分 20） */
-export const TECH_TEMPLATE: DimensionDef[] = [
-  { key: 'education', label: '学历背景', hint: '是否与创业方向吻合', group: '创业素质', weight: 0.10 },
-  { key: 'experience', label: '从业经验', hint: '是否与创业方向吻合', group: '创业素质', weight: 0.15 },
-  { key: 'role_involvement', label: '参与角色', hint: '全流程亲自下场干/把握大方向/问题专家/吉祥物', group: '创业素质', weight: 0.15 },
-  { key: 'complementarity', label: '能力互补性', hint: '能力是否与CEO互补', group: '创业素质', weight: 0.10 },
-  { key: 'character', label: '人品性格', hint: '真诚度/品行修养/背调', group: '创业素质', weight: 0.05 },
-  { key: 'capital_invested', label: '投入资金', hint: '投入与身家相关', group: '创业意愿', weight: 0.10 },
-  { key: 'time_invested', label: '投入精力', hint: '上班时间/是否兼职/其他副业', group: '创业意愿', weight: 0.05 },
-  { key: 'salary', label: '薪酬', hint: '与发展阶段匹配', group: '创业意愿', weight: 0.15 },
-  { key: 'equity', label: '持股情况', hint: '是否与能力匹配', group: '创业意愿', weight: 0.10 },
-  { key: 'family_support', label: '家境支持', hint: '是否等米下锅/刚性支出情况', group: '创业意愿', weight: 0.05 },
-]
-
-/** 运营&销售画像模板（11 维度，区间系数 2，满分 20） */
-export const OPS_TEMPLATE: DimensionDef[] = [
-  { key: 'education', label: '学历背景', hint: '是否与创业方向吻合', group: '创业素质', weight: 0.10 },
-  { key: 'experience', label: '从业经验', hint: '是否与创业方向吻合', group: '创业素质', weight: 0.15 },
-  { key: 'role_involvement', label: '参与角色', hint: '全流程亲自下场干/把握大方向/问题专家/吉祥物', group: '创业素质', weight: 0.15 },
-  { key: 'business_sense', label: '商业嗅觉', hint: '市场水温感知/客户需求把握', group: '创业素质', weight: 0.05 },
-  { key: 'complementarity', label: '能力互补性', hint: '能力是否与CEO互补', group: '创业素质', weight: 0.05 },
-  { key: 'character', label: '人品性格', hint: '真诚度/品行修养/背调', group: '创业素质', weight: 0.05 },
-  { key: 'capital_invested', label: '投入资金', hint: '投入与身家相关', group: '创业意愿', weight: 0.05 },
-  { key: 'time_invested', label: '投入精力', hint: '上班时间/是否兼职/其他副业', group: '创业意愿', weight: 0.10 },
-  { key: 'salary', label: '薪酬', hint: '与发展阶段匹配', group: '创业意愿', weight: 0.15 },
-  { key: 'equity', label: '持股情况', hint: '是否与能力匹配', group: '创业意愿', weight: 0.10 },
-  { key: 'family_support', label: '家境支持', hint: '是否等米下锅/刚性支出情况', group: '创业意愿', weight: 0.05 },
-]
-
-/** 团队整体模板（4 维度，区间系数 2，满分 20） */
-export const TEAM_TEMPLATE: DimensionDef[] = [
-  { key: 'completeness', label: '完整性', hint: '目前是否有明显短板', group: '完整性', weight: 0.25 },
-  { key: 'scalability', label: '可扩展性', hint: '未来引入核心人员的意愿和可行性', group: '完整性', weight: 0.10 },
-  { key: 'past_connection', label: '过往连接', hint: '同事、同学等，看合作时间', group: '稳定性', weight: 0.40 },
-  { key: 'interest_binding', label: '利益绑定', hint: '股权分布是否合理', group: '稳定性', weight: 0.25 },
-]
-
-const PROFILE_TEMPLATES: Record<ProfileType, DimensionDef[]> = {
-  CEO: CEO_TEMPLATE,
-  TECH: TECH_TEMPLATE,
-  OPS: OPS_TEMPLATE,
-}
-
-export const PROFILE_LABELS: Record<ProfileType, string> = {
-  CEO: '实控人/CEO（60分）',
-  TECH: '产品&技术画像（20分）',
-  OPS: '运营&销售画像（20分）',
 }
 
 // ── 计算 ──
@@ -269,20 +201,18 @@ profileType 映射规则：
 - 姓名从简历/资料原文提取；无法确定姓名时用身份代称（如"技术合伙人"）
 - 身份不确定时 roleLabel 写资料原文描述，profileType 按 OPS 处理`
 
-/** 汇总团队与治理模块资料（文档全文 + 文本框，图片标记为占位） */
-function buildTeamDigest(documents: Array<{ fileName: string; text: string }>, textBlocks: Array<{ content: string }>): string {
+/** 汇总团队与治理模块资料（文档全文 + 文本框；文本框粘贴的截图提取为 [图N] 占位并随图片一起提供给模型） */
+async function buildTeamDigest(documents: Array<{ fileName: string; text: string }>, textBlocks: Array<{ content: string }>): Promise<{ digest: string; images: ExtractedImage[] }> {
   const parts: string[] = []
   for (const doc of documents) {
     const text = (doc.text || '').trim()
     parts.push(`【文档：${doc.fileName}】\n${text ? text.slice(0, 15000) : '（未能提取文本）'}`)
   }
-  const texts = textBlocks.filter(t => t.content && t.content.trim())
-  if (texts.length > 0) {
-    // 粘贴截图的富文本内容过滤 img 标签，避免 HTML 噪音进入模型
-    const plain = texts.map((t, i) => `${i + 1}. ${t.content.replace(/<img[^>]*>/g, '[截图]').replace(/<[^>]+>/g, ' ').trim()}`).join('\n')
+  const { plain, images } = await buildMultimodalDigest(textBlocks)
+  if (plain) {
     parts.push(`【维护人填写】\n${plain}`)
   }
-  return parts.join('\n\n') || '（无资料）'
+  return { digest: parts.join('\n\n') || '（无资料）', images }
 }
 
 /** AI 识别成员 → 按画像模板生成打分表 */
@@ -293,7 +223,13 @@ export async function runMemberExtraction(projectId: string): Promise<{
 }> {
   const resources = await getProjectModuleResources(projectId)
   const res = resources.find(r => r.moduleKey === 'TEAM_GOVERNANCE')
-  if (!res || !isModuleComplete(res)) {
+  // 只判断资料存在（不用 isModuleComplete——团队模块的完整判定要求评价表已确认，会形成死锁）
+  const hasData = !!res && (
+    res.documents.length > 0 ||
+    res.screenshots.length > 0 ||
+    res.textBlocks.some(t => t.content.trim().length > 0)
+  )
+  if (!hasData) {
     return { ok: false, error: '「团队与治理」模块暂无资料，请先到资料中心上传核心成员简历' }
   }
 
@@ -303,6 +239,7 @@ export async function runMemberExtraction(projectId: string): Promise<{
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 90000)
   try {
+    const { digest, images } = await buildTeamDigest(res.documents, res.textBlocks)
     const response = await fetch(DEEPSEEK_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
@@ -310,7 +247,10 @@ export async function runMemberExtraction(projectId: string): Promise<{
         model: DEEPSEEK_MODEL,
         messages: [
           { role: 'system', content: MEMBER_EXTRACTION_SYSTEM_PROMPT },
-          { role: 'user', content: `以下是「团队与治理」模块的团队资料（含简历），请识别核心成员：\n\n${buildTeamDigest(res.documents, res.textBlocks)}` },
+          {
+            role: 'user',
+            content: buildMessageContent(`以下是「团队与治理」模块的团队资料（含简历，文本框截图已按图片提供），请识别核心成员：\n\n${digest}`, images),
+          },
         ],
         temperature: 0.2,
         max_tokens: 1500,
@@ -365,5 +305,138 @@ export async function runMemberExtraction(projectId: string): Promise<{
     return { ok: true, data: { members, team: TEAM_TEMPLATE.map(d => ({ ...d, score: null })) } }
   } finally {
     clearTimeout(timeoutId)
+  }
+}
+
+// ── AI 审评分（确认后：校验各维度打分与简历描述的一致性） ──
+
+export interface TeamScoringReview {
+  rating: number
+  analysis: string
+  issues: string[]
+  reviewedAt: string
+}
+
+const SCORING_REVIEW_SYSTEM_PROMPT = `你是投资机构投委会的团队评分复核 Agent。投资经理已完成创业团队评分表，你的任务是校验本次评分的质量。
+核心校验规则：
+1. 一致性：各成员各维度的打分与简历/资料描述是否一致（例：简历显示 15 年从业经验而"从业经验"仅打 3 分、或简历毫无亮点却打 9 分，均为不一致）
+2. 区分度：同一成员所有维度打成同一个分数时，是否有资料支撑（无差异打分通常说明未认真评估）
+3. 合理性：维度间得分分布与权重分配是否符合资料的强弱信号（如"投入资金"无信息却打高分）
+严格输出 JSON（不要 markdown 代码块），结构：
+{
+  "rating": 0-10 的一位小数（10=打分与资料高度一致且区分合理；5-6=存在明显不一致；0-4=大面积失真或打分与资料相悖），
+  "analysis": "复核分析（300字内：先给总体判断，再逐人指出与简历一致/不一致的具体维度及依据）",
+  "issues": ["具体问题点 1（成员·维度：问题描述）", "问题点 2", ...]
+}
+要求：只基于给定的简历资料与评分数据，不编造；无问题时 issues 为空数组`
+
+/** 确认后 AI 审评分：校验各维度打分与简历描述的一致性 → 0-10 评分 + 分析落库 aiReviewJson */
+export async function runScoringReview(projectId: string): Promise<{
+  ok: boolean
+  error?: string
+  review?: TeamScoringReview
+}> {
+  const record = await prisma.dDTeamEvaluation.findUnique({ where: { projectId } })
+  if (!record || record.status !== 'CONFIRMED') {
+    return { ok: false, error: '评价表未确认，无法审评' }
+  }
+  const resources = await getProjectModuleResources(projectId)
+  const res = resources.find(r => r.moduleKey === 'TEAM_GOVERNANCE')
+  if (!res) return { ok: false, error: '「团队与治理」模块资料不存在' }
+
+  const apiKey = process.env.DEEPSEEK_API_KEY
+  if (!apiKey) throw new Error('DeepSeek API Key 未配置')
+
+  const data = parseEvaluation(record.membersJson, record.teamJson)
+  const result = computeEvaluation(data)
+
+  // 评分表文本（供模型核对）
+  const memberLines = data.members.map(m => {
+    const dims = m.dimensions.map(d => `${d.label}(权重${Math.round(d.weight * 100)}%:${d.score ?? '—'}分)`).join('、')
+    const profileName = m.profileType === 'CEO' ? '实控人/CEO' : m.profileType === 'TECH' ? '产品&技术' : '运营&销售'
+    const sub = m.profileType === 'CEO' ? result.ceoScore : result.execScores.find(e => e.memberId === m.id)?.score
+    return `- ${m.name}（${m.roleLabel || profileName}，画像：${profileName}）：${dims}｜小计 ${sub ?? '—'}`
+  })
+  const teamLine = `- 团队整体：${data.team.map(d => `${d.label}(权重${Math.round(d.weight * 100)}%:${d.score ?? '—'}分)`).join('、')}｜小计 ${result.teamScore}`
+  const scoringText = `【评分表数据】（10 分制 = CEO ${result.ceoScore} + 高管平均 ${result.execAvg} + 团队整体 ${result.teamScore} = 最终 ${result.finalScore} 分）\n${memberLines.join('\n')}\n${teamLine}`
+
+  const { digest, images } = await buildTeamDigest(res.documents, res.textBlocks)
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 90000)
+  try {
+    const response = await fetch(DEEPSEEK_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: DEEPSEEK_MODEL,
+        messages: [
+          { role: 'system', content: SCORING_REVIEW_SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: buildMessageContent(`以下是「团队与治理」模块的简历等资料（文本框截图已按图片提供）：\n\n${digest}\n\n${scoringText}\n\n请复核本次评分质量。`, images),
+          },
+        ],
+        temperature: 0.2,
+        max_tokens: 2000,
+        thinking: { type: 'disabled' },
+      }),
+      signal: controller.signal,
+    })
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '')
+      throw new Error(`DeepSeek 调用失败: ${response.status} ${errText.substring(0, 150)}`)
+    }
+    const resp = (await response.json()) as { usage?: unknown; choices?: Array<{ message?: { content?: string } }> }
+    recordTokenUsage('dd-harness', resp.usage as Parameters<typeof recordTokenUsage>[1])
+    const parsed = parseAgentJson<{ rating?: number | string; analysis?: string; issues?: string[] }>(
+      resp.choices?.[0]?.message?.content || ''
+    )
+    const rating = Number(parsed?.rating)
+    if (parsed && Number.isFinite(rating) && parsed.analysis) {
+      const review: TeamScoringReview = {
+        rating: Math.max(0, Math.min(10, Math.round(rating * 10) / 10)),
+        analysis: String(parsed.analysis).slice(0, 800),
+        issues: (Array.isArray(parsed.issues) ? parsed.issues : []).map(String).slice(0, 8),
+        reviewedAt: new Date().toISOString(),
+      }
+      await prisma.dDTeamEvaluation.update({
+        where: { id: record.id },
+        data: { aiReviewJson: JSON.stringify(review) },
+      })
+      return { ok: true, review }
+    }
+    return { ok: false, error: 'AI 审评分结果不完整' }
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+/**
+ * 自动生成团队评价表：团队与治理模块有资料且尚无评价记录时触发（成员识别 AI，失败静默）
+ * 由资料保存/上传路由 fire-and-forget 调用，不阻塞主流程
+ */
+export async function maybeAutoGenerateTeamEvaluation(projectId: string): Promise<void> {
+  try {
+    const existing = await prisma.dDTeamEvaluation.findUnique({ where: { projectId }, select: { id: true } })
+    if (existing) return
+    const resources = await getProjectModuleResources(projectId)
+    const res = resources.find(r => r.moduleKey === 'TEAM_GOVERNANCE')
+    // 只判断资料存在（不用 isModuleComplete——团队模块的完整判定要求评价表已确认，会形成死锁）
+    const hasData = !!res && (
+      res.documents.length > 0 ||
+      res.screenshots.length > 0 ||
+      res.textBlocks.some(t => t.content.trim().length > 0)
+    )
+    if (!hasData) return
+    const result = await runMemberExtraction(projectId)
+    if (!result.ok || !result.data) return
+    await prisma.dDTeamEvaluation.upsert({
+      where: { projectId },
+      create: { projectId, membersJson: JSON.stringify(result.data.members), teamJson: JSON.stringify(result.data.team) },
+      update: {},
+    })
+  } catch {
+    // 自动生成失败静默（用户仍可通过卡片按钮手动生成）
   }
 }

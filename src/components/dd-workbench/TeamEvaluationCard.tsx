@@ -6,13 +6,16 @@
  * 一级权重固定：实控人/CEO 独占 60 分；团队整体独占 20 分；联创&核心高管共享 20 分（取平均）
  * 二级权重可调（每人合计 100%），评分 0-10；行得分 = 权重 × 评分 × 系数（CEO=6，其余=2）
  * 最终得分 =（CEO + 高管平均 + 团队整体）/ 10；>8 绿 / 7.5-8 黄 / 7-7.5 橙 / ≤7 红
+ *
+ * - 成员身份识别不准时：可手动校正（姓名/身份/角色描述）或 🔄 重新生成
+ * - 确认评分前自动保存本地评分（修复"填完仍提示尚未评分"）
+ * - 确认后 AI 审评分（0-10，校验各维度打分与简历描述的一致性），右上角显示
  */
 
 import { useState, useEffect, useCallback, Fragment } from 'react'
+import { CEO_TEMPLATE, TECH_TEMPLATE, OPS_TEMPLATE, TEAM_TEMPLATE, PROFILE_OPTIONS, type ProfileType } from '@/lib/dd-workbench/team-templates'
 
 // ── 类型（与后端 team-evaluation.ts 对齐） ──
-
-type ProfileType = 'CEO' | 'TECH' | 'OPS'
 
 interface MemberDimension {
   key: string
@@ -31,17 +34,31 @@ interface TeamMember {
   dimensions: MemberDimension[]
 }
 
+interface ScoringReview {
+  rating: number
+  analysis: string
+  issues: string[]
+  reviewedAt: string
+}
+
 interface EvaluationState {
   members: TeamMember[]
   team: MemberDimension[]
   status: 'DRAFT' | 'CONFIRMED'
   finalScore: number | null
+  aiReview?: ScoringReview | null
 }
 
 const PROFILE_LABELS: Record<ProfileType, string> = {
   CEO: '实控人/CEO · 独占 60 分',
   TECH: '产品&技术画像 · 共享 20 分',
   OPS: '运营&销售画像 · 共享 20 分',
+}
+
+const PROFILE_TEMPLATES: Record<ProfileType, typeof CEO_TEMPLATE> = {
+  CEO: CEO_TEMPLATE,
+  TECH: TECH_TEMPLATE,
+  OPS: OPS_TEMPLATE,
 }
 
 const SCORE_COLOR_STYLES: Record<string, { bg: string; label: string }> = {
@@ -143,7 +160,7 @@ export default function TeamEvaluationCard({
       const res = await fetch(`/api/dd/team-evaluation/${projectId}/generate`, { method: 'POST' })
       const data = await res.json()
       if (!res.ok) { setMsg(''); setErr(data.error || '生成失败'); return }
-      setMsg('')
+      setMsg('已生成评分表。若身份识别不准确，可在下方「身份校正」中手动修改，或点击「🔄 重新生成」')
       await load()
     } catch {
       setMsg('')
@@ -153,9 +170,8 @@ export default function TeamEvaluationCard({
     }
   }
 
-  const save = async () => {
-    if (!evaluation || busy) return
-    setBusy(true)
+  const save = async (): Promise<boolean> => {
+    if (!evaluation) return false
     setErr('')
     try {
       const res = await fetch(`/api/dd/team-evaluation/${projectId}`, {
@@ -164,28 +180,97 @@ export default function TeamEvaluationCard({
         body: JSON.stringify({ members: evaluation.members, team: evaluation.team }),
       })
       const data = await res.json()
-      if (!res.ok) { setErr(data.error || '保存失败'); return }
-      setMsg('评价表已保存 ✓')
-      await load()
-    } catch { setErr('网络错误') } finally { setBusy(false) }
+      if (!res.ok) { setErr(data.error || '保存失败'); return false }
+      return true
+    } catch {
+      setErr('网络错误')
+      return false
+    }
   }
 
+  const saveDraft = async () => {
+    if (!evaluation || busy) return
+    setBusy(true)
+    try {
+      if (await save()) {
+        setMsg('评价表已保存 ✓')
+        await load()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** 确认评分：先自动保存本地评分（修复"填完仍提示尚未评分"），再确认 + AI 审评分 */
   const confirmOrReopen = async () => {
     if (!evaluation || busy) return
     setBusy(true)
     setErr('')
     try {
+      // 草稿 → 先把本地填写落库，再确认（否则服务端按旧数据校验会报"尚未评分"）
+      if (evaluation.status !== 'CONFIRMED') {
+        setMsg('正在保存评分并确认（AI 审评分约 30-60 秒，请勿关闭页面）...')
+        if (!(await save())) { setMsg(''); return }
+      }
       const res = await fetch(`/api/dd/team-evaluation/${projectId}/confirm`, { method: 'POST' })
       const data = await res.json()
-      if (!res.ok) { setErr(data.error || '操作失败'); return }
+      if (!res.ok) { setMsg(''); setErr(data.error || '操作失败'); return }
       if (data.reopened) {
         setMsg('已重新打开为草稿，可编辑后再次确认')
       } else {
-        setMsg('')
+        setMsg(data.review
+          ? `评分已确认 ✓ AI 审评分 ${data.review.rating}（详见下方审评分析）`
+          : '评分已确认 ✓（AI 审评分未生成，可点击「重新审评」补做）')
       }
       await load()
       await onChanged()
-    } catch { setErr('网络错误') } finally { setBusy(false) }
+    } catch {
+      setMsg('')
+      setErr('网络错误')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** 重新生成（清空当前成员与评分，按最新资料重新识别） */
+  const regenerate = async () => {
+    if (busy || !evaluation) return
+    if (!window.confirm('重新生成将清空当前成员与评分，按最新资料重新识别核心成员。确定继续？')) return
+    setBusy(true)
+    setErr('')
+    setMsg('AI 正在按最新资料重新识别核心成员...')
+    try {
+      const res = await fetch(`/api/dd/team-evaluation/${projectId}/generate`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) { setMsg(''); setErr(data.error || '生成失败'); return }
+      setMsg('已重新生成。若身份仍不准确，可直接在「身份校正」中手动修改')
+      await load()
+    } catch {
+      setMsg('')
+      setErr('网络错误')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** 重新执行 AI 审评分（确认状态下） */
+  const reReview = async () => {
+    if (busy) return
+    setBusy(true)
+    setErr('')
+    setMsg('AI 正在复核本次评分与简历的一致性（约 30-60 秒）...')
+    try {
+      const res = await fetch(`/api/dd/team-evaluation/${projectId}/review`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) { setMsg(''); setErr(data.error || '审评失败'); return }
+      setMsg('')
+      await load()
+    } catch {
+      setMsg('')
+      setErr('网络错误')
+    } finally {
+      setBusy(false)
+    }
   }
 
   /** 更新某成员某维度 */
@@ -207,6 +292,25 @@ export default function TeamEvaluationCard({
     setMsg('')
   }
 
+  /** 手动校正成员身份（姓名/画像/角色描述）；画像变更时换用对应模板（评分清空） */
+  const patchMember = (memberId: string, patch: Partial<Pick<TeamMember, 'name' | 'roleLabel' | 'profileType'>>) => {
+    setEvaluation(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        members: prev.members.map(m => {
+          if (m.id !== memberId) return m
+          const next = { ...m, ...patch }
+          if (patch.profileType && patch.profileType !== m.profileType) {
+            next.dimensions = PROFILE_TEMPLATES[patch.profileType].map(d => ({ ...d, score: null }))
+          }
+          return next
+        }),
+      }
+    })
+    setMsg('')
+  }
+
   if (loading) {
     return (
       <div className="rounded-xl border border-[#ddd7f2] bg-white p-4 text-center">
@@ -216,28 +320,75 @@ export default function TeamEvaluationCard({
   }
 
   const confirmed = evaluation?.status === 'CONFIRMED'
+  const editable = canEdit && !confirmed
   const result = evaluation ? computeLocal(evaluation.members, evaluation.team) : null
   const ceo = evaluation?.members.find(m => m.profileType === 'CEO') || null
   const execs = evaluation?.members.filter(m => m.profileType !== 'CEO') || []
   const activeExec = execs.find(m => m.id === activeExecId) || execs[0] || null
+  const aiReview = evaluation?.aiReview || null
 
   return (
     <div className="rounded-2xl border border-[#ddd7f2] bg-white p-4">
-      {/* 标题 */}
+      {/* 标题（右上角：最终得分 + AI 审评分） */}
       <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
         <span className="text-sm font-bold text-gray-800">
           📋 团队评价表 <span className="text-[10px] font-normal text-gray-400">必填 · 实控人 60 分 + 团队整体 20 分 + 联创/高管平均 20 分 = 10 分制</span>
         </span>
-        {confirmed && evaluation?.finalScore !== null && evaluation?.finalScore !== undefined && (
-          <span className={`px-3 py-1 rounded-xl text-white text-lg font-black ${SCORE_COLOR_STYLES[scoreColor(evaluation.finalScore)].bg}`}>
-            {evaluation.finalScore.toFixed(2)}
-            <span className="text-[10px] font-bold ml-1">{SCORE_COLOR_STYLES[scoreColor(evaluation.finalScore)].label}</span>
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {confirmed && aiReview && (
+            <span
+              className={`px-2.5 py-1 rounded-xl text-white text-sm font-black flex items-center gap-1 ${
+                aiReview.rating >= 8 ? 'bg-indigo-500' : aiReview.rating >= 6 ? 'bg-indigo-400' : 'bg-red-400'
+              }`}
+              title="AI 审评分：校验各维度打分与简历描述的一致性"
+            >
+              🤖 {aiReview.rating.toFixed(1)}
+            </span>
+          )}
+          {confirmed && evaluation?.finalScore !== null && evaluation?.finalScore !== undefined && (
+            <span className={`px-3 py-1 rounded-xl text-white text-lg font-black ${SCORE_COLOR_STYLES[scoreColor(evaluation.finalScore)].bg}`}>
+              {evaluation.finalScore.toFixed(2)}
+              <span className="text-[10px] font-bold ml-1">{SCORE_COLOR_STYLES[scoreColor(evaluation.finalScore)].label}</span>
+            </span>
+          )}
+        </div>
       </div>
 
       {msg && <div className="mb-3 p-2.5 rounded-lg text-xs bg-blue-50 text-blue-700 border border-blue-100">{msg}</div>}
-      {err && <div className="mb-3 p-2.5 rounded-lg text-xs bg-red-50 text-red-600 border border-red-100">{err}</div>}
+      {err && <div className="mb-3 p-2.5 rounded-lg text-xs bg-red-50 text-red-600 border border-red-100 max-h-32 overflow-auto">{err}</div>}
+
+      {/* AI 审评分析（确认后显示） */}
+      {confirmed && aiReview && (
+        <div className="mb-3 p-3 rounded-xl bg-indigo-50/50 border border-indigo-100">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-[11px] font-bold text-indigo-700">
+              🤖 AI 审评分 {aiReview.rating.toFixed(1)} / 10 <span className="font-normal text-gray-500">校验各维度打分与简历描述的一致性</span>
+            </span>
+            {canEdit && (
+              <button onClick={reReview} disabled={busy} className="px-2.5 py-1 text-[10px] font-bold rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-100 disabled:opacity-40">
+                重新审评
+              </button>
+            )}
+          </div>
+          <p className="mt-1.5 text-xs text-gray-700 leading-relaxed">{aiReview.analysis}</p>
+          {aiReview.issues?.length > 0 && (
+            <ul className="mt-1.5 space-y-0.5">
+              {aiReview.issues.map((issue, i) => (
+                <li key={i} className="text-[11px] text-amber-700">⚠ {issue}</li>
+              ))}
+            </ul>
+          )}
+          <p className="text-[10px] text-gray-400 mt-1.5">审评于 {new Date(aiReview.reviewedAt).toLocaleString('zh-CN')}</p>
+        </div>
+      )}
+      {confirmed && !aiReview && canEdit && (
+        <div className="mb-3 px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-[11px] text-gray-500">AI 审评分未生成（校验打分与简历一致性）</span>
+          <button onClick={reReview} disabled={busy} className="px-2.5 py-1 text-[10px] font-bold rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-100 disabled:opacity-40">
+            🤖 重新审评
+          </button>
+        </div>
+      )}
 
       {/* 未生成 */}
       {!evaluation && (
@@ -265,18 +416,35 @@ export default function TeamEvaluationCard({
       {/* 已生成：编辑 / 只读 */}
       {evaluation && (
         <div className="space-y-4">
+          {/* 重新生成（身份识别不准时） */}
+          {editable && (
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-[10px] text-gray-400">身份识别不准确？可在各成员「身份校正」中手动修改，或按最新资料重新生成</p>
+              <button
+                onClick={regenerate}
+                disabled={busy}
+                className="px-3 py-1 text-[10px] font-bold rounded-lg border border-[#ddd7f2] text-[#6f63c9] hover:bg-[#efedfb] disabled:opacity-40"
+              >
+                🔄 重新生成
+              </button>
+            </div>
+          )}
+
           {/* ── 区段一：实控人/CEO（60 分） ── */}
           {ceo && (
-            <DimensionSection
-              title={`实控人/CEO · 独占 60 分`}
-              badge={`${ceo.name}${ceo.roleLabel ? `（${ceo.roleLabel}）` : ''}`}
-              badgeStyle="bg-blue-600 text-white"
-              dims={ceo.dimensions}
-              coefficient={6}
-              subtotalVal={result?.ceoScore ?? null}
-              editable={canEdit && !confirmed}
-              onPatch={(dimKey, field, value) => patchDim('members', ceo.id, dimKey, field, value)}
-            />
+            <div>
+              {editable && <MemberIdentityBar member={ceo} onChange={p => patchMember(ceo.id, p)} />}
+              <DimensionSection
+                title={`实控人/CEO · 独占 60 分`}
+                badge={`${ceo.name}${ceo.roleLabel ? `（${ceo.roleLabel}）` : ''}`}
+                badgeStyle="bg-blue-600 text-white"
+                dims={ceo.dimensions}
+                coefficient={6}
+                subtotalVal={result?.ceoScore ?? null}
+                editable={editable}
+                onPatch={(dimKey, field, value) => patchDim('members', ceo.id, dimKey, field, value)}
+              />
+            </div>
           )}
 
           {/* ── 区段二：联创&核心高管（共享 20 分，取平均） ── */}
@@ -306,16 +474,19 @@ export default function TeamEvaluationCard({
                   ))}
                 </div>
                 {activeExec && (
-                  <DimensionSection
-                    title={PROFILE_LABELS[activeExec.profileType]}
-                    badge={`${activeExec.name}${activeExec.roleLabel ? `（${activeExec.roleLabel}）` : ''}`}
-                    badgeStyle="bg-[#8d84e0] text-white"
-                    dims={activeExec.dimensions}
-                    coefficient={2}
-                    subtotalVal={result?.execSubs.find(e => e.id === activeExec.id)?.score ?? null}
-                    editable={canEdit && !confirmed}
-                    onPatch={(dimKey, field, value) => patchDim('members', activeExec.id, dimKey, field, value)}
-                  />
+                  <div>
+                    {editable && <MemberIdentityBar member={activeExec} onChange={p => patchMember(activeExec.id, p)} />}
+                    <DimensionSection
+                      title={PROFILE_LABELS[activeExec.profileType]}
+                      badge={`${activeExec.name}${activeExec.roleLabel ? `（${activeExec.roleLabel}）` : ''}`}
+                      badgeStyle="bg-[#8d84e0] text-white"
+                      dims={activeExec.dimensions}
+                      coefficient={2}
+                      subtotalVal={result?.execSubs.find(e => e.id === activeExec.id)?.score ?? null}
+                      editable={editable}
+                      onPatch={(dimKey, field, value) => patchDim('members', activeExec.id, dimKey, field, value)}
+                    />
+                  </div>
                 )}
               </>
             )}
@@ -329,11 +500,11 @@ export default function TeamEvaluationCard({
             dims={evaluation.team}
             coefficient={2}
             subtotalVal={result?.teamScore ?? null}
-            editable={canEdit && !confirmed}
+            editable={editable}
             onPatch={(dimKey, field, value) => patchDim('team', '', dimKey, field, value)}
           />
 
-          {/* ── 汇总与操作 ── */}
+          {/* 汇总与操作 */}
           {!confirmed ? (
             <div className="pt-3 border-t border-gray-100 space-y-2">
               <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
@@ -347,7 +518,7 @@ export default function TeamEvaluationCard({
               {canEdit && (
                 <div className="flex items-center gap-2 justify-end">
                   <button
-                    onClick={save}
+                    onClick={saveDraft}
                     disabled={busy}
                     className="px-4 py-1.5 text-xs font-bold rounded-lg border border-[#ddd7f2] text-[#6f63c9] hover:bg-[#efedfb] disabled:opacity-40"
                   >
@@ -361,9 +532,9 @@ export default function TeamEvaluationCard({
                         ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-500/25'
                         : 'bg-gray-200 text-gray-500 cursor-not-allowed shadow-none'
                     }`}
-                    title={result?.allScored ? '确认后计算最终得分' : '完成全部维度评分后可确认'}
+                    title={result?.allScored ? '自动保存评分并确认，随后 AI 审校打分与简历一致性' : '完成全部维度评分后可确认'}
                   >
-                    ✅ 确认评分
+                    {busy ? '⏳ 保存/审评中...' : '✅ 确认评分'}
                   </button>
                 </div>
               )}
@@ -386,6 +557,46 @@ export default function TeamEvaluationCard({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── 身份校正条（识别不准时手动修改：姓名 / 画像 / 角色描述） ──
+
+function MemberIdentityBar({
+  member,
+  onChange,
+}: {
+  member: TeamMember
+  onChange: (patch: Partial<Pick<TeamMember, 'name' | 'roleLabel' | 'profileType'>>) => void
+}) {
+  return (
+    <div className="flex items-center gap-2 flex-wrap mb-2 px-1">
+      <span className="text-[10px] font-bold text-gray-400 flex-shrink-0">✏️ 身份校正</span>
+      <input
+        value={member.name}
+        onChange={e => onChange({ name: e.target.value })}
+        placeholder="姓名"
+        maxLength={30}
+        className="w-24 px-2 py-1 text-xs border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-300"
+      />
+      <select
+        value={member.profileType}
+        onChange={e => onChange({ profileType: e.target.value as ProfileType })}
+        className="px-2 py-1 text-xs border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-200"
+        title="变更画像将换用对应模板维度（该成员评分清空）；实控人/CEO 只能有一名"
+      >
+        {PROFILE_OPTIONS.map(o => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+      <input
+        value={member.roleLabel}
+        onChange={e => onChange({ roleLabel: e.target.value })}
+        placeholder="身份描述（如：联合创始人/CTO）"
+        maxLength={40}
+        className="flex-1 min-w-[180px] px-2 py-1 text-xs border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-300"
+      />
     </div>
   )
 }
@@ -485,7 +696,7 @@ function DimensionSection({
                           <span className="font-bold text-gray-700">{d.score ?? '—'}</span>
                         )}
                       </td>
-                      <td className="px-3 py-1.5 text-right font-bold text-gray-600">{rs?.toFixed(2) ?? '—'}</td>
+                      <td className="px-2 py-1.5 text-right font-bold text-gray-600">{rs?.toFixed(2) ?? '—'}</td>
                     </tr>
                   )
                 })}
