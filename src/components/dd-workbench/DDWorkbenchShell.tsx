@@ -51,6 +51,20 @@ interface DDFact { id: string; fact: string; source: string; grade: 'A' | 'B' | 
 /** 单模块 AI 分析结果：事实卡 + 下一步行动 */
 interface DDModuleAnalysis { facts: DDFact[]; actions: string[]; analyzedAt: string }
 
+/** 报告外部校验（ClaimVerifier 互联网交叉核验，与后端 claim-verifier.ts 对齐） */
+type ClaimVerdict = 'SUPPORTED' | 'EXAGGERATED' | 'CONTRADICTED' | 'UNVERIFIED'
+interface ClaimEvidence { title: string; url: string; snippet: string }
+interface VerifiedClaim { claim: string; verdict: ClaimVerdict; note: string; evidence: ClaimEvidence[] }
+interface DDReportVerification { claims: VerifiedClaim[]; summary: string; verifiedAt: string }
+
+/** 裁决徽章样式（✅ 一致 / ⚠️ 夸大 / ❌ 矛盾 / ❓ 未证实） */
+const VERDICT_BADGES: Record<ClaimVerdict, { label: string; cls: string }> = {
+  SUPPORTED: { label: '✅ 一致', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
+  EXAGGERATED: { label: '⚠️ 夸大', cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
+  CONTRADICTED: { label: '❌ 矛盾', cls: 'bg-red-50 text-red-600 border border-red-200' },
+  UNVERIFIED: { label: '❓ 未证实', cls: 'bg-gray-100 text-gray-500 border border-gray-200' },
+}
+
 /** 投委会问答条目 */
 interface DDQAItem {
   id: string
@@ -72,6 +86,8 @@ interface ModuleResource {
   report: DDModuleReport | null
   analysis: DDModuleAnalysis | null
   conclusion: string | null
+  /** 报告外部校验（互联网交叉核验；null=未校验） */
+  verification: DDReportVerification | null
   /** 仅团队与治理：团队评价确认状态（null=未生成；false=草稿中；true=已确认） */
   teamEvaluationConfirmed: boolean | null
   updatedAt: string
@@ -513,6 +529,20 @@ function DDFullReportModal({
                 dangerouslySetInnerHTML={{ __html: renderReportHtml(r.report!.summary, r.report!.images) }}
               />
               {r.report!.teamEvaluation && <ReportTeamEvaluationTable te={r.report!.teamEvaluation} />}
+              {r.verification && r.verification.claims.length > 0 && (
+                <div className="mt-3 px-3 py-2 rounded-xl bg-sky-50/60 border border-sky-100 flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-bold text-sky-700">🔍 外部校验</span>
+                  <span className="text-[11px] text-gray-600">{r.verification.summary}</span>
+                  {r.verification.claims
+                    .filter(c => c.verdict === 'EXAGGERATED' || c.verdict === 'CONTRADICTED')
+                    .slice(0, 3)
+                    .map((c, j) => (
+                      <span key={j} className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${VERDICT_BADGES[c.verdict].cls}`}>
+                        {VERDICT_BADGES[c.verdict].label}：{c.claim.slice(0, 24)}{c.claim.length > 24 ? '…' : ''}
+                      </span>
+                    ))}
+                </div>
+              )}
               {(r.report!.opportunities.length > 0 || r.report!.risks.length > 0) && (
                 <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                   {r.report!.opportunities.length > 0 && (
@@ -603,6 +633,7 @@ function FrontModuleDetail({
   const [conclusion, setConclusion] = useState(module.conclusion || '')
   const [savingConclusion, setSavingConclusion] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
+  const [verifying, setVerifying] = useState(false)
   const [opMsg, setOpMsg] = useState('')
   const [opErr, setOpErr] = useState('')
   const [previewDoc, setPreviewDoc] = useState<{ fileName: string; fileUrl: string; fileType: string } | null>(null)
@@ -665,6 +696,26 @@ function FrontModuleDetail({
       setOpErr('网络错误（AI 分析耗时较长，请稍后重试）')
     } finally {
       setAnalyzing(false)
+    }
+  }
+
+  // ── 报告外部校验：提取声明 → 联网交叉核验 ──
+  const runVerify = async () => {
+    if (verifying || !module.report) return
+    setVerifying(true)
+    setOpMsg('AI 正在联网检索并交叉核验报告关键声明（约 30-60 秒）...')
+    setOpErr('')
+    try {
+      const res = await fetch(`/api/dd/resources/${projectId}/${module.moduleKey}/verify`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) { setOpMsg(''); setOpErr(data.error || '外部校验失败'); return }
+      setOpMsg('')
+      await onRefresh()
+    } catch {
+      setOpMsg('')
+      setOpErr('网络错误（联网核验耗时较长，请稍后重试）')
+    } finally {
+      setVerifying(false)
     }
   }
 
@@ -920,6 +971,14 @@ function FrontModuleDetail({
                 </div>
               )}
               {module.report && <ModuleReportCard report={module.report} />}
+              {module.report && (
+                <ReportVerificationCard
+                  verification={module.verification}
+                  canEdit={canEdit}
+                  verifying={verifying}
+                  onVerify={runVerify}
+                />
+              )}
             </div>
           </details>
         </div>
@@ -1300,6 +1359,95 @@ function ModuleReportCard({ report }: { report: DDModuleReport }) {
         </div>
       )}
       <p className="text-[10px] text-gray-400 mt-2 text-right">生成于 {new Date(report.generatedAt).toLocaleString('zh-CN')}</p>
+    </div>
+  )
+}
+
+/**
+ * 报告外部校验卡（ClaimVerifier）：
+ * - 未校验：提示文案 + 「开始外部校验」按钮（canEdit）
+ * - 已校验：裁决汇总 + 逐条声明（裁决徽章 / 裁决说明 / 证据来源链接）+ 重新校验按钮
+ * - 校验中：进行中提示
+ */
+function ReportVerificationCard({
+  verification,
+  canEdit,
+  verifying,
+  onVerify,
+}: {
+  verification: DDReportVerification | null
+  canEdit: boolean
+  verifying: boolean
+  onVerify: () => void
+}) {
+  return (
+    <div className="p-3.5 rounded-xl bg-white border border-sky-100">
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-1.5">
+        <p className="text-[11px] font-bold text-sky-700">
+          🔍 外部校验 <span className="font-normal text-gray-400">· 互联网交叉核验报告关键声明</span>
+        </p>
+        {canEdit && !verifying && (
+          <button
+            onClick={onVerify}
+            className="text-[10px] px-2.5 py-1 bg-sky-50 text-sky-700 rounded-lg font-bold hover:bg-sky-100 border border-sky-100"
+          >
+            {verification ? '🔄 重新校验' : '🔍 开始外部校验'}
+          </button>
+        )}
+      </div>
+
+      {verifying ? (
+        <p className="text-[11px] text-sky-700 py-1.5 flex items-center gap-2">
+          <span className="inline-block w-3 h-3 rounded-full border-2 border-sky-300 border-t-sky-600 animate-spin" />
+          正在联网检索并交叉核验关键声明（约 30-60 秒）...
+        </p>
+      ) : !verification ? (
+        <p className="text-[11px] text-gray-400 py-1">
+          尚未校验。点击「开始外部校验」后，AI 将提取报告中的关键声明（营收/订单/良率/合作等）并联网交叉核验，
+          标记 <span className="text-emerald-600 font-bold">✅ 一致</span> / <span className="text-amber-600 font-bold">⚠️ 夸大</span> /{' '}
+          <span className="text-red-500 font-bold">❌ 矛盾</span> / <span className="text-gray-500 font-bold">❓ 未证实</span>。
+        </p>
+      ) : (
+        <div>
+          <div className="flex items-center gap-2 flex-wrap mb-2">
+            <span className="text-[10px] font-bold text-gray-600">{verification.summary}</span>
+            <span className="text-[10px] text-gray-400">校验于 {new Date(verification.verifiedAt).toLocaleString('zh-CN')}</span>
+          </div>
+          {verification.claims.length === 0 ? (
+            <p className="text-[11px] text-gray-400 py-1">{verification.summary}</p>
+          ) : (
+            <div className="space-y-2">
+              {verification.claims.map((c, i) => (
+                <div key={i} className="p-2.5 rounded-lg bg-slate-50/70 border border-slate-100">
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                    <p className="text-[11px] text-gray-700 leading-relaxed flex-1 min-w-[200px]">{c.claim}</p>
+                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex-shrink-0 ${VERDICT_BADGES[c.verdict].cls}`}>
+                      {VERDICT_BADGES[c.verdict].label}
+                    </span>
+                  </div>
+                  {c.note && <p className="text-[10px] text-gray-500 leading-relaxed mt-1">▸ {c.note}</p>}
+                  {c.evidence.length > 0 && (
+                    <div className="mt-1.5 flex flex-col gap-0.5">
+                      {c.evidence.map((e, j) => (
+                        <a
+                          key={j}
+                          href={e.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[10px] text-sky-600 hover:underline truncate"
+                          title={`${e.title}\n${e.snippet}`}
+                        >
+                          🔗 {e.title || e.url}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

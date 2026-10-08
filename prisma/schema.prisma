@@ -785,6 +785,8 @@ model DDModuleResource {
   screenshots String? // JSON 数组
   // 分模块 AI 报告：{ summary, opportunities: string[], risks: string[], generatedAt }
   reportJson String?
+  // 报告外部校验（ClaimVerifier 互联网交叉核验）：{ claims: [{ claim, verdict, note, evidence: [{ title, url, snippet }] }], summary, verifiedAt }
+  verificationJson String?
   // 单模块 AI 分析（上传资料后单独分析）：{ facts: [{ id, fact, source, grade, status }], actions: string[], analyzedAt }
   analysisJson String?
   // 维护人人工结论（回答模块核心问题，进入正式报告）

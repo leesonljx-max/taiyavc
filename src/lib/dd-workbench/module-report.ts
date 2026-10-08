@@ -217,11 +217,11 @@ export async function runModuleReportGeneration(projectId: string, projectName: 
     return { ok: false, missing: [], error: `部分模块报告生成失败（${failures.join('；')}），已生成的不受影响，可重试` }
   }
 
-  // 逐模块落库
+  // 逐模块落库（报告内容已更新 → 同步清空旧的外部校验结果，避免校验与报告脱节）
   for (const [moduleKey, report] of reports) {
     await prisma.dDModuleResource.update({
       where: { projectId_moduleKey: { projectId, moduleKey } },
-      data: { reportJson: JSON.stringify(report) },
+      data: { reportJson: JSON.stringify(report), verificationJson: null },
     })
   }
 
