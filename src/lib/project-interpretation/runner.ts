@@ -13,6 +13,7 @@ import { searchWebDual, type SearchResult } from '@/lib/tavily-search'
 import { parseAgentJson } from '@/lib/dd-harness/agent'
 import { recordTokenUsage } from '@/lib/token-accounting'
 import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
+import { buildUserSkillPromptBlock } from '@/lib/skill-registry'
 import {
   PI_RULES,
   isPIMatchLevel,
@@ -125,16 +126,21 @@ const FINANCING_CASES_SYSTEM_PROMPT = `你是一级市场投资研究员。基�
 /**
  * 执行"解读项目"：七维解读 + 联网检索行业融资案例
  * 返回完整 InterpretationResult 并由调用方落库
+ * userId（P3.6）：传入时注入本人 CONFIRMED 技能，分析框架冲突时以用户技能为准；未传/无技能走固定框架
  */
 export async function runInterpretation(input: {
   projectName: string
   documentText: string
+  userId?: string
 }): Promise<InterpretationResult> {
   const docText = input.documentText.slice(0, MAX_DOC_TEXT)
 
-  // 1. 七维解读（纯文档分析）
+  // 0. 用户技能块（本人 CONFIRMED 技能；无技能时为空串，完全走固定框架）
+  const skillBlock = await buildUserSkillPromptBlock(input.userId).catch(() => '')
+
+  // 1. 七维解读（纯文档分析；用户技能框架优先于固定框架）
   const { parsed: base } = await callDeepSeekJson<Partial<InterpretationResult>>(
-    INTERPRET_SYSTEM_PROMPT,
+    INTERPRET_SYSTEM_PROMPT + skillBlock,
     `项目文档内容：\n\n${docText}\n\n请按固定框架输出 JSON 解读。`,
     3500
   )

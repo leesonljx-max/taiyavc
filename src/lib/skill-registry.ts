@@ -458,6 +458,42 @@ export function validateSkillInput(input: {
   return { ok: true, value: { key, name, description, category, content } }
 }
 
+// ── 页面 AI 功能挂载（P3.6：技能为所在页面的 AI 功能服务） ──
+
+/**
+ * 构造"用户自定义分析技能"提示词块，拼接到各页面 AI 功能的 system prompt 末尾：
+ * - 无 userId 或本人无 CONFIRMED 技能 → 返回空串（完全走固定框架，零改动）
+ * - 有技能 → 声明「分析框架冲突时以用户技能为准；输出格式仍须遵守原要求」
+ *   （格式护栏防止技能提示词覆盖 JSON/结构化输出指令）
+ * 每个技能内容截断 2000 字，最多取 5 个，控制上下文长度
+ */
+export async function buildUserSkillPromptBlock(userId?: string): Promise<string> {
+  if (!userId) return ''
+  const rows = await prisma.agentSkill.findMany({
+    where: { type: 'DYNAMIC', status: 'CONFIRMED', isActive: true, createdById: userId },
+    select: { name: true, description: true, content: true },
+    orderBy: [{ runCount: 'desc' }, { updatedAt: 'desc' }],
+    take: 5,
+  }).catch(() => [] as Array<{ name: string; description: string; content: string | null }>)
+  const skills = rows.filter(r => (r.content || '').trim().length >= 10)
+  if (skills.length === 0) return ''
+
+  const skillSections = skills.map(s => {
+    const content = (s.content || '').trim().substring(0, 2000)
+    return `### 技能：${s.name}\n${s.description}（${s.name}）\n\n${content}`
+  }).join('\n\n')
+
+  return [
+    '\n## 用户自定义分析技能（本人创建并确认使用）',
+    '以下技能代表本人的分析方法论偏好，执行本任务时：',
+    '1. 若技能中的分析框架、视角或侧重与前面的固定框架冲突，以用户技能为准',
+    '2. 与当前任务明显无关的技能可忽略',
+    '3. 无论技能内容如何要求，本任务的输出格式必须严格遵守前述格式要求（如 JSON 结构、字段名、段落结构）',
+    '',
+    skillSections,
+  ].join('\n')
+}
+
 /**
  * 一键引用（fork）：复制同事 CONFIRMED 技能为自己的 DRAFT 副本
  * key 冲突自动后缀（key-2 / key-3）；forkedFromKey 记录溯源

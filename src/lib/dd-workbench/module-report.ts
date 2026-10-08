@@ -12,6 +12,7 @@ import { getProjectModuleResources, isModuleComplete, findMissingModules, type P
 import { buildMultimodalDigest, buildMessageContent, type ExtractedImage } from './vision'
 import { parseEvaluation, computeEvaluation } from './team-evaluation'
 import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
+import { buildUserSkillPromptBlock } from '@/lib/skill-registry'
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
 
@@ -42,7 +43,8 @@ async function callModuleReport(
   inputsHint: string,
   contentDigest: string,
   images: ExtractedImage[],
-  extraPrompt = ''
+  extraPrompt = '',
+  skillBlock = ''
 ): Promise<DDModuleReport> {
   const apiKey = process.env.DEEPSEEK_API_KEY
   if (!apiKey) throw new Error('DeepSeek API Key 未配置')
@@ -56,7 +58,7 @@ async function callModuleReport(
       body: JSON.stringify({
         model: DEEPSEEK_MODEL,
         messages: [
-          { role: 'system', content: MODULE_REPORT_SYSTEM_PROMPT },
+          { role: 'system', content: MODULE_REPORT_SYSTEM_PROMPT + skillBlock },
           {
             role: 'user',
             content: buildMessageContent(
@@ -153,8 +155,9 @@ async function buildTeamEvaluationSnapshot(projectId: string): Promise<NonNullab
 /**
  * 生成尽调报告：九大模块分别总结（并发 3 组控制速率），逐模块落库 reportJson
  * 返回生成后的全量模块资料
+ * userId（P3.6）：传入时注入本人 CONFIRMED 技能（分析框架冲突时以用户技能为准）
  */
-export async function runModuleReportGeneration(projectId: string, projectName: string): Promise<{
+export async function runModuleReportGeneration(projectId: string, projectName: string, userId?: string): Promise<{
   ok: boolean
   error?: string
   missing: string[]
@@ -167,6 +170,9 @@ export async function runModuleReportGeneration(projectId: string, projectName: 
   if (missing.length > 0) {
     return { ok: false, missing, error: `以下模块资料不完整：${missing.join('、')}。请到资料中心补充（上传文档/填写文本（可粘贴截图）任一项即可）` }
   }
+
+  // 用户技能块（本人 CONFIRMED 技能；无技能时为空串，完全走固定框架）
+  const skillBlock = await buildUserSkillPromptBlock(userId).catch(() => '')
 
   const { DD_TEMPLATE_MODULES } = await import('./template')
   const tplByKey = new Map(DD_TEMPLATE_MODULES.map(m => [m.key, m]))
@@ -200,7 +206,8 @@ export async function runModuleReportGeneration(projectId: string, projectName: 
             tpl.inputs,
             digest,
             images,
-            extraPrompt
+            extraPrompt,
+            skillBlock
           )
           if (res.moduleKey === 'TEAM_GOVERNANCE' && teamEvaluation) {
             report.teamEvaluation = teamEvaluation
@@ -247,8 +254,8 @@ const MODULE_ANALYSIS_SYSTEM_PROMPT = `你是一级市场资深尽调分析师�
 - grade 只能取 A/B/C/D 单字母
 - actions 2-5 条，针对资料缺口与待核验项给出可执行的下一步`
 
-/** 单模块分析：AI 从模块资料提取事实卡（facts）与下一步行动（actions） */
-export async function runModuleAnalysis(projectId: string, moduleKey: string): Promise<{
+/** 单模块分析：AI 从模块资料提取事实卡（facts）与下一步行动（actions）；userId 注入本人技能（P3.6） */
+export async function runModuleAnalysis(projectId: string, moduleKey: string, userId?: string): Promise<{
   ok: boolean
   error?: string
   analysis?: DDModuleAnalysis
@@ -263,6 +270,9 @@ export async function runModuleAnalysis(projectId: string, moduleKey: string): P
   const apiKey = process.env.DEEPSEEK_API_KEY
   if (!apiKey) throw new Error('DeepSeek API Key 未配置')
 
+  // 用户技能块（本人 CONFIRMED 技能；无技能时为空串）
+  const skillBlock = await buildUserSkillPromptBlock(userId).catch(() => '')
+
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 90000)
   try {
@@ -273,7 +283,7 @@ export async function runModuleAnalysis(projectId: string, moduleKey: string): P
       body: JSON.stringify({
         model: DEEPSEEK_MODEL,
         messages: [
-          { role: 'system', content: MODULE_ANALYSIS_SYSTEM_PROMPT },
+          { role: 'system', content: MODULE_ANALYSIS_SYSTEM_PROMPT + skillBlock },
           {
             role: 'user',
             content: buildMessageContent(`尽调模块：${res.moduleName}\n模块核心问题：${res.coreQuestion}\n\n该模块资料：\n\n${digest}\n\n请输出事实卡与下一步行动 JSON。`, images),

@@ -18,6 +18,7 @@ import { parseAgentJson } from '@/lib/dd-harness/agent'
 import { searchWebDual, type SearchResult } from '@/lib/tavily-search'
 import { recordTokenUsage } from '@/lib/token-accounting'
 import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
+import { buildUserSkillPromptBlock } from '@/lib/skill-registry'
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
 
@@ -183,7 +184,8 @@ function buildIndustryBlock(industry: string, results: SearchResult[]): string {
  */
 async function analyzeIndustryBatch(
   group: string[],
-  searchByIndustry: Map<string, SearchResult[]>
+  searchByIndustry: Map<string, SearchResult[]>,
+  skillBlock = ''
 ): Promise<IndustryNewsCard[]> {
   const today = todayKey()
   const apiKey = process.env.DEEPSEEK_API_KEY
@@ -218,7 +220,7 @@ async function analyzeIndustryBatch(
       "note": "仅当无事件时填写原因"
     }
   ]
-}`
+}` + skillBlock
 
   // 超时控制：90 秒
   const controller = new AbortController()
@@ -320,6 +322,8 @@ export interface RunIndustryNewsOptions {
   force?: boolean
   /** 指定行业（点击气泡即时分析）；缺省为前十行业 */
   industries?: string[]
+  /** 当前用户（P3.6：即时分析时注入本人 CONFIRMED 技能；cron 场景不传，走固定框架） */
+  userId?: string
 }
 
 export interface RunIndustryNewsOutcome {
@@ -361,6 +365,9 @@ export async function runIndustryNews(
 
   pending.forEach(ind => runningIndustries.add(ind))
   try {
+    // 用户技能块（即时分析时注入本人 CONFIRMED 技能；cron 无 userId → 空串走固定框架）
+    const skillBlock = await buildUserSkillPromptBlock(opts.userId).catch(() => '')
+
     // 阶段 1：每行业一次精准搜索（并发，有同日缓存时直接命中）
     const searchResults = await Promise.all(pending.map(ind => searchIndustry(ind)))
     const searchByIndustry = new Map<string, SearchResult[]>()
@@ -371,7 +378,7 @@ export async function runIndustryNews(
     for (let i = 0; i < pending.length; i += BATCH_SIZE) {
       groups.push(pending.slice(i, i + BATCH_SIZE))
     }
-    const freshCards = (await Promise.all(groups.map(g => analyzeIndustryBatch(g, searchByIndustry)))).flat()
+    const freshCards = (await Promise.all(groups.map(g => analyzeIndustryBatch(g, searchByIndustry, skillBlock)))).flat()
 
     // 合并写回缓存
     const cards = mergeCards(existing, freshCards)

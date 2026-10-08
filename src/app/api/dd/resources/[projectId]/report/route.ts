@@ -33,7 +33,7 @@ export async function POST(
       return NextResponse.json({ error: '无权生成报告' }, { status: 403 })
     }
 
-    const result = await runModuleReportGeneration(params.projectId, project.name)
+    const result = await runModuleReportGeneration(params.projectId, project.name, currentUser.id)
     if (!result.ok) {
       return NextResponse.json(
         { error: result.error, missing: result.missing },

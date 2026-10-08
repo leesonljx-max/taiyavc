@@ -40,7 +40,7 @@ export async function POST(
       return NextResponse.json({ error: '无权分析该项目' }, { status: 403 })
     }
 
-    const result = await runModuleAnalysis(projectId, moduleKey)
+    const result = await runModuleAnalysis(projectId, moduleKey, currentUser.id)
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 400 })
     }

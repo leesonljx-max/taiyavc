@@ -41,7 +41,7 @@ export async function POST(
       return NextResponse.json({ error: '无效的报告期（格式：2026Q1 / 2026H1 / 2026FY）' }, { status: 400 })
     }
 
-    const result = await runPostInvestAnalysis(params.projectId, period)
+    const result = await runPostInvestAnalysis(params.projectId, period, currentUser.id)
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 400 })
     }

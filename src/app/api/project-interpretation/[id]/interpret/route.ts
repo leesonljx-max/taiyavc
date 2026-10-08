@@ -38,6 +38,7 @@ export async function POST(
       const result = await runInterpretation({
         projectName: record.projectName,
         documentText: record.documentText || '',
+        userId: session.user.id, // P3.6：注入本人技能，分析框架冲突时以用户技能为准
       })
       await prisma.projectInterpretation.update({
         where: { id: record.id },

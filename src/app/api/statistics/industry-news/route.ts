@@ -61,7 +61,8 @@ export async function POST(request: Request) {
     const force = body.force === true
 
     // 即时分析：同步等待完成（单行业 3-5 次搜索 + 1 次分析，约 20-40 秒）
-    const result = await runIndustryNews({ industries, force })
+    // P3.6：注入本人 CONFIRMED 技能（分析框架冲突时以用户技能为准）
+    const result = await runIndustryNews({ industries, force, userId: session.user.id })
 
     return NextResponse.json({
       date: result.date,

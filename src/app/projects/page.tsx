@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import DashboardLayout from '@/components/DashboardLayout'
-import { SkillPanelLauncher } from '@/components/SkillPanel'
 import AILeadsTab from '@/components/AILeadsTab'
 import Pagination from '@/components/Pagination'
 import { followStageLabels, followStageColors, type FollowStage } from './types'
@@ -407,9 +406,7 @@ export default function ProjectListPage() {
       title="项目管理"
       subtitle="管理和追踪您的投资项目"
       actions={
-        <>
-          <SkillPanelLauncher />
-          {tab === 'leads' ? (
+        tab === 'leads' ? (
           <button
             onClick={openCreateLead}
             className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl hover:from-primary-600 hover:to-primary-700 transition-all-smooth shadow-md shadow-primary-500/30 font-medium text-sm"
@@ -432,8 +429,7 @@ export default function ProjectListPage() {
             </svg>
             新建项目
           </Link>
-        )}
-        </>
+        )
       }
     >
       {/* Tab 切换：项目库 / 我的项目 / 项目线索 */}

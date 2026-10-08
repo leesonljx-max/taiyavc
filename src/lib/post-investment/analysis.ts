@@ -13,6 +13,7 @@ import { recordTokenUsage } from '@/lib/token-accounting'
 import { METRIC_BY_KEY, metricDictionaryText } from './metrics'
 import { computeMetricsWithChange, calcRunwayMonths, isValidPeriod, parsePeriod, type MetricWithChange } from './calc'
 import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
+import { buildUserSkillPromptBlock } from '@/lib/skill-registry'
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
 
@@ -190,8 +191,9 @@ function formatMetricsInput(metrics: MetricWithChange[]): string {
 }
 
 /** 投后分析主流程：补齐各期指标 → 计算同比环比 → 合并历史期文档做 AI 分析 → 落库
- *  分析任一期（当季或以往季）时，会把项目全部历史期文档纳入分析上下文（趋势与连续性判断） */
-export async function runPostInvestAnalysis(projectId: string, period: string): Promise<{
+ *  分析任一期（当季或以往季）时，会把项目全部历史期文档纳入分析上下文（趋势与连续性判断）
+ *  userId（P3.6）：传入时注入本人 CONFIRMED 技能（分析框架冲突时以用户技能为准） */
+export async function runPostInvestAnalysis(projectId: string, period: string, userId?: string): Promise<{
   ok: boolean
   error?: string
   metricCount?: number
@@ -260,9 +262,10 @@ export async function runPostInvestAnalysis(projectId: string, period: string): 
         .join('\n\n')}`.slice(0, 30000)
     : ''
 
-  // 6. AI 分析（合并本期 + 历史期数据）
+  // 6. AI 分析（合并本期 + 历史期数据；本人技能框架优先于固定框架）
+  const skillBlock = await buildUserSkillPromptBlock(userId).catch(() => '')
   const raw = await callDeepSeek(
-    ANALYSIS_SYSTEM_PROMPT,
+    ANALYSIS_SYSTEM_PROMPT + skillBlock,
     `报告期：${period}\n\n【本期结构化指标（同比环比已由程序计算，直接引用，禁止自行计算）】\n${formatMetricsInput(metricsWithChange)}${historyMetricsText ? `\n\n【历史各期指标时序】\n${historyMetricsText}` : ''}\n\n【现金覆盖月数（程序计算）】${runway !== null ? `${runway} 个月` : '无法计算（现金余额或经营现金流缺失/为正）'}\n\n【本期上传文档全文】\n${docsDigest}${historyDocsDigest}`,
     3500
   )

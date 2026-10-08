@@ -22,6 +22,7 @@ import prisma from '@/lib/prisma'
 import { resetMocks, mockState, chatCompletions } from './helpers/setup'
 import {
   listMySkills, listColleagueSkills, generateUniqueKey, forkSkill, runDynamicSkill,
+  buildUserSkillPromptBlock,
 } from '@/lib/skill-registry'
 import { searchPostInvestmentInternal, formatPostInvestHits } from '@/lib/dd-harness/post-investment-tool'
 import { runAIResearchChat } from '@/lib/ai-research-runner'
@@ -30,6 +31,7 @@ import { GET as MY_GET, POST as MY_POST, PATCH as MY_PATCH, DELETE as MY_DELETE 
 import { POST as CONFIRM_POST } from '@/app/api/skills/confirm/route'
 import { POST as FORK_POST } from '@/app/api/skills/fork/route'
 import { POST as RUN_POST } from '@/app/api/skills/run/route'
+import { POST as PI_INTERPRET } from '@/app/api/project-interpretation/[id]/interpret/route'
 
 const SUFFIX = String(Date.now()).slice(-6)
 const ALICE_EMAIL = `ps-alice-${SUFFIX}@test.com`
@@ -46,6 +48,8 @@ beforeEach(async () => {
   await prisma.aIChatSession.deleteMany({})
   await prisma.agentSkill.deleteMany({})
   await prisma.postInvestAnalysis.deleteMany({})
+  await prisma.interpretationQuestion.deleteMany({})
+  await prisma.projectInterpretation.deleteMany({})
   await prisma.project.deleteMany({ where: { name: { startsWith: 'P35测试' } } })
   await prisma.user.deleteMany({ where: { email: { in: [ALICE_EMAIL, BOB_EMAIL] } } })
 
@@ -62,6 +66,8 @@ after(async () => {
   await prisma.aIChatSession.deleteMany({})
   await prisma.agentSkill.deleteMany({})
   await prisma.postInvestAnalysis.deleteMany({})
+  await prisma.interpretationQuestion.deleteMany({})
+  await prisma.projectInterpretation.deleteMany({})
   await prisma.project.deleteMany({ where: { name: { startsWith: 'P35测试' } } })
   await prisma.user.deleteMany({ where: { email: { in: [ALICE_EMAIL, BOB_EMAIL] } } })
   await prisma.$disconnect()
@@ -371,4 +377,92 @@ test('AI行研：只挂载本人 CONFIRMED 技能——他人技能不出现在�
   await runAIResearchChat('再次提问', { sessionId: bobSession.id, userId: bobId, recentMessages: [] })
   assert.ok(agentTools.includes('run_skill'))
   assert.match(systemPrompt, /alice-skill-2/)
+})
+
+// ── P3.6：页面 AI 功能挂载（技能为所在页面的 AI 功能服务） ──
+
+test('P3.6：buildUserSkillPromptBlock——无 userId/无技能返回空串；CONFIRMED 注入且含冲突声明与格式护栏；DRAFT/停用不注入', async () => {
+  // 无 userId（cron 等无用户场景）→ 空串，完全走固定框架
+  assert.equal(await buildUserSkillPromptBlock(undefined), '')
+
+  // 用户无技能 → 空串
+  assert.equal(await buildUserSkillPromptBlock(aliceId), '')
+
+  await seedSkill() // alice CONFIRMED
+  await seedSkill({ key: 'alice-draft', status: 'DRAFT' }) // DRAFT 不注入
+  await seedSkill({ key: 'alice-paused', status: 'CONFIRMED', isActive: false }) // 停用不注入
+
+  const block = await buildUserSkillPromptBlock(aliceId)
+  assert.ok(block.length > 0)
+  assert.match(block, /用户自定义分析技能/)
+  assert.match(block, /以用户技能为准/) // 冲突优先级声明
+  assert.match(block, /输出格式必须严格遵守/) // 格式护栏
+  assert.match(block, /融资窗口评估/) // 技能名
+  assert.match(block, /窗口剩余时长/) // 技能内容
+  assert.ok(!block.includes('alice-draft'))
+
+  // 他人技能不注入（bob 视角为空）
+  assert.equal(await buildUserSkillPromptBlock(bobId), '')
+})
+
+test('P3.6：项目解读——挂载技能后解读 system prompt 注入技能块；无技能时为纯固定框架', async () => {
+  const record = await prisma.projectInterpretation.create({
+    data: {
+      userId: aliceId,
+      projectName: 'P35测试项目解读',
+      fileName: 'bp.txt',
+      fileUrl: '/api/uploads/interpretation-docs/x.txt',
+      fileType: 'text/plain',
+      fileSize: 100,
+      documentText: '硅光计算芯片项目，核心团队来自清华，已获云厂商POC订单，拟融资2亿元。',
+    },
+  })
+  const interpretJson = JSON.stringify({
+    projectName: 'P35测试项目解读', industry: '半导体芯片',
+    marketPosition: '早期卡位', techLeadership: '硅光路线', teamStanding: '清华系',
+    competitionAnalysis: '起步晚', startupWindow: '窗口2-3年', marketEstimate: 'POC为主',
+  })
+
+  let interpretSystem = ''
+  mockState.fetchHandler = (_url, body) => {
+    const system = String((body.messages as Array<{ content: string }>)[0]?.content || '')
+    if (system.includes('结构化 JSON 解读')) {
+      interpretSystem = system
+      return chatCompletions(interpretJson)
+    }
+    if (system.includes('搜索关键词')) {
+      return chatCompletions(JSON.stringify({ queries: [{ text: '硅光计算 融资', lang: 'zh' }] }))
+    }
+    if (system.includes('融资案例')) {
+      return chatCompletions(JSON.stringify({ cases: [] }))
+    }
+    return chatCompletions('{}')
+  }
+
+  // 1) 无技能：system prompt 为纯固定框架（不含技能块）
+  asAlice()
+  let res = await PI_INTERPRET(new Request(`http://t/api/project-interpretation/${record.id}/interpret`, { method: 'POST' }), { params: { id: record.id } })
+  assert.equal(res.status, 200)
+  assert.ok(interpretSystem.includes('结构化 JSON 解读'))
+  assert.ok(!interpretSystem.includes('用户自定义分析技能'))
+
+  // 2) 挂载 CONFIRMED 技能：解读 system prompt 注入技能块（冲突时以用户技能为准）
+  await seedSkill()
+  const record2 = await prisma.projectInterpretation.create({
+    data: {
+      userId: aliceId,
+      projectName: 'P35测试项目解读2',
+      fileName: 'bp.txt',
+      fileUrl: '/api/uploads/interpretation-docs/y.txt',
+      fileType: 'text/plain',
+      fileSize: 100,
+      documentText: '光互连芯片项目，A轮，订单增长中。',
+    },
+  })
+  res = await PI_INTERPRET(new Request(`http://t/api/project-interpretation/${record2.id}/interpret`, { method: 'POST' }), { params: { id: record2.id } })
+  assert.equal(res.status, 200)
+  assert.ok(interpretSystem.includes('结构化 JSON 解读'))
+  assert.ok(interpretSystem.includes('用户自定义分析技能'))
+  assert.match(interpretSystem, /以用户技能为准/)
+  assert.match(interpretSystem, /融资窗口评估/)
 })
