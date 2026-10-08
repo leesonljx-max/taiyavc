@@ -16,6 +16,7 @@ import { POST as QUESTIONS } from '@/app/api/project-interpretation/[id]/questio
 import { POST as VERIFY } from '@/app/api/project-interpretation/[id]/verify/route'
 import { POST as CONCLUSION } from '@/app/api/project-interpretation/[id]/conclusion/route'
 import { POST as CREATE_PROJECT } from '@/app/api/project-interpretation/[id]/create-project/route'
+import { POST as CREATE_DRAFT } from '@/app/api/project-interpretation/[id]/create-project/draft/route'
 import { resetMocks, mockState, chatCompletions } from './helpers/setup'
 
 const USER_EMAIL = 'pi2-user@test.com'
@@ -623,7 +624,7 @@ test('create-project：AI 按项目库模板提取并创建（主要产品/核�
   asUser()
   await seedVerified()
 
-  // mock 项目库模板提取
+  // mock 项目库模板提取（P5：排版化——序号分点 + 重点加粗）
   mockState.fetchHandler = (url, body) => {
     const system = String((body.messages as Array<{ content: string }>)[0]?.content || '')
     if (system.includes('项目库创建模板')) {
@@ -633,10 +634,10 @@ test('create-project：AI 按项目库模板提取并创建（主要产品/核�
           companyFullName: '光子芯片科技（北京）有限公司',
           industry: '半导体芯片',
           companyPosition: '硅光计算加速芯片',
-          mainProducts: '硅光计算加速芯片（BP 原文：产品为硅光计算加速芯片，已获云厂商POC订单）',
-          coreAdvantage: '硅光混合计算路线，有流片经验（BP 原文截取）',
-          coreTeam: '核心团队来自清华（BP 原文截取）',
-          description: '硅光计算芯片项目，已获云厂商 POC 订单',
+          mainProducts: '1. **硅光计算加速芯片**——BP 原文：产品为硅光计算加速芯片\n2. 已获**云厂商 POC 订单**',
+          coreAdvantage: '1. **硅光混合计算路线**，有流片经验（BP 原文截取）\n2. 差异化在互联架构',
+          coreTeam: '1. 张三——创始人/CEO，清华博士（BP 原文）\n2. 访谈补充：团队在清华实验室共事多年',
+          description: '1. 硅光计算芯片项目\n2. 已获**云厂商 POC 订单**',
           financingRound: 'A轮',
           totalAmount: '2亿',
           investmentValuation: 8,
@@ -650,12 +651,49 @@ test('create-project：AI 按项目库模板提取并创建（主要产品/核�
   const fresh = await prisma.projectInterpretation.create({
     data: { userId, projectName: '未校验', fileName: 'a.txt', fileUrl: '', fileType: 'text/plain', fileSize: 1, documentText: DOC_TEXT },
   })
-  let res = await CREATE_PROJECT(post(`http://t/api/project-interpretation/${fresh.id}/create-project`), { params: { id: fresh.id } })
+  let res: Response = await CREATE_DRAFT(post(`http://t/api/project-interpretation/${fresh.id}/create-project/draft`), { params: { id: fresh.id } })
   assert.equal(res.status, 400)
   assert.match((await res.json()).error, /先完成访谈校验/)
 
-  // 正常创建 → 项目落库 + linkedProjectId 回写
+  // ── 第一步：draft 预取（不创建项目） ──
+  res = await CREATE_DRAFT(post(`http://t/api/project-interpretation/${recordId}/create-project/draft`), { params: { id: recordId } })
+  assert.equal(res.status, 200)
+  const draftBody = await res.json()
+  assert.equal(draftBody.draft.name, '光子芯片')
+  // 排版化产物：分点 + 加粗
+  assert.match(draftBody.draft.mainProducts, /1\. \*\*硅光计算加速芯片\*\*/)
+  assert.match(draftBody.draft.coreTeam, /1\. 张三/)
+  assert.ok(draftBody.defaultTargetDate)
+  // 未创建项目（draft 阶段无落库）
+  assert.equal(await prisma.project.count({ where: { name: '光子芯片' } }), 0)
+
+  // ── 第二步：create-project 必填校验（缺 body → 400 列出必填项） ──
   res = await CREATE_PROJECT(post(`http://t/api/project-interpretation/${recordId}/create-project`), { params: { id: recordId } })
+  assert.equal(res.status, 400)
+  assert.match((await res.json()).error, /必填项/)
+
+  // ── 第二步：补全表单后创建 → 项目落库（字段=提交的表单数据） + linkedProjectId 回写 ──
+  const formPayload = {
+    name: '光子芯片',
+    companyFullName: '光子芯片科技（北京）有限公司',
+    industry: '半导体芯片',
+    companyPosition: '硅光计算加速芯片',
+    mainProducts: draftBody.draft.mainProducts,
+    coreAdvantage: draftBody.draft.coreAdvantage,
+    coreTeam: draftBody.draft.coreTeam,
+    description: draftBody.draft.description,
+    financingRound: 'A轮',
+    totalAmount: '2亿',
+    investmentValuation: 8,
+    targetDate: '2026-10-01',
+  }
+  res = await CREATE_PROJECT(
+    post(`http://t/api/project-interpretation/${recordId}/create-project`, {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formPayload),
+    }),
+    { params: { id: recordId } }
+  )
   assert.equal(res.status, 200)
   const body = await res.json()
   assert.ok(body.projectId)
@@ -664,9 +702,9 @@ test('create-project：AI 按项目库模板提取并创建（主要产品/核�
   assert.ok(project)
   assert.equal(project!.name, '光子芯片')
   assert.equal(project!.industry, '半导体芯片')
-  assert.ok(project!.mainProducts!.includes('硅光计算加速芯片'))
+  assert.ok(project!.mainProducts!.includes('**硅光计算加速芯片**'))
   assert.ok(project!.coreAdvantage!.includes('流片'))
-  assert.ok(project!.coreTeam!.includes('清华'))
+  assert.ok(project!.coreTeam!.includes('张三'))
   assert.equal(project!.followStage, 'INITIAL_TALK')
   assert.equal(project!.totalAmount, '2亿')
   assert.equal(project!.investmentValuation, 8)
@@ -678,15 +716,27 @@ test('create-project：AI 按项目库模板提取并创建（主要产品/核�
   assert.equal(record!.linkedProjectId, body.projectId)
 
   // 重复创建 → 400
-  res = await CREATE_PROJECT(post(`http://t/api/project-interpretation/${recordId}/create-project`), { params: { id: recordId } })
+  res = await CREATE_PROJECT(
+    post(`http://t/api/project-interpretation/${recordId}/create-project`, {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formPayload),
+    }),
+    { params: { id: recordId } }
+  )
   assert.equal(res.status, 400)
   assert.match((await res.json()).error, /已创建/)
 
-  // 重名 → 409（新记录 + AI 提取同名）
+  // 重名 → 409（新记录提交同名表单）
   const other = await prisma.projectInterpretation.create({
     data: { userId, projectName: '光子芯片2', fileName: 'b.txt', fileUrl: '', fileType: 'text/plain', fileSize: 1, documentText: DOC_TEXT, verifyStatus: 'DONE', conclusionJson: '{}' },
   })
-  res = await CREATE_PROJECT(post(`http://t/api/project-interpretation/${other.id}/create-project`), { params: { id: other.id } })
+  res = await CREATE_PROJECT(
+    post(`http://t/api/project-interpretation/${other.id}/create-project`, {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...formPayload, companyPosition: '硅光计算芯片' }),
+    }),
+    { params: { id: other.id } }
+  )
   assert.equal(res.status, 409)
   const dup = await res.json()
   assert.match(dup.error, /已存在同名项目/)
@@ -737,7 +787,26 @@ test('create-project：BP 原文自动转存到项目文档（ProjectDocument + 
     return chatCompletions('{}')
   }
 
-  const res = await CREATE_PROJECT(post(`http://t/api/project-interpretation/${recordId}/create-project`), { params: { id: recordId } })
+  const res = await CREATE_PROJECT(
+    post(`http://t/api/project-interpretation/${recordId}/create-project`, {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: '光子芯片',
+        companyFullName: '光子芯片科技有限公司',
+        industry: '半导体芯片',
+        companyPosition: '硅光计算芯片',
+        mainProducts: '硅光计算加速芯片',
+        coreAdvantage: '硅光路线',
+        coreTeam: '清华团队',
+        description: '硅光计算芯片项目',
+        financingRound: 'A轮',
+        totalAmount: '2亿',
+        investmentValuation: 8,
+        targetDate: '2026-10-01',
+      }),
+    }),
+    { params: { id: recordId } }
+  )
   assert.equal(res.status, 200)
   const body = await res.json()
 

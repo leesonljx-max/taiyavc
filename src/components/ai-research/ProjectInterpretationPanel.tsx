@@ -19,6 +19,63 @@ import type {
 
 // ── 类型 ──
 
+/** AI 预取的项目库填充草稿（draft 接口返回） */
+interface DraftData {
+  name: string
+  companyFullName: string
+  industry: string
+  companyPosition: string
+  mainProducts: string
+  coreAdvantage: string
+  coreTeam: string
+  description: string
+  financingRound: string
+  totalAmount: string
+  investmentValuation: number | null
+}
+
+/** 预填充创建表单（维护人补全必填项后确认创建） */
+interface CreateProjectForm {
+  name: string
+  companyFullName: string
+  industry: string
+  companyPosition: string
+  mainProducts: string
+  coreAdvantage: string
+  coreTeam: string
+  description: string
+  financingRound: string
+  totalAmount: string
+  investmentValuation: string
+  targetDate: string
+}
+
+/** 行业预设选项（与项目库新建页一致，支持自定义输入） */
+const INDUSTRY_OPTIONS = [
+  'AI应用', 'AI硬件', 'AI基础设施', '具身智能', '商业航天', '量子计算',
+  '脑机接口', '可控核聚变', '半导体设备', '半导体芯片', '光学', '新材料',
+]
+
+/** 融资轮次选项 */
+const FINANCING_ROUND_OPTIONS = ['天使轮', 'Pre-A轮', 'A轮', 'A+轮', 'B轮', 'C轮', 'D轮', 'E轮', 'Pre-IPO', '战略融资']
+
+/** 富文本字段的排版预览：按行分点渲染，**text** 转 <strong> */
+function RichPreview({ text }: { text: string }) {
+  const lines = (text || '').split('\n').filter(l => l.trim())
+  if (lines.length === 0) return <p className="text-[11px] text-gray-300">（空，可编辑输入，支持 1. 2. 分点与 **加粗**）</p>
+  return (
+    <div className="space-y-1">
+      {lines.map((line, i) => (
+        <p key={i} className="text-[11px] text-gray-600 leading-relaxed">
+          {line.split(/\*\*(.+?)\*\*/g).map((part, j) =>
+            j % 2 === 1 ? <strong key={j} className="text-gray-900">{part}</strong> : <span key={j}>{part}</span>
+          )}
+        </p>
+      ))}
+    </div>
+  )
+}
+
 interface InterpretationSummary {
   id: string
   projectName: string
@@ -610,8 +667,12 @@ function Detail({
     }
   }
 
-  // ── 闭环创建到项目库：校验结论生成后弹窗提醒（每条记录只提醒一次） ──
+  // ── 闭环创建到项目库（P5：预填充表单 + 维护人补全必填项后确认创建） ──
   const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [draftLoading, setDraftLoading] = useState(false)
+  const [draftErr, setDraftErr] = useState('')
+  const [createFormOpen, setCreateFormOpen] = useState(false)
+  const [createForm, setCreateForm] = useState<CreateProjectForm | null>(null)
   const [creating, setCreating] = useState(false)
   const [createErr, setCreateErr] = useState('')
   const [createdProjectId, setCreatedProjectId] = useState<string | null>(null)
@@ -631,23 +692,79 @@ function Detail({
     }
   }, [detail.id, detail.verifyStatus, detail.conclusionJson, detail.linkedProjectId])
 
+  /** 第一步：AI 预取填充信息（排版化提取，不创建项目）→ 打开预填充表单 */
+  const handleStartFill = async () => {
+    if (draftLoading) return
+    setDraftLoading(true)
+    setDraftErr('')
+    try {
+      const res = await fetch(`/api/project-interpretation/${detail.id}/create-project/draft`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        setDraftErr(data.error || 'AI 提取失败')
+        return
+      }
+      const d = data.draft as DraftData
+      setCreateForm({
+        name: d.name || '',
+        companyFullName: d.companyFullName || '',
+        industry: d.industry || '',
+        companyPosition: d.companyPosition || '',
+        mainProducts: d.mainProducts || '',
+        coreAdvantage: d.coreAdvantage === '未披露' ? '' : (d.coreAdvantage || ''),
+        coreTeam: d.coreTeam === '未披露' ? '' : (d.coreTeam || ''),
+        description: d.description || '',
+        financingRound: d.financingRound || '',
+        totalAmount: d.totalAmount === '待补充' ? '' : (d.totalAmount || ''),
+        investmentValuation: d.investmentValuation !== null && d.investmentValuation !== undefined ? String(d.investmentValuation) : '',
+        targetDate: data.defaultTargetDate || new Date().toISOString().split('T')[0],
+      })
+      setCreateModalOpen(false)
+      setCreateFormOpen(true)
+    } catch {
+      setDraftErr('网络错误（AI 提取耗时较长，请稍后重试）')
+    } finally {
+      setDraftLoading(false)
+    }
+  }
+
+  /** 第二步：维护人补全必填项后点击「创建项目」完成创建 */
   const handleCreateProject = async () => {
-    if (creating) return
+    if (creating || !createForm) return
+    const missing: string[] = []
+    if (!createForm.name.trim()) missing.push('项目名称')
+    if (!createForm.industry.trim()) missing.push('所处行业')
+    if (!createForm.companyPosition.trim()) missing.push('公司定位')
+    if (!createForm.totalAmount.trim()) missing.push('融资金额')
+    if (!createForm.investmentValuation.trim()) missing.push('投资估值')
+    if (!createForm.targetDate) missing.push('初聊日期')
+    if (missing.length > 0) {
+      setCreateErr(`请先填写必填项：${missing.join('、')}`)
+      return
+    }
     setCreating(true)
     setCreateErr('')
     try {
-      const res = await fetch(`/api/project-interpretation/${detail.id}/create-project`, { method: 'POST' })
+      const res = await fetch(`/api/project-interpretation/${detail.id}/create-project`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...createForm,
+          investmentValuation: createForm.investmentValuation ? Number(createForm.investmentValuation) : null,
+        }),
+      })
       const data = await res.json()
       if (!res.ok) {
         setCreateErr(data.error || '创建失败')
         return
       }
       setCreatedProjectId(data.projectId)
+      setCreateFormOpen(false)
       onProjectCreated()
-      // 创建成功后跳转到项目详情页，由维护人确认/修改 AI 提取的信息
+      // 创建成功后跳转到项目详情页
       router.push(`/projects/${data.projectId}`)
     } catch {
-      setCreateErr('网络错误（AI 提取耗时较长，请稍后重试）')
+      setCreateErr('网络错误，请稍后重试')
     } finally {
       setCreating(false)
     }
@@ -817,9 +934,9 @@ function Detail({
           {!createdProjectId && detail.verifyStatus === 'DONE' && detail.conclusionJson && (
             <div className="mt-3 flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 px-3.5 py-2.5">
               <span className="text-sm">💡</span>
-              <p className="text-xs text-gray-600 flex-1">校验结论已生成，可将该项目一键创建到项目库（AI 按项目库模板提取 BP 关键信息）</p>
+              <p className="text-xs text-gray-600 flex-1">校验结论已生成，可创建到项目库（AI 预填充 BP 信息，由你补全必填项后确认创建）</p>
               <button
-                onClick={() => { setCreateErr(''); setCreateModalOpen(true) }}
+                onClick={() => { setDraftErr(''); setCreateErr(''); setCreateModalOpen(true) }}
                 className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-bold rounded-lg hover:from-blue-700 hover:to-indigo-700"
               >
                 创建到项目库
@@ -1106,69 +1223,164 @@ function Detail({
           </div>
         )}
 
-        {/* 创建到项目库弹窗：校验结论生成后提醒（AI 按项目库模板提取 BP 关键信息） */}
+        {/* 创建到项目库·第一步：校验结论生成后提醒（AI 预填充，不直接创建） */}
         {createModalOpen && (
           <div
             className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
-            onClick={() => { if (!creating) setCreateModalOpen(false) }}
+            onClick={() => { if (!draftLoading) setCreateModalOpen(false) }}
           >
             <div
               className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6"
               onClick={e => e.stopPropagation()}
             >
-              {createdProjectId ? (
-                <div className="text-center space-y-3">
-                  <span className="text-4xl">🎉</span>
-                  <h4 className="text-base font-bold text-gray-900">已创建到项目库</h4>
-                  <p className="text-xs text-gray-500">
-                    AI 已按项目库模板提取关键信息（主要产品/核心优势/核心团队等），项目为「初聊」阶段，可在项目库中完善跟进。
-                  </p>
-                  <div className="flex items-center gap-2 justify-center pt-1">
-                    <a
-                      href={`/projects/${createdProjectId}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-4 py-2 bg-primary-500 text-white text-sm font-bold rounded-xl hover:bg-primary-600"
-                    >
-                      查看项目 →
-                    </a>
-                    <button
-                      onClick={() => setCreateModalOpen(false)}
-                      className="px-4 py-2 bg-white border border-gray-200 text-gray-600 text-sm font-bold rounded-xl hover:bg-gray-50"
-                    >
-                      留在解读页
-                    </button>
+              <div className="space-y-3">
+                <h4 className="text-base font-bold text-gray-900">将该项目创建到项目库？</h4>
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  系统将按<b>项目库创建模板</b>，从 BP 与解读结论中预填充项目信息——
+                  <b className="text-primary-700">主要产品、核心优势、核心团队</b>截取 BP 原文相关页与文字总结（分点排版、重点加粗）。
+                  预填充后由<b>你补全必填项并确认</b>，才会创建项目。
+                </p>
+                {draftErr && (
+                  <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{draftErr}</p>
+                )}
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    onClick={handleStartFill}
+                    disabled={draftLoading}
+                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-bold rounded-xl shadow-md hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50"
+                  >
+                    {draftLoading ? 'AI 提取 BP 信息中（约 30 秒）...' : '🤖 AI 预填充信息'}
+                  </button>
+                  <button
+                    onClick={() => setCreateModalOpen(false)}
+                    disabled={draftLoading}
+                    className="px-4 py-2.5 bg-white border border-gray-200 text-gray-600 text-sm font-bold rounded-xl hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    暂不创建
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 创建到项目库·第二步：预填充表单（维护人补全必填项 → 点击创建项目） */}
+        {createFormOpen && createForm && (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+            onClick={() => { if (!creating) setCreateFormOpen(false) }}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="px-6 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
+                <h4 className="text-base font-bold text-gray-900">创建项目到项目库</h4>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  AI 已预填充 BP 提取的信息（分点排版、重点加粗），请检查并补全 <span className="text-red-500 font-bold">* 必填项</span>后点击「创建项目」
+                </p>
+              </div>
+              <div className="p-6 space-y-4">
+                {/* 基本信息 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">项目名称 <span className="text-red-500">*</span></label>
+                    <input value={createForm.name} onChange={e => setCreateForm({ ...createForm, name: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-400 focus:border-primary-400" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">公司全称</label>
+                    <input value={createForm.companyFullName} onChange={e => setCreateForm({ ...createForm, companyFullName: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-400 focus:border-primary-400" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">所处行业 <span className="text-red-500">*</span></label>
+                    <input list="pi-industry-options" value={createForm.industry} onChange={e => setCreateForm({ ...createForm, industry: e.target.value })}
+                      placeholder="下拉选择或自定义输入"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-400 focus:border-primary-400" />
+                    <datalist id="pi-industry-options">
+                      {INDUSTRY_OPTIONS.map(o => <option key={o} value={o} />)}
+                    </datalist>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">公司定位 <span className="text-red-500">*</span></label>
+                    <input value={createForm.companyPosition} onChange={e => setCreateForm({ ...createForm, companyPosition: e.target.value })}
+                      placeholder="一句话定位（30字内）"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-400 focus:border-primary-400" />
                   </div>
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  <h4 className="text-base font-bold text-gray-900">将该项目创建到项目库？</h4>
-                  <p className="text-xs text-gray-500 leading-relaxed">
-                    校验结论已生成。系统将按<b>项目库创建模板</b>，从 BP 与解读结论中提取关键信息——
-                    <b className="text-primary-700">主要产品、核心优势、核心团队</b>等字段将截取 BP 原文对应资料并辅以文字描述，
-                    创建为「初聊」阶段项目（初聊日期取上传日期）。
-                  </p>
-                  {createErr && (
-                    <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{createErr}</p>
-                  )}
-                  <div className="flex items-center gap-2 pt-1">
-                    <button
-                      onClick={handleCreateProject}
-                      disabled={creating}
-                      className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-bold rounded-xl shadow-md hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50"
-                    >
-                      {creating ? 'AI 提取中（约 30 秒）...' : '🚀 AI 提取并创建'}
-                    </button>
-                    <button
-                      onClick={() => setCreateModalOpen(false)}
-                      disabled={creating}
-                      className="px-4 py-2.5 bg-white border border-gray-200 text-gray-600 text-sm font-bold rounded-xl hover:bg-gray-50 disabled:opacity-50"
-                    >
-                      暂不创建
-                    </button>
+                {/* 融资信息 */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">融资轮次</label>
+                    <select value={createForm.financingRound} onChange={e => setCreateForm({ ...createForm, financingRound: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white">
+                      <option value="">请选择</option>
+                      {FINANCING_ROUND_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">融资金额 <span className="text-red-500">*</span></label>
+                    <input value={createForm.totalAmount} onChange={e => setCreateForm({ ...createForm, totalAmount: e.target.value })}
+                      placeholder="如 8000万 / 2亿"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-400 focus:border-primary-400" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">投资估值（亿元）<span className="text-red-500">*</span></label>
+                    <input type="number" step="0.1" value={createForm.investmentValuation} onChange={e => setCreateForm({ ...createForm, investmentValuation: e.target.value })}
+                      placeholder="如 5.5"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-400 focus:border-primary-400" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">初聊日期 <span className="text-red-500">*</span></label>
+                    <input type="date" value={createForm.targetDate} onChange={e => setCreateForm({ ...createForm, targetDate: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-400 focus:border-primary-400" />
                   </div>
                 </div>
-              )}
+                {/* 富文本字段：编辑 + 排版预览 */}
+                {([
+                  ['mainProducts', '主要产品', 'AI 截取 BP 产品/服务相关页的原文关键表述', 6],
+                  ['coreAdvantage', '核心优势', 'AI 截取 BP 技术壁垒/差异化/里程碑相关段落', 5],
+                  ['coreTeam', '核心团队', 'BP 核心成员（一人一点）+ 访谈纪要中的团队补充信息', 8],
+                  ['description', '项目描述', '综合 BP、访谈纪要与解读结论的综述', 4],
+                ] as const).map(([field, label, hint, rows]) => (
+                  <div key={field}>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      {label}{field === 'mainProducts' && <span className="text-red-500"> *</span>}
+                      <span className="ml-2 text-[10px] text-gray-400 font-normal">{hint}｜支持 1. 2. 分点与 **加粗**</span>
+                    </label>
+                    <textarea
+                      value={createForm[field]}
+                      onChange={e => setCreateForm({ ...createForm, [field]: e.target.value })}
+                      rows={rows}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs font-mono leading-relaxed focus:ring-2 focus:ring-primary-400 focus:border-primary-400"
+                    />
+                    <div className="mt-1.5 rounded-lg bg-gray-50 border border-gray-100 px-3 py-2 max-h-32 overflow-y-auto">
+                      <p className="text-[10px] text-gray-400 mb-1">排版预览</p>
+                      <RichPreview text={createForm[field]} />
+                    </div>
+                  </div>
+                ))}
+                {createErr && (
+                  <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{createErr}</p>
+                )}
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    onClick={handleCreateProject}
+                    disabled={creating}
+                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-bold rounded-xl shadow-md hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50"
+                  >
+                    {creating ? '创建中...' : '🚀 创建项目'}
+                  </button>
+                  <button
+                    onClick={() => setCreateFormOpen(false)}
+                    disabled={creating}
+                    className="px-4 py-2.5 bg-white border border-gray-200 text-gray-600 text-sm font-bold rounded-xl hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    暂不创建
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
