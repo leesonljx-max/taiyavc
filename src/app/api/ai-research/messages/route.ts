@@ -48,6 +48,7 @@ export async function GET(request: Request) {
         content: m.content,
         sources: m.sourcesJson ? JSON.parse(m.sourcesJson) : [],
         projects: m.projectsJson ? JSON.parse(m.projectsJson) : [],
+        verification: m.verificationJson ? JSON.parse(m.verificationJson) : null,
         createdAt: m.createdAt,
       })),
     })
@@ -133,6 +134,7 @@ export async function POST(request: Request) {
         content: result.content,
         sources: result.citations,
         projects: result.projectHits,
+        verification: null,
         createdAt: saved.createdAt,
       },
     })

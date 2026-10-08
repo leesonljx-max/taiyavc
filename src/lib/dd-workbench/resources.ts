@@ -7,7 +7,7 @@
 
 import prisma from '@/lib/prisma'
 import { DD_TEMPLATE_MODULES } from './template'
-import type { DDReportVerification, ClaimVerdict, ClaimEvidence } from './claim-verifier'
+import type { ClaimVerification, ClaimVerdict, ClaimEvidence } from './claim-verifier'
 
 // ── JSON 字段结构 ──
 
@@ -82,7 +82,7 @@ export interface ParsedModuleResource {
   analysis: DDModuleAnalysis | null
   conclusion: string | null
   /** 报告外部校验（互联网交叉核验；null=未校验） */
-  verification: DDReportVerification | null
+  verification: ClaimVerification | null
   /** 仅 TEAM_GOVERNANCE：团队评价确认状态（null=未生成；false=草稿中，模块视为不完整；true=已确认） */
   teamEvaluationConfirmed: boolean | null
   updatedAt: string
@@ -174,10 +174,10 @@ export async function getProjectModuleResources(projectId: string): Promise<Pars
       } catch { analysis = null }
     }
     // 报告外部校验（ClaimVerifier）
-    let verification: DDReportVerification | null = null
+    let verification: ClaimVerification | null = null
     if (r?.verificationJson) {
       try {
-        const parsed = JSON.parse(r.verificationJson) as DDReportVerification
+        const parsed = JSON.parse(r.verificationJson) as ClaimVerification
         if (parsed && Array.isArray(parsed.claims) && typeof parsed.verifiedAt === 'string') {
           verification = {
             claims: parsed.claims

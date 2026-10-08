@@ -220,7 +220,8 @@ const QUESTIONS_SYSTEM_PROMPT = `你是一级市场资深投资人，站在投�
       "category": "TECH",
       "question": "问题（站在投资人角度必须问、能验证真伪的问题）",
       "idealAnswer": "站在行业和技术角度，这个问题理想情况下项目方应该给出的回答（80字内）",
-      "isSectorInsight": false
+      "isSectorInsight": false,
+      "claimFlag": false
     }
   ]
 }
@@ -229,12 +230,13 @@ const QUESTIONS_SYSTEM_PROMPT = `你是一级市场资深投资人，站在投�
 - 技术问题（category=TECH）至少 10 个，聚焦可验证的技术细节（如具体性能指标、工艺良率、第三方验证）
 - 每个问题的 idealAnswer 必须具体、可判断（好的理想答案应包含量化指标或可核验事实）
 - 问题不得空泛（避免"你们的优势是什么"这类问题）
-- isSectorInsight 仅在题目来源赛道沉淀时为 true，其余一律 false`
+- isSectorInsight 仅在题目来源赛道沉淀时为 true，其余一律 false
+- claimFlag 仅在题目针对"外部校验发现夸大/矛盾的声明"生成追问时为 true，其余一律 false`
 
 /** 校验 AI 生成的问题清单是否符合固定规则 */
 export function validateQuestions(
-  questions: Array<{ category?: string; question?: string; idealAnswer?: string; isSectorInsight?: boolean }>
-): { valid: boolean; error?: string; cleaned: Array<{ category: string; question: string; idealAnswer: string; isSectorInsight: boolean }> } {
+  questions: Array<{ category?: string; question?: string; idealAnswer?: string; isSectorInsight?: boolean; claimFlag?: boolean }>
+): { valid: boolean; error?: string; cleaned: Array<{ category: string; question: string; idealAnswer: string; isSectorInsight: boolean; claimFlag: boolean }> } {
   const cleaned = questions
     .filter(q => q && typeof q.question === 'string' && q.question.trim() && typeof q.idealAnswer === 'string' && q.idealAnswer.trim())
     .map(q => ({
@@ -242,6 +244,7 @@ export function validateQuestions(
       question: q.question!.trim(),
       idealAnswer: q.idealAnswer!.trim(),
       isSectorInsight: q.isSectorInsight === true,
+      claimFlag: q.claimFlag === true,
     }))
 
   if (cleaned.length < PI_RULES.minQuestions) {
@@ -262,13 +265,16 @@ export function validateQuestions(
  * 与"解读项目"无逻辑承接：interpretation 可选（有则作为补充上下文，无则直接基于文档）
  * sectorInsights：同赛道历史沉淀的高质量问题（含历史结论）。提供时 AI 会结合新项目情况
  * 生成对应的二次校验问题（isSectorInsight=true），作为该赛道的重要关注问题
+ * claimFindings：外部校验（ClaimVerifier）发现夸大/矛盾的 BP 声明。提供时 AI 会生成
+ * 针对性尖锐追问（claimFlag=true，排清单最前部），访谈时优先质询
  */
 export async function runQuestionGeneration(input: {
   projectName: string
   documentText: string
   interpretation?: InterpretationResult | null
   sectorInsights?: Array<{ question: string; idealAnswer: string; conclusion: string }>
-}): Promise<Array<{ category: string; question: string; idealAnswer: string; isSectorInsight: boolean }>> {
+  claimFindings?: Array<{ claim: string; verdict: string; note: string }>
+}): Promise<Array<{ category: string; question: string; idealAnswer: string; isSectorInsight: boolean; claimFlag: boolean }>> {
   const docText = input.documentText.slice(0, MAX_DOC_TEXT)
   const digestParts: string[] = []
   if (input.interpretation) {
@@ -296,9 +302,22 @@ export async function runQuestionGeneration(input: {
       `其余问题正常生成（isSectorInsight=false）。历史结论仅作关注点参考，不得照抄进理想答案。\n`
   }
 
-  const { parsed } = await callDeepSeekJson<{ questions?: Array<{ category?: string; question?: string; idealAnswer?: string; isSectorInsight?: boolean }> }>(
+  // 外部校验发现的问题声明（夸大/矛盾）：生成针对性尖锐追问，排清单最前部
+  let claimDigest = ''
+  if (input.claimFindings && input.claimFindings.length > 0) {
+    const list = input.claimFindings
+      .slice(0, 5)
+      .map((c, i) => `[${i + 1}] 声明：${c.claim}\n核验结果：${c.verdict === 'EXAGGERATED' ? '⚠️ 夸大' : '❌ 矛盾'}（${c.note}）`)
+      .join('\n\n')
+    claimDigest =
+      `\n\n【外部校验（联网交叉核验）发现问题的 BP 声明——访谈时必须优先质询】\n${list}\n` +
+      `要求：针对每条声明生成 1-2 个尖锐的追问问题（引用具体数据当面质询，如"BP 中称良率 95%，但行业公开数据为 85%，请解释差异来源"），` +
+      `这些追问标记 claimFlag=true，排在清单最前部（先于赛道沉淀问题）；idealAnswer 写项目方应给出的合理解释标准。\n`
+  }
+
+  const { parsed } = await callDeepSeekJson<{ questions?: Array<{ category?: string; question?: string; idealAnswer?: string; isSectorInsight?: boolean; claimFlag?: boolean }> }>(
     QUESTIONS_SYSTEM_PROMPT,
-    `项目：${input.projectName}\n${digest}${insightDigest}\n项目文档内容：\n\n${docText}\n\n请输出访谈问题清单 JSON。`,
+    `项目：${input.projectName}\n${digest}${claimDigest}${insightDigest}\n项目文档内容：\n\n${docText}\n\n请输出访谈问题清单 JSON。`,
     6000
   )
 

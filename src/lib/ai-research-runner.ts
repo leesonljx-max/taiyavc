@@ -15,6 +15,7 @@ import type { HarnessTool } from '@/lib/dd-harness/types'
 import { searchProjectsTool } from '@/lib/dd-harness/projects-tool'
 import { webSearchTool } from '@/lib/dd-harness/tools'
 import { recallMemories, formatMemoriesForPrompt, extractAndSaveMemories } from '@/lib/ai-memory'
+import { recallKnowledge, formatKnowledgeForPrompt } from '@/lib/knowledge-base'
 import { recordTokenUsage } from '@/lib/token-accounting'
 
 // ── System Prompt（一级市场投资人视角 + 三原则 + 模板契约） ──
@@ -83,14 +84,17 @@ export async function runAIResearchChat(
   userMessage: string,
   opts: AIRunOptions
 ): Promise<AIRunResult> {
-  // 1. 记忆召回（零 token）
+  // 1. 记忆召回（零 token）+ 知识沉淀库召回（已核验事实，可信度高于一般联网信息）
   const memories = await recallMemories(userMessage, opts.sessionId)
   const memoryBlock = formatMemoriesForPrompt(memories)
+  const knowledge = await recallKnowledge(userMessage).catch(() => [] as Awaited<ReturnType<typeof recallKnowledge>>)
+  const knowledgeBlock = formatKnowledgeForPrompt(knowledge)
 
-  // 2. 构建 system prompt：核心契约 + 历史记忆 + 工作记忆
+  // 2. 构建 system prompt：核心契约 + 历史记忆 + 已核验知识库 + 工作记忆
   const systemPrompt = [
     AI_RESEARCH_SYSTEM_PROMPT,
     `\n## 历史记忆\n${memoryBlock}`,
+    knowledgeBlock,
   ].join('\n')
 
   const tools: HarnessTool[] = [searchProjectsTool, webSearchTool]

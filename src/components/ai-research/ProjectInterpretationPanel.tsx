@@ -39,6 +39,7 @@ interface QuestionView {
   question: string
   idealAnswer: string
   sectorInsight: boolean
+  claimFlag: boolean
   verifyStatus: string
   verifyFileName: string | null
   verifyFileUrl: string | null
@@ -52,6 +53,7 @@ interface InterpretationDetail {
   fileUrl: string
   status: string
   interpretationJson: string | null
+  verificationJson: string | null
   questionsStatus: string
   conclusionJson: string | null
   verifyStatus: string
@@ -61,6 +63,19 @@ interface InterpretationDetail {
   error: string | null
   createdAt: string
   questions: QuestionView[]
+}
+
+/** BP 声明外部校验结果（与后端 claim-verifier.ts 对齐） */
+interface ClaimEvidenceView { title: string; url: string; snippet: string }
+interface VerifiedClaimView { claim: string; verdict: string; note: string; evidence: ClaimEvidenceView[] }
+interface VerificationView { claims: VerifiedClaimView[]; summary: string; verifiedAt: string }
+
+/** 裁决徽章（✅ 一致 / ⚠️ 夸大 / ❌ 矛盾 / ❓ 未证实） */
+const VERDICT_BADGES: Record<string, { label: string; cls: string }> = {
+  SUPPORTED: { label: '✅ 一致', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
+  EXAGGERATED: { label: '⚠️ 夸大', cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
+  CONTRADICTED: { label: '❌ 矛盾', cls: 'bg-red-50 text-red-600 border border-red-200' },
+  UNVERIFIED: { label: '❓ 未证实', cls: 'bg-gray-100 text-gray-500 border border-gray-200' },
 }
 
 // ── 样式映射 ──
@@ -315,6 +330,7 @@ export default function ProjectInterpretationPanel() {
       onBack={() => { setAutoChainStep('idle'); backToList() }}
       onInterpret={() => runAction('interpret', '解读')}
       onQuestions={() => runAction('questions', '生成问题清单')}
+      onVerifyClaims={() => runAction('verify-claims', '外部校验')}
       onConclusion={() => runAction('conclusion', '生成综合结论')}
       onQuestionVerified={() => fetchDetail(detail.id)}
       onProjectCreated={() => fetchDetail(detail.id)}
@@ -557,6 +573,7 @@ function Detail({
   onBack,
   onInterpret,
   onQuestions,
+  onVerifyClaims,
   onConclusion,
   onQuestionVerified,
   onProjectCreated,
@@ -568,15 +585,30 @@ function Detail({
   onBack: () => void
   onInterpret: () => void
   onQuestions: () => void
+  onVerifyClaims: () => Promise<void>
   onConclusion: () => void
   onQuestionVerified: () => void
   onProjectCreated: () => void
 }) {
   const interpretation = useMemoParse<InterpretationResult>(detail.interpretationJson)
+  const verification = useMemoParse<VerificationView>(detail.verificationJson)
   const conclusion = useMemoParse<OverallConclusion>(detail.conclusionJson)
   const verifiedCount = detail.questions.filter(q => q.verifyStatus === 'VERIFIED').length
   const sectorCount = detail.questions.filter(q => q.sectorInsight).length
+  const claimCount = detail.questions.filter(q => q.claimFlag).length
   const router = useRouter()
+
+  // ── 外部校验（联网交叉核验 BP 关键声明） ──
+  const [verifying, setVerifying] = useState(false)
+  const handleVerifyClaims = async () => {
+    if (verifying || busy) return
+    setVerifying(true)
+    try {
+      await onVerifyClaims()
+    } finally {
+      setVerifying(false)
+    }
+  }
 
   // ── 闭环创建到项目库：校验结论生成后弹窗提醒（每条记录只提醒一次） ──
   const [createModalOpen, setCreateModalOpen] = useState(false)
@@ -934,6 +966,69 @@ function Detail({
           </div>
         )}
 
+        {/* 外部校验（BP 关键声明联网交叉核验；夸大/矛盾声明自动进入问题清单优先追问） */}
+        {interpretation && (
+          <div className="bg-white rounded-2xl border border-sky-100 shadow-sm p-5">
+            <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+              <h4 className="text-sm font-bold text-sky-700">
+                🔍 外部校验 <span className="font-normal text-gray-400 text-xs">· 联网交叉核验 BP 关键声明（客户/订单/性能/融资等）</span>
+              </h4>
+              <button
+                onClick={handleVerifyClaims}
+                disabled={verifying || busy}
+                className="text-xs px-3 py-1.5 bg-sky-50 text-sky-700 rounded-lg font-bold hover:bg-sky-100 border border-sky-100 disabled:opacity-50"
+              >
+                {verifying ? '核验中...' : verification ? '🔄 重新校验' : '🔍 开始外部校验'}
+              </button>
+            </div>
+
+            {verifying ? (
+              <p className="text-xs text-sky-700 py-2 flex items-center gap-2">
+                <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-sky-300 border-t-sky-600 animate-spin" />
+                正在联网检索并交叉核验 BP 关键声明（约 30-60 秒）...
+              </p>
+            ) : !verification ? (
+              <p className="text-xs text-gray-400 py-1">
+                尚未校验。点击后 AI 将提取 BP 中的关键声明（营收/订单/客户合作/性能指标/团队背景等）联网交叉核验；
+                发现 <span className="text-amber-600 font-bold">⚠️ 夸大</span> / <span className="text-red-500 font-bold">❌ 矛盾</span> 的声明会在生成问题清单时自动转为优先追问。
+              </p>
+            ) : (
+              <div>
+                <div className="flex items-center gap-2 flex-wrap mb-2.5">
+                  <span className="text-xs font-bold text-gray-700">{verification.summary}</span>
+                  <span className="text-[11px] text-gray-400">校验于 {new Date(verification.verifiedAt).toLocaleString('zh-CN')}</span>
+                </div>
+                {verification.claims.length === 0 ? (
+                  <p className="text-xs text-gray-400 py-1">{verification.summary}</p>
+                ) : (
+                  <div className="space-y-2">
+                    {verification.claims.map((c, i) => (
+                      <div key={i} className="p-3 rounded-xl bg-slate-50/70 border border-slate-100">
+                        <div className="flex items-start justify-between gap-2 flex-wrap">
+                          <p className="text-xs text-gray-700 leading-relaxed flex-1 min-w-[220px]">{c.claim}</p>
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex-shrink-0 ${VERDICT_BADGES[c.verdict]?.cls || VERDICT_BADGES.UNVERIFIED.cls}`}>
+                            {VERDICT_BADGES[c.verdict]?.label || c.verdict}
+                          </span>
+                        </div>
+                        {c.note && <p className="text-[11px] text-gray-500 leading-relaxed mt-1.5">▸ {c.note}</p>}
+                        {c.evidence.length > 0 && (
+                          <div className="mt-2 flex flex-col gap-0.5">
+                            {c.evidence.map((e, j) => (
+                              <a key={j} href={e.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-sky-600 hover:underline truncate" title={`${e.title}\n${e.snippet}`}>
+                                🔗 {e.title || e.url}
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* 问题清单 */}
         {detail.questions.length > 0 && (
           <div className="bg-white rounded-2xl border border-primary-100 shadow-sm p-5">
@@ -943,6 +1038,14 @@ function Detail({
               </h4>
               <span className="text-xs text-gray-400">已分析 {verifiedCount}/{detail.questions.length} · 上传一次访谈纪要自动校验</span>
             </div>
+            {claimCount > 0 && (
+              <div className="mb-3 flex items-center gap-2 rounded-xl bg-red-50 border border-red-200 px-3 py-2">
+                <span className="text-xs">🔍</span>
+                <p className="text-[11px] text-red-600">
+                  已纳入 <b>{claimCount}</b> 个<b>核验追问</b>（外部校验发现 BP 声明夸大/矛盾，排在清单前部，访谈时必须优先质询）
+                </p>
+              </div>
+            )}
             {sectorCount > 0 && (
               <div className="mb-3 flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
                 <span className="text-xs">⭐</span>
@@ -1082,16 +1185,23 @@ function QuestionCard({ question }: { question: QuestionView }) {
 
   return (
     <div className={`rounded-xl border p-3.5 ${
-      question.sectorInsight
+      question.claimFlag
+        ? 'border-red-200 bg-red-50/20 border-l-4 border-l-red-400' // 核验追问：BP 声明夸大/矛盾的优先质询项
+        : question.sectorInsight
         ? 'border-indigo-200 bg-indigo-50/30 border-l-4 border-l-indigo-400' // 赛道沉淀问题：重点二次校验高亮
         : verified ? 'border-gray-100 bg-slate-50/40' : 'border-gray-200'
     }`}>
       <div className="flex items-start gap-2.5">
-        <span className={`text-xs font-black flex-shrink-0 mt-0.5 ${question.sectorInsight ? 'text-indigo-400' : 'text-gray-300'}`}>
+        <span className={`text-xs font-black flex-shrink-0 mt-0.5 ${question.claimFlag ? 'text-red-400' : question.sectorInsight ? 'text-indigo-400' : 'text-gray-300'}`}>
           {String(question.order).padStart(2, '0')}
         </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
+            {question.claimFlag && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600">
+                🔍 核验追问 · 优先质询
+              </span>
+            )}
             {question.sectorInsight && (
               <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700">
                 ⭐ 赛道沉淀 · 重点校验

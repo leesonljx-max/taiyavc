@@ -8,11 +8,12 @@ import type { PermissionUser } from '@/lib/permissions'
 import { canEditResearchProject } from '@/lib/research-permissions'
 import { isValidModuleKey } from '@/lib/dd-workbench/resources'
 import { runClaimVerification } from '@/lib/dd-workbench/claim-verifier'
+import { saveVerifiedClaims } from '@/lib/knowledge-base'
 
 /**
  * POST /api/dd/resources/[projectId]/[moduleKey]/verify
  * 报告外部校验（ClaimVerifier 互联网交叉核验）：提取报告关键声明 → 双源搜索 → 四级裁决
- * 前置：模块报告已生成；结果覆盖写入 verificationJson
+ * 前置：模块报告已生成；结果覆盖写入 verificationJson；已核验结论沉淀知识库（SECTOR=行业）
  */
 export async function POST(
   _request: Request,
@@ -31,7 +32,7 @@ export async function POST(
 
     const project = await prisma.project.findUnique({
       where: { id: params.projectId },
-      select: { createdById: true, members: { select: { userId: true } } },
+      select: { name: true, industry: true, createdById: true, members: { select: { userId: true } } },
     })
     if (!project) return NextResponse.json({ error: '项目不存在' }, { status: 404 })
     const memberIds = project.members.map(m => m.userId)
@@ -43,7 +44,16 @@ export async function POST(
     if (!result.ok || !result.verification) {
       return NextResponse.json({ error: result.error || '外部校验失败，请稍后重试' }, { status: 400 })
     }
-    return NextResponse.json({ ok: true, verification: result.verification })
+
+    // 知识沉淀：已核验结论入知识库（SECTOR=行业，跨项目复用；失败不阻塞校验结果返回）
+    const kbSaved = await saveVerifiedClaims({
+      claims: result.verification.claims,
+      industry: project.industry,
+      sourceFeature: 'dd-claim-verify',
+      sourceProjectName: project.name,
+    }).catch(() => 0)
+
+    return NextResponse.json({ ok: true, verification: result.verification, kbSaved })
   } catch (error) {
     console.error('DD claim verification error:', error)
     return NextResponse.json({ error: '外部校验失败' }, { status: 500 })

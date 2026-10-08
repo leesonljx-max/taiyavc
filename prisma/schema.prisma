@@ -701,6 +701,8 @@ model ProjectInterpretation {
   documentText       String?  // 上传时提取的文档文本（供 AI 分析）
   status             String   @default("UPLOADED") // UPLOADED / INTERPRETING / INTERPRETED / FAILED
   interpretationJson String?  // 七维解读结果（固定模板结构）
+  // BP 关键声明外部校验（ClaimVerifier 互联网交叉核验）：{ claims: [{ claim, verdict, note, evidence, entity?, field? }], summary, verifiedAt }
+  verificationJson   String?
   questionsStatus    String   @default("PENDING") // PENDING / GENERATING / READY / FAILED
   conclusionJson     String?  // 综合分析结论（访谈校验后生成）
   // 批量访谈校验：整个项目只上传一次访谈纪要，自动校验全部问题
@@ -731,6 +733,8 @@ model InterpretationQuestion {
   idealAnswer      String   // 行业与技术视角的理想答案（前端浅色字体显示）
   // 赛道沉淀标记：该题由同赛道历史高质量问题（SectorInsight）结合新项目生成，属重点二次校验
   sectorInsight    Boolean  @default(false)
+  // 声明核验追问标记：由外部校验发现夸大/矛盾的 BP 声明生成的优先追问（排清单前部）
+  claimFlag        Boolean  @default(false)
   verifyStatus     String   @default("PENDING") // PENDING / VERIFIED
   verifyFileName   String?  // 访谈文件名（音频或文档）
   verifyFileUrl    String?  // 访谈文件 URL
@@ -952,6 +956,8 @@ model AIChatMessage {
   sourcesJson   String?
   // 内部命中的项目库信息 JSON：[{projectId, projectName, followStage}]（溯源用）
   projectsJson  String?
+  // 关键数据外部核验（ClaimVerifier，按需触发）：{ claims: [{ claim, verdict, note, evidence }], summary, verifiedAt }
+  verificationJson String?
   createdAt     DateTime @default(now())
   session       AIChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
@@ -981,4 +987,27 @@ model AIMemory {
   @@index([type, superseded])
   @@index([subject, field, superseded])
   @@index([importance])
+}
+
+// 知识沉淀库（四层架构·第三层）：已核验事实 + 证据链
+// 写入：尽调报告外部校验 / 项目解读外部校验 / AI行研数据核验（仅 ✅一致/⚠️夸大/❌矛盾，❓未证实不入库）
+// 读取：AI行研召回注入、同赛道项目解读参考（跨项目知识复用）
+model KnowledgeEntry {
+  id        String   @id @default(cuid())
+  scope     String   // SECTOR（赛道/行业标签）/ ENTITY（公司名）
+  subject   String   // 赛道标签（如 具身智能）或公司名（如 宇树科技）
+  field     String   @default("general") // 知识域：technology/market/team/business/finance/general
+  content   String   // 已核验事实表述（≤300字，含具体数据）
+  verdict   String   // SUPPORTED / EXAGGERATED / CONTRADICTED
+  // 证据链 JSON：[{ title, url, snippet }]（真实搜索来源）
+  evidenceJson String?
+  sourceFeature String // dd-claim-verify / project-interpretation / ai-research
+  sourceProjectName String? // 来源项目名（溯源）
+  hitCount  Int      @default(0) // 被后续核验/召回命中次数
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([scope, subject, field, content])
+  @@index([scope, subject])
+  @@index([updatedAt])
 }

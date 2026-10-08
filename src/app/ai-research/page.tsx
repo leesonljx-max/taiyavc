@@ -27,6 +27,11 @@ interface ChatMessage {
   content: string
   sources: Array<{ label: string; url: string }>
   projects: Array<{ projectId: string; projectName: string; followStage: string }>
+  verification: {
+    claims: Array<{ claim: string; verdict: string; note: string; evidence: Array<{ title: string; url: string; snippet: string }> }>
+    summary: string
+    verifiedAt: string
+  } | null
   createdAt: string
 }
 
@@ -141,7 +146,7 @@ export default function AIResearchPage() {
           setMessages(prev => [...prev, {
             id: `err-${Date.now()}`, role: 'assistant',
             content: `⚠️ 创建会话失败：${data.error || '请刷新页面重试'}`,
-            sources: [], projects: [], createdAt: new Date().toISOString(),
+            sources: [], projects: [], verification: null, createdAt: new Date().toISOString(),
           }])
           setSending(false)
           return
@@ -153,7 +158,7 @@ export default function AIResearchPage() {
         setMessages(prev => [...prev, {
           id: `err-${Date.now()}`, role: 'assistant',
           content: '⚠️ 网络错误，无法创建会话',
-          sources: [], projects: [], createdAt: new Date().toISOString(),
+          sources: [], projects: [], verification: null, createdAt: new Date().toISOString(),
         }])
         setSending(false)
         return
@@ -167,6 +172,7 @@ export default function AIResearchPage() {
       content,
       sources: [],
       projects: [],
+      verification: null,
       createdAt: new Date().toISOString(),
     }
     setMessages(prev => [...prev, userMsg])
@@ -189,7 +195,7 @@ export default function AIResearchPage() {
           id: `err-${Date.now()}`,
           role: 'assistant',
           content: `⚠️ 回答失败：${data.error || '未知错误'}`,
-          sources: [], projects: [],
+          sources: [], projects: [], verification: null,
           createdAt: new Date().toISOString(),
         }])
       }
@@ -198,11 +204,32 @@ export default function AIResearchPage() {
         id: `err-${Date.now()}`,
         role: 'assistant',
         content: '⚠️ 网络错误，请重试',
-        sources: [], projects: [],
+        sources: [], projects: [], verification: null,
         createdAt: new Date().toISOString(),
       }])
     } finally {
       setSending(false)
+    }
+  }
+
+  // ── 按需核验 AI 回答中的关键数据（联网交叉核验，P2.3） ──
+  const [verifyingId, setVerifyingId] = useState<string | null>(null)
+  const handleVerifyMessage = async (messageId: string) => {
+    if (verifyingId) return
+    if (messageId.startsWith('tmp-') || messageId.startsWith('err-')) return
+    setVerifyingId(messageId)
+    try {
+      const res = await fetch('/api/ai-research/messages/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setMessages(prev => prev.map(m => (m.id === messageId ? { ...m, verification: data.verification } : m)))
+      }
+    } catch { /* 静默失败，可重试 */ } finally {
+      setVerifyingId(null)
     }
   }
 
@@ -312,7 +339,7 @@ export default function AIResearchPage() {
                 </div>
               </div>
             ) : (
-              messages.map(m => <MessageBubble key={m.id} message={m} />)
+              messages.map(m => <MessageBubble key={m.id} message={m} onVerify={handleVerifyMessage} verifying={verifyingId === m.id} />)
             )}
             {sending && (
               <div className="flex items-start gap-3">
@@ -364,7 +391,23 @@ export default function AIResearchPage() {
 
 // ── 消息气泡 ──
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+/** 裁决徽章（数据核验：✅ 一致 / ⚠️ 夸大 / ❌ 矛盾 / ❓ 未证实） */
+const VERIFY_BADGES: Record<string, { label: string; cls: string }> = {
+  SUPPORTED: { label: '✅ 一致', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
+  EXAGGERATED: { label: '⚠️ 夸大', cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
+  CONTRADICTED: { label: '❌ 矛盾', cls: 'bg-red-50 text-red-600 border border-red-200' },
+  UNVERIFIED: { label: '❓ 未证实', cls: 'bg-gray-100 text-gray-500 border border-gray-200' },
+}
+
+function MessageBubble({
+  message,
+  onVerify,
+  verifying,
+}: {
+  message: ChatMessage
+  onVerify: (messageId: string) => void
+  verifying: boolean
+}) {
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -375,6 +418,8 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     )
   }
 
+  const v = message.verification
+
   return (
     <div className="flex items-start gap-3">
       <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center flex-shrink-0 shadow-sm">
@@ -384,6 +429,52 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         <div className="bg-gray-50 border border-gray-100 rounded-xl rounded-tl-sm px-4 py-3 text-sm text-gray-800 leading-relaxed">
           <RichContent content={message.content} />
         </div>
+
+        {/* 数据核验（联网交叉核验回答中的关键声明，P2.3） */}
+        <div className="mt-1.5">
+          {verifying ? (
+            <span className="inline-flex items-center gap-1.5 text-[10px] text-sky-600 px-2 py-1">
+              <span className="animate-spin rounded-full h-3 w-3 border-2 border-sky-300 border-t-sky-600" />
+              正在联网核验关键数据（约 30-60 秒）...
+            </span>
+          ) : !v ? (
+            <button
+              onClick={() => onVerify(message.id)}
+              className="text-[10px] px-2 py-1 bg-sky-50 text-sky-600 rounded-lg font-bold hover:bg-sky-100 border border-sky-100 transition-colors"
+              title="提取本回答中的关键声明，联网交叉核验"
+            >
+              🔍 核验数据
+            </button>
+          ) : (
+            <div className="rounded-xl border border-sky-100 bg-white px-3 py-2.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap mb-1.5">
+                <span className="text-[10px] font-bold text-sky-700">🔍 数据核验 <span className="font-normal text-gray-400">{v.summary}</span></span>
+                <button
+                  onClick={() => onVerify(message.id)}
+                  className="text-[10px] text-gray-400 hover:text-sky-600 font-bold"
+                >
+                  重新核验
+                </button>
+              </div>
+              {v.claims.length > 0 && (
+                <div className="space-y-1.5">
+                  {v.claims.map((c, i) => (
+                    <div key={i} className="flex items-start justify-between gap-2 flex-wrap">
+                      <p className="text-[10px] text-gray-600 leading-relaxed flex-1 min-w-[180px]">
+                        {c.claim}
+                        {c.note && <span className="text-gray-400"> · {c.note}</span>}
+                      </p>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0 ${VERIFY_BADGES[c.verdict]?.cls || VERIFY_BADGES.UNVERIFIED.cls}`}>
+                        {VERIFY_BADGES[c.verdict]?.label || c.verdict}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* 内部项目关联 */}
         {message.projects && message.projects.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2">

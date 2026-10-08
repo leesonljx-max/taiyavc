@@ -1,9 +1,9 @@
 /**
- * 声明校验器（ClaimVerifier）：尽调模块报告的互联网交叉核验（P2.1）
+ * 声明校验器（ClaimVerifier）：互联网交叉核验（P2.1 尽调报告 / P2.2 项目解读 / P2.3 AI行研 共用核心）
  *
  * 流程（2 次 DeepSeek + 双源搜索）：
- * 1. 提取声明：从模块报告提取 3-5 条最关键的可核验声明（数字/排名/事件/合作关系），
- *    每条同步生成 1-2 组搜索关键词（省一次往返）
+ * 1. 提取声明：从文本提取 3-5 条最关键的可核验声明（数字/排名/事件/合作关系），
+ *    每条同步生成 1-2 组搜索关键词 + 主体（entity：公司名/行业名）+ 知识域（field）
  * 2. 双源搜索：searchWebDual（collect 模式 + 12h 缓存），查询全局去重，分批并发控速率
  * 3. 比对裁决：单次调用比对全部声明与证据，输出四级裁决
  *    ✅ SUPPORTED 一致 / ⚠️ EXAGGERATED 夸大 / ❌ CONTRADICTED 矛盾 / ❓ UNVERIFIED 未证实
@@ -26,8 +26,8 @@ const MAX_QUERIES_PER_CLAIM = 2
 const MAX_TOTAL_SEARCHES = 8
 const EVIDENCE_PER_CLAIM = 6
 const SNIPPET_LEN = 300
-/** 报告文本参与声明提取的最大长度 */
-const MAX_REPORT_TEXT = 6000
+/** 文本参与声明提取的最大长度 */
+const MAX_TEXT = 6000
 
 // ── 类型 ──
 
@@ -44,9 +44,13 @@ export interface VerifiedClaim {
   verdict: ClaimVerdict
   note: string
   evidence: ClaimEvidence[]
+  /** 声明主体（公司名/行业名，知识沉淀库 subject 用） */
+  entity?: string
+  /** 知识域：technology/market/team/business/finance/general */
+  field?: string
 }
 
-export interface DDReportVerification {
+export interface ClaimVerification {
   claims: VerifiedClaim[]
   /** 一句话汇总（如：共 4 条声明：✅ 一致 2 · ⚠️ 夸大 1 · ❓ 未证实 1） */
   summary: string
@@ -54,6 +58,7 @@ export interface DDReportVerification {
 }
 
 const VERDICTS: ClaimVerdict[] = ['SUPPORTED', 'EXAGGERATED', 'CONTRADICTED', 'UNVERIFIED']
+const FIELDS = ['technology', 'market', 'team', 'business', 'finance', 'general']
 
 /** 裁决中文标签（服务端汇总用；前端徽章样式在组件内定义） */
 export const CLAIM_VERDICT_LABELS: Record<ClaimVerdict, string> = {
@@ -65,23 +70,26 @@ export const CLAIM_VERDICT_LABELS: Record<ClaimVerdict, string> = {
 
 // ── Prompt ──
 
-const EXTRACT_SYSTEM_PROMPT = `你是一级市场尽调核查员。从尽调报告中提取最关键、可通过公开互联网核验的事实性声明。
+const EXTRACT_SYSTEM_PROMPT = `你是一级市场尽调核查员。从给定文本中提取最关键、可通过公开互联网核验的事实性声明。
 严格输出 JSON（不要 markdown 代码块），结构：
 {
   "claims": [
     {
-      "claim": "报告中的具体声明（数字/排名/事件/合作关系/技术性能等可核验表述，60字内）",
-      "queries": ["搜索关键词组1（3-6个词，精准可搜）", "关键词组2"]
+      "claim": "文本中的具体声明（数字/排名/事件/合作关系/技术性能等可核验表述，60字内）",
+      "queries": ["搜索关键词组1（3-6个词，精准可搜）", "关键词组2"],
+      "entity": "声明主体（公司名或行业名，10字内，如：宇树科技/具身智能）",
+      "field": "知识域：technology|market|team|business|finance|general（单选）"
     }
   ]
 }
 要求：
 - 只提取可核验的事实性声明：营收/订单/市场份额/融资/良率/性能指标/客户合作/获奖排名等；观点、判断、展望不提取
-- 优先提取对投资决策影响最大的声明，最多 ${MAX_CLAIMS} 条（不足时如实提取，报告缺乏具体数据时可返回 0 条）
+- 优先提取对投资决策影响最大的声明，最多 ${MAX_CLAIMS} 条（不足时如实提取，文本缺乏具体数据时可返回 0 条）
 - 每条声明给 1-${MAX_QUERIES_PER_CLAIM} 组搜索关键词：优先中文；涉及国外对标/技术路线/跨国公司时附英文组；关键词须来自声明中的具体实体与数据（公司名/产品名/技术路线/数字），不要只用行业名泛搜
-- claim 摘自报告原文或忠实概括，不得改变数字与指向`
+- claim 摘自原文或忠实概括，不得改变数字与指向
+- entity 是声明谈论的公司或行业（供知识库归档）；field 按声明内容归类`
 
-const VERDICT_SYSTEM_PROMPT = `你是一级市场尽调核查员。将尽调报告中的声明与互联网检索证据逐一交叉比对，给出裁决。
+const VERDICT_SYSTEM_PROMPT = `你是一级市场尽调核查员。将声明与互联网检索证据逐一交叉比对，给出裁决。
 严格输出 JSON（不要 markdown 代码块），结构：
 {
   "verdicts": [
@@ -94,7 +102,7 @@ const VERDICT_SYSTEM_PROMPT = `你是一级市场尽调核查员。将尽调报�
 - CONTRADICTED（矛盾）：证据与声明直接冲突（数字/事件/关系对不上）
 - UNVERIFIED（未证实）：无相关证据，或证据不足以判断
 要求：
-- note 必须援引证据中的具体数据说明理由；UNVERIFIED 时说明公开检索为何无法覆盖
+- note 必须援引证据中的具体数据说明理由（直接写数据与来源名，不要使用 [N] 编号引用）；UNVERIFIED 时说明公开检索为何无法覆盖
 - evidenceIdx 只能从下方列出的证据编号中选择，每条声明选 0-3 条最相关证据；无相关证据选 []
 - 逐条声明输出（claimIdx 覆盖全部声明），不得遗漏`
 
@@ -139,31 +147,15 @@ async function callDeepSeekJson<T>(systemPrompt: string, userPrompt: string, max
 
 // ── 流程步骤 ──
 
-/** 报告文本：summary + 机会/风险点（剥离【图N】插图标记） */
-function buildReportText(report: { summary?: string; opportunities?: string[]; risks?: string[] }): string {
-  const parts: string[] = []
-  if (report.summary) parts.push(String(report.summary))
-  if (Array.isArray(report.opportunities) && report.opportunities.length > 0) {
-    parts.push('机会点：\n' + report.opportunities.map((o, i) => `${i + 1}. ${o}`).join('\n'))
-  }
-  if (Array.isArray(report.risks) && report.risks.length > 0) {
-    parts.push('风险点：\n' + report.risks.map((r, i) => `${i + 1}. ${r}`).join('\n'))
-  }
-  return parts
-    .join('\n\n')
-    .replace(/【图\d+】|\[图\d+\]/g, '')
-    .slice(0, MAX_REPORT_TEXT)
-}
-
-/** 步骤1：提取可核验声明 + 搜索关键词 */
-async function extractClaims(reportText: string): Promise<Array<{ claim: string; queries: string[] }>> {
-  const parsed = await callDeepSeekJson<{ claims?: Array<{ claim?: string; queries?: string[] }> }>(
+/** 步骤1：提取可核验声明 + 搜索关键词 + 主体/知识域 */
+async function extractClaims(text: string): Promise<Array<{ claim: string; queries: string[]; entity?: string; field?: string }>> {
+  const parsed = await callDeepSeekJson<{ claims?: Array<{ claim?: string; queries?: string[]; entity?: string; field?: string }> }>(
     EXTRACT_SYSTEM_PROMPT,
-    `尽调模块报告：\n\n${reportText}\n\n请提取可核验声明 JSON。`,
+    `待核验文本：\n\n${text}\n\n请提取可核验声明 JSON。`,
     1500
   )
   const raw = Array.isArray(parsed?.claims) ? parsed!.claims : []
-  const claims: Array<{ claim: string; queries: string[] }> = []
+  const claims: Array<{ claim: string; queries: string[]; entity?: string; field?: string }> = []
   for (const c of raw) {
     const claim = typeof c?.claim === 'string' ? c.claim.trim() : ''
     if (!claim) continue
@@ -171,14 +163,22 @@ async function extractClaims(reportText: string): Promise<Array<{ claim: string;
       .map(q => (typeof q === 'string' ? q.trim() : ''))
       .filter(q => q.length > 1)
       .slice(0, MAX_QUERIES_PER_CLAIM)
-    claims.push({ claim: claim.slice(0, 120), queries })
+    claims.push({
+      claim: claim.slice(0, 120),
+      queries,
+      entity: typeof c?.entity === 'string' ? c.entity.trim().slice(0, 20) || undefined : undefined,
+      field: FIELDS.includes(String(c?.field)) ? String(c!.field) : 'general',
+    })
     if (claims.length >= MAX_CLAIMS) break
   }
   return claims
 }
 
 /** 步骤2：双源搜索（全局去重 + 上限 + 4 组分批并发） */
-async function searchForClaims(claims: Array<{ claim: string; queries: string[] }>): Promise<Map<string, SearchResult[]>> {
+async function searchForClaims(
+  claims: Array<{ claim: string; queries: string[] }>,
+  module: string
+): Promise<Map<string, SearchResult[]>> {
   const allQueries: string[] = []
   for (const c of claims) {
     for (const q of c.queries) {
@@ -195,7 +195,7 @@ async function searchForClaims(claims: Array<{ claim: string; queries: string[] 
         const results = await searchWebDual(q, {
           maxResults: 5,
           mode: 'collect',
-          module: 'dd-claim-verify',
+          module,
         }).catch(() => [] as SearchResult[])
         resultsByQuery.set(q, results)
       })
@@ -206,9 +206,9 @@ async function searchForClaims(claims: Array<{ claim: string; queries: string[] 
 
 /** 步骤3：比对裁决（evidenceIdx 回指真实证据，防编造来源） */
 async function verdictClaims(
-  claims: Array<{ claim: string; queries: string[] }>,
+  claims: Array<{ claim: string; queries: string[]; entity?: string; field?: string }>,
   resultsByQuery: Map<string, SearchResult[]>
-): Promise<DDReportVerification> {
+): Promise<ClaimVerification> {
   // 全局证据池（带索引）：每声明去重取前 EVIDENCE_PER_CLAIM 条
   const allEvidence: Array<ClaimEvidence & { claimIdx: number }> = []
   const perClaimEvidence: number[][] = claims.map((c, claimIdx) => {
@@ -276,6 +276,8 @@ async function verdictClaims(
         .map(j => allEvidence[j])
         .filter(e => e.claimIdx === i)
         .map(e => ({ title: e.title, url: e.url, snippet: e.snippet })),
+      entity: c.entity,
+      field: c.field,
     }
   })
 
@@ -296,7 +298,46 @@ async function verdictClaims(
   }
 }
 
-// ── 主入口 ──
+// ── 通用入口（尽调报告 / 项目解读 / AI行研 共用） ──
+
+/**
+ * 对任意文本执行声明校验（提取 → 双源搜索 → 裁决）
+ * @param text 待核验文本（≤6000 字参与提取）
+ * @param opts.module 搜索模块标记（成本归集用，如 dd-claim-verify / project-interpretation / ai-research）
+ */
+export async function verifyTextClaims(
+  text: string,
+  opts?: { module?: string }
+): Promise<ClaimVerification> {
+  const normalized = String(text || '').replace(/【图\d+】|\[图\d+\]/g, '').slice(0, MAX_TEXT)
+  // 1. 提取声明（无可核验声明 → 空结果）
+  const claims = await extractClaims(normalized)
+  if (claims.length === 0) {
+    return {
+      claims: [],
+      summary: '未提取到可核验声明（文本可能缺乏具体数据/事件类表述）',
+      verifiedAt: new Date().toISOString(),
+    }
+  }
+  // 2+3. 双源搜索 + 比对裁决
+  const resultsByQuery = await searchForClaims(claims, opts?.module || 'claim-verify')
+  return verdictClaims(claims, resultsByQuery)
+}
+
+// ── 尽调模块报告入口（P2.1） ──
+
+/** 尽调报告文本：summary + 机会/风险点 */
+function buildReportText(report: { summary?: string; opportunities?: string[]; risks?: string[] }): string {
+  const parts: string[] = []
+  if (report.summary) parts.push(String(report.summary))
+  if (Array.isArray(report.opportunities) && report.opportunities.length > 0) {
+    parts.push('机会点：\n' + report.opportunities.map((o, i) => `${i + 1}. ${o}`).join('\n'))
+  }
+  if (Array.isArray(report.risks) && report.risks.length > 0) {
+    parts.push('风险点：\n' + report.risks.map((r, i) => `${i + 1}. ${r}`).join('\n'))
+  }
+  return parts.join('\n\n')
+}
 
 /**
  * 对单个模块的尽调报告执行外部校验（互联网交叉核验）
@@ -305,7 +346,7 @@ async function verdictClaims(
 export async function runClaimVerification(projectId: string, moduleKey: string): Promise<{
   ok: boolean
   error?: string
-  verification?: DDReportVerification
+  verification?: ClaimVerification
 }> {
   const record = await prisma.dDModuleResource.findUnique({
     where: { projectId_moduleKey: { projectId, moduleKey } },
@@ -321,24 +362,7 @@ export async function runClaimVerification(projectId: string, moduleKey: string)
     return { ok: false, error: '模块报告数据异常，请重新生成报告' }
   }
 
-  // 1. 提取声明
-  const claims = await extractClaims(buildReportText(report))
-  if (claims.length === 0) {
-    const verification: DDReportVerification = {
-      claims: [],
-      summary: '未提取到可核验声明（报告可能缺乏具体数据/事件类表述）',
-      verifiedAt: new Date().toISOString(),
-    }
-    await prisma.dDModuleResource.update({
-      where: { projectId_moduleKey: { projectId, moduleKey } },
-      data: { verificationJson: JSON.stringify(verification) },
-    })
-    return { ok: true, verification }
-  }
-
-  // 2+3. 双源搜索 + 比对裁决
-  const resultsByQuery = await searchForClaims(claims)
-  const verification = await verdictClaims(claims, resultsByQuery)
+  const verification = await verifyTextClaims(buildReportText(report), { module: 'dd-claim-verify' })
 
   await prisma.dDModuleResource.update({
     where: { projectId_moduleKey: { projectId, moduleKey } },

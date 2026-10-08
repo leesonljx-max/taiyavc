@@ -52,6 +52,24 @@ export async function POST(
       })
     }
 
+    // 外部校验发现的问题声明（夸大/矛盾）：注入生成优先追问（claimFlag=true，排清单前部）
+    let claimFindings: Array<{ claim: string; verdict: string; note: string }> = []
+    if (record.verificationJson) {
+      try {
+        const verification = JSON.parse(record.verificationJson) as {
+          claims?: Array<{ claim?: string; verdict?: string; note?: string }>
+        }
+        claimFindings = (Array.isArray(verification.claims) ? verification.claims : [])
+          .filter(c => c && (c.verdict === 'EXAGGERATED' || c.verdict === 'CONTRADICTED') && typeof c.claim === 'string')
+          .map(c => ({
+            claim: String(c.claim),
+            verdict: String(c.verdict),
+            note: String(c.note || ''),
+          }))
+          .slice(0, 5)
+      } catch { claimFindings = [] }
+    }
+
     await prisma.projectInterpretation.update({
       where: { id: record.id },
       data: { questionsStatus: 'GENERATING', error: null },
@@ -63,6 +81,7 @@ export async function POST(
         documentText: record.documentText || '',
         interpretation,
         sectorInsights,
+        claimFindings,
       })
 
       // 覆盖式重建（事务：删旧建新；重新生成问题后旧校验结果作废）
@@ -76,6 +95,7 @@ export async function POST(
             question: q.question,
             idealAnswer: q.idealAnswer,
             sectorInsight: q.isSectorInsight,
+            claimFlag: q.claimFlag,
           })),
         })
         await tx.projectInterpretation.update({
