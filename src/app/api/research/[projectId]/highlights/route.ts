@@ -8,6 +8,7 @@ import type { PermissionUser } from '@/lib/permissions'
 import { canEditResearchProject } from '@/lib/research-permissions'
 import { recordTokenUsage } from '@/lib/token-accounting'
 import { parseAgentJson } from '@/lib/dd-harness/agent'
+import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 
 /**
  * 投资亮点（项目尽调详情页）
@@ -189,7 +190,7 @@ ${moduleBlocks || '（暂无模块内容）'}
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: 'deepseek-v4-flash',
+          model: DEEPSEEK_MODEL,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },

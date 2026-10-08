@@ -23,6 +23,7 @@ import { deepseekWebSearch } from '@/lib/deepseek-websearch'
 import { parseAgentJson } from '@/lib/dd-harness/agent'
 import { recordTokenUsage } from '@/lib/token-accounting'
 import { getSearchCache, putSearchCache } from '@/lib/search-cache'
+import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 
 // Tavily 客户端（延迟初始化）
 let _client: ReturnType<typeof tavily> | null = null
@@ -196,7 +197,7 @@ ${JSON.stringify(inputResults, null, 2)}
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'deepseek-v4-flash',
+        model: DEEPSEEK_MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
@@ -550,7 +551,7 @@ export async function searchAndSummarize(
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'deepseek-v4-flash',
+        model: DEEPSEEK_MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },

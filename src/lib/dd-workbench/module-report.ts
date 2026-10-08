@@ -11,9 +11,9 @@ import { recordTokenUsage } from '@/lib/token-accounting'
 import { getProjectModuleResources, isModuleComplete, findMissingModules, type ParsedModuleResource, type DDModuleReport, type DDModuleAnalysis } from './resources'
 import { buildMultimodalDigest, buildMessageContent, type ExtractedImage } from './vision'
 import { parseEvaluation, computeEvaluation } from './team-evaluation'
+import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
-const DEEPSEEK_MODEL = 'deepseek-v4-flash'
 
 /** 单模块文档全文参与总结的最大长度 */
 const MAX_DOC_TEXT = 12000

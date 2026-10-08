@@ -11,6 +11,7 @@
 
 import type { AgentMessage, AgentResult, HarnessTool, SessionLog } from './types'
 import { SessionLog as SessionLogClass } from './types'
+import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
 
@@ -131,7 +132,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<AgentResult> {
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: 'deepseek-v4-flash',
+          model: DEEPSEEK_MODEL,
           messages,
           tools: opts.tools.map(t => t.definition),
           tool_choice: 'auto',
@@ -215,7 +216,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<AgentResult> {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'deepseek-v4-flash',
+        model: DEEPSEEK_MODEL,
         messages,
         thinking: { type: 'disabled' },
         temperature: opts.temperature ?? 0.3,
@@ -255,7 +256,7 @@ export async function runSingleCall(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'deepseek-v4-flash',
+        model: DEEPSEEK_MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },

@@ -14,6 +14,7 @@ import { parseAgentJson } from '@/lib/dd-harness/agent'
 import { recordTokenUsage } from '@/lib/token-accounting'
 import { getProjectModuleResources } from './resources'
 import { buildMultimodalDigest, buildMessageContent, type ExtractedImage } from './vision'
+import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 import {
   CEO_TEMPLATE, TECH_TEMPLATE, OPS_TEMPLATE, TEAM_TEMPLATE, PROFILE_TEMPLATES,
   type ProfileType, type DimensionDef,
@@ -26,7 +27,6 @@ export {
 } from './team-templates'
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
-const DEEPSEEK_MODEL = 'deepseek-v4-flash'
 
 // ── 类型 ──
 

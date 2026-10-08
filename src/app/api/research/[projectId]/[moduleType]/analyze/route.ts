@@ -14,6 +14,7 @@ import {
   type ResearchModuleType,
 } from '@/lib/research-permissions'
 import { MODULE_PROMPTS } from '@/lib/research-prompts'
+import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 
 /** JSON 修复 */
 function repairJson(text: string): string {
@@ -175,7 +176,7 @@ export async function POST(
           'Authorization': `Bearer ${deepseekApiKey}`,
         },
         body: JSON.stringify({
-          model: 'deepseek-v4-flash',
+          model: DEEPSEEK_MODEL,
           messages: [
             { role: 'system', content: config.systemPrompt },
             { role: 'user', content: prompt },

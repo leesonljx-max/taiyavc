@@ -17,6 +17,7 @@ import prisma from '@/lib/prisma'
 import { parseAgentJson } from '@/lib/dd-harness/agent'
 import { searchWebDual, type SearchResult } from '@/lib/tavily-search'
 import { recordTokenUsage } from '@/lib/token-accounting'
+import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
 
@@ -229,7 +230,7 @@ async function analyzeIndustryBatch(
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: 'deepseek-v4-flash',
+        model: DEEPSEEK_MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `各行业搜索结果如下：\n\n${blocks}\n\n请按行业输出 JSON。` },

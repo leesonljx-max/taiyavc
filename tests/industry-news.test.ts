@@ -153,7 +153,7 @@ test('10 行业全量：恰好 10 次搜索 + 2 次批量 DeepSeek（原版 30-5
   // DeepSeek 批量参数
   const deepseekCalls = mockState.fetchCalls.filter(c => c.url.includes('api.deepseek.com'))
   for (const call of deepseekCalls) {
-    assert.equal((call.body as { model: string }).model, 'deepseek-v4-flash')
+    assert.equal((call.body as { model: string }).model, process.env.DEEPSEEK_MODEL || 'deepseek-flash')
     // 每组恰好 5 个行业的搜索结果
     const inds = parseIndustriesFromPrompt(call.body)
     assert.equal(inds.length, 5, '每次批量提取恰好覆盖 5 个行业')

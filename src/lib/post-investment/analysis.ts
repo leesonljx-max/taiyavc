@@ -12,9 +12,9 @@ import { parseAgentJson } from '@/lib/dd-harness/agent'
 import { recordTokenUsage } from '@/lib/token-accounting'
 import { METRIC_BY_KEY, metricDictionaryText } from './metrics'
 import { computeMetricsWithChange, calcRunwayMonths, isValidPeriod, parsePeriod, type MetricWithChange } from './calc'
+import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
-const DEEPSEEK_MODEL = 'deepseek-v4-flash'
 
 // ── AI 结构化输出类型 ──
 

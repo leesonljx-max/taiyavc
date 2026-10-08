@@ -12,6 +12,7 @@
 import { searchWebDual, type SearchResult } from '@/lib/tavily-search'
 import { parseAgentJson } from '@/lib/dd-harness/agent'
 import { recordTokenUsage } from '@/lib/token-accounting'
+import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 import {
   PI_RULES,
   isPIMatchLevel,
@@ -23,7 +24,6 @@ import {
 } from './constants'
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
-const DEEPSEEK_MODEL = 'deepseek-v4-flash'
 
 /** 文档文本参与分析的最大长度（token 控制） */
 const MAX_DOC_TEXT = 24000

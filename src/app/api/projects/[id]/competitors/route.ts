@@ -6,6 +6,7 @@ import prisma from '@/lib/prisma'
 import { authOptions, type UserRole } from '@/lib/auth'
 import { canViewProject, type PermissionUser } from '@/lib/permissions'
 import { searchWebDual } from '@/lib/tavily-search'
+import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 
 /**
  * 竞争态势分析（从产品、技术路线、团队背景、融资进展等维度）
@@ -163,7 +164,7 @@ ${externalInfo || '未找到相关外网信息'}
           'Authorization': `Bearer ${deepseekApiKey}`,
         },
         body: JSON.stringify({
-          model: 'deepseek-v4-flash',
+          model: DEEPSEEK_MODEL,
           messages: [
             {
               role: 'system',

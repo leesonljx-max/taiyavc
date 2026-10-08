@@ -18,6 +18,7 @@
 
 import { parseAgentJson } from '@/lib/dd-harness/agent'
 import { recordTokenUsage } from '@/lib/token-accounting'
+import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 
 const RESPONSES_API_URL = 'https://api.deepseek.com/v1/responses'
 
@@ -109,7 +110,7 @@ export async function deepseekWebSearch(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'deepseek-v4-flash',
+        model: DEEPSEEK_MODEL,
         instructions: '你是一个严谨的搜索助理，必须先使用 web_search 工具搜索，再基于搜索结果输出结构化 JSON。',
         input,
         tools: [{ type: 'web_search' }],

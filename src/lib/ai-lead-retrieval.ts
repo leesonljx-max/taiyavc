@@ -14,6 +14,7 @@ import { tavily } from '@tavily/core'
 import prisma from '@/lib/prisma'
 import { similarity, isHighlyOverlapping } from '@/lib/lead-match'
 import { searchWebDual } from '@/lib/tavily-search'
+import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
 
@@ -142,7 +143,7 @@ async function generateSearchKeywords(
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'deepseek-v4-flash',
+        model: DEEPSEEK_MODEL,
         messages: [
           {
             role: 'system',
@@ -347,7 +348,7 @@ async function extractLeadInfo(
           'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: 'deepseek-v4-flash',
+          model: DEEPSEEK_MODEL,
           messages: [
             {
               role: 'system',

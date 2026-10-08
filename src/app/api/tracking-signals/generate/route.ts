@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { parseAgentJson } from '@/lib/dd-harness/agent'
 import { recordTokenUsage } from '@/lib/token-accounting'
+import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 
 /**
  * 自然语言生成跟踪信号（草稿，不保存；用户在前端确认后调 POST /api/tracking-signals 保存）
@@ -89,7 +90,7 @@ export async function POST(request: Request) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({
-          model: 'deepseek-v4-flash',
+          model: DEEPSEEK_MODEL,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: `我的信号描述：${description}` },

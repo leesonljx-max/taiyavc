@@ -6,6 +6,7 @@ import prisma from '@/lib/prisma'
 import { authOptions, type UserRole } from '@/lib/auth'
 import { canViewProject, canEditProject, type PermissionUser } from '@/lib/permissions'
 import { searchWebDual } from '@/lib/tavily-search'
+import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 
 interface AICardData {
   projectName: string
@@ -141,7 +142,7 @@ ${externalInfo || '未找到相关外网信息'}
           'Authorization': `Bearer ${deepseekApiKey}`,
         },
         body: JSON.stringify({
-          model: 'deepseek-v4-flash',
+          model: DEEPSEEK_MODEL,
           messages: [
             {
               role: 'system',

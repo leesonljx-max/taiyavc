@@ -16,6 +16,7 @@ import { searchWebDual, type SearchResult } from '@/lib/tavily-search'
 import { parseAgentJson } from '@/lib/dd-harness/agent'
 import { recordTokenUsage } from '@/lib/token-accounting'
 import type { TrackingSignal } from '@prisma/client'
+import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
 
@@ -178,7 +179,7 @@ ${targetsHint}
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({
-          model: 'deepseek-v4-flash',
+          model: DEEPSEEK_MODEL,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: `搜索结果：\n\n${input}\n\n请筛选符合信号的事件并输出 JSON。` },
