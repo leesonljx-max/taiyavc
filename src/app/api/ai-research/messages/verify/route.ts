@@ -6,6 +6,7 @@ import prisma from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { verifyTextClaims } from '@/lib/dd-workbench/claim-verifier'
 import { saveVerifiedClaims } from '@/lib/knowledge-base'
+import { recordSkillRun } from '@/lib/skill-registry'
 
 /**
  * POST /api/ai-research/messages/verify
@@ -51,6 +52,7 @@ export async function POST(request: Request) {
         sourceFeature: 'ai-research',
       }).catch(() => 0),
     ])
+    await recordSkillRun('claim-verifier').catch(() => {})
 
     return NextResponse.json({ ok: true, verification, kbSaved })
   } catch (error) {

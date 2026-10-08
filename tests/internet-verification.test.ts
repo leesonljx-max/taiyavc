@@ -41,6 +41,7 @@ let otherId = ''
 
 beforeEach(async () => {
   resetMocks()
+  await prisma.agentSkill.deleteMany({})
   await prisma.knowledgeEntry.deleteMany({})
   await prisma.aIChatMessage.deleteMany({})
   await prisma.aIChatSession.deleteMany({})

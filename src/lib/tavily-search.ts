@@ -54,6 +54,7 @@ export type SearchModule =
   | 'news'           // 新闻监控（现 AI 看板数据源）
   | 'research'       // 投研模块分析
   | 'dd-harness'     // 尽调报告
+  | 'dd-claim-verify' // 尽调/解读/行研 报告外部校验（ClaimVerifier）
   | 'ai-research'    // AI行研 ChatBot
   | 'project-interpretation' // 项目解读（融资案例智能检索）
   | 'search-lib'     // 搜索库自身（归纳调用）

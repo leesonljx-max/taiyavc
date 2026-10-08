@@ -53,9 +53,9 @@ test('视觉工具：img → [图N] 占位 + dataUri 提取（文件存在/缺�
   // buildMessageContent：有可用图 → content 数组（仅包含有 dataUri 的图）
   const content = buildMessageContent('分析文本', images)
   assert.ok(Array.isArray(content), '有可用图片时应返回 content 数组')
-  const parts = content as Array<{ type: string; image_url?: { url: string } }>
+  const parts = content as Array<{ type: string; text?: string; image_url?: { url: string } }>
   assert.equal(parts[0].type, 'text')
-  assert.ok(parts[0].text.includes('分析文本'))
+  assert.ok(parts[0].text!.includes('分析文本'))
   const imgParts = parts.filter(p => p.type === 'image_url')
   assert.equal(imgParts.length, 1, '仅 dataUri 存在的图进入消息')
   assert.match(imgParts[0].image_url!.url, /^data:image\/png;base64,/)

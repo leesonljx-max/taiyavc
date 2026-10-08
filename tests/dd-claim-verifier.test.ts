@@ -47,6 +47,7 @@ const TEST_REPORT = {
 
 beforeEach(async () => {
   resetMocks()
+  await prisma.agentSkill.deleteMany({})
   await prisma.dDTeamEvaluation.deleteMany({})
   await prisma.dDModuleResource.deleteMany({})
   await prisma.project.deleteMany({ where: { name: { startsWith: 'CV测试项目' } } })

@@ -6,6 +6,7 @@ import prisma from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { verifyTextClaims, type ClaimVerification } from '@/lib/dd-workbench/claim-verifier'
 import { saveVerifiedClaims } from '@/lib/knowledge-base'
+import { recordSkillRun } from '@/lib/skill-registry'
 import type { InterpretationResult } from '@/lib/project-interpretation/constants'
 
 /**
@@ -69,6 +70,7 @@ export async function POST(
         sourceProjectName: record.projectName,
       }).catch(() => 0),
     ])
+    await recordSkillRun('claim-verifier').catch(() => {})
 
     return NextResponse.json({ ok: true, verification, kbSaved })
   } catch (error) {

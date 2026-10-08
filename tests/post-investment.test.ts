@@ -513,7 +513,7 @@ test('上传 pptx：自动按页提取文本入库（供 AI 分析与文本阅�
   fd.append('projectId', projectId)
   fd.append('period', '2026Q3')
   fd.append('docType', 'OPERATION_REPORT')
-  fd.append('file', new File([pptxBuffer], '2026Q3路演.pptx', { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }))
+  fd.append('file', new File([new Uint8Array(pptxBuffer)], '2026Q3路演.pptx', { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }))
 
   const res = await DOC_POST(new Request('http://t/api/post-investment/documents', { method: 'POST', body: fd }))
   assert.equal(res.status, 200)

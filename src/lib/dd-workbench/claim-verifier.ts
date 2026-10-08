@@ -15,7 +15,7 @@
 import prisma from '@/lib/prisma'
 import { parseAgentJson } from '@/lib/dd-harness/agent'
 import { recordTokenUsage } from '@/lib/token-accounting'
-import { searchWebDual, type SearchResult } from '@/lib/tavily-search'
+import { searchWebDual, type SearchResult, type SearchModule } from '@/lib/tavily-search'
 import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
@@ -177,7 +177,7 @@ async function extractClaims(text: string): Promise<Array<{ claim: string; queri
 /** 步骤2：双源搜索（全局去重 + 上限 + 4 组分批并发） */
 async function searchForClaims(
   claims: Array<{ claim: string; queries: string[] }>,
-  module: string
+  module: SearchModule
 ): Promise<Map<string, SearchResult[]>> {
   const allQueries: string[] = []
   for (const c of claims) {
@@ -303,11 +303,11 @@ async function verdictClaims(
 /**
  * 对任意文本执行声明校验（提取 → 双源搜索 → 裁决）
  * @param text 待核验文本（≤6000 字参与提取）
- * @param opts.module 搜索模块标记（成本归集用，如 dd-claim-verify / project-interpretation / ai-research）
+ * @param opts.module 搜索模块标记（token 记账归属，如 dd-claim-verify / project-interpretation / ai-research）
  */
 export async function verifyTextClaims(
   text: string,
-  opts?: { module?: string }
+  opts?: { module?: SearchModule }
 ): Promise<ClaimVerification> {
   const normalized = String(text || '').replace(/【图\d+】|\[图\d+\]/g, '').slice(0, MAX_TEXT)
   // 1. 提取声明（无可核验声明 → 空结果）
@@ -320,7 +320,7 @@ export async function verifyTextClaims(
     }
   }
   // 2+3. 双源搜索 + 比对裁决
-  const resultsByQuery = await searchForClaims(claims, opts?.module || 'claim-verify')
+  const resultsByQuery = await searchForClaims(claims, opts?.module || 'dd-claim-verify')
   return verdictClaims(claims, resultsByQuery)
 }
 

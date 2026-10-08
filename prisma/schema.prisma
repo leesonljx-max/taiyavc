@@ -1011,3 +1011,24 @@ model KnowledgeEntry {
   @@index([scope, subject])
   @@index([updatedAt])
 }
+
+// Agent 技能层（四层架构·第二层，P3）：可挂载的 AI 分析能力注册表
+// - BUILTIN（代码内置）：ClaimVerifier/竞争态势分析等，随既有功能路径执行；DB 行惰性创建，仅做使用统计
+// - DYNAMIC（动态技能）：管理员创建的 MD 提示词技能（content 即 system prompt），
+//   可选联网搜索；供 AI行研 run_skill 工具调用与管理后台在线试运行
+model AgentSkill {
+  id          String    @id @default(cuid())
+  key         String    @unique // 稳定标识：内置技能与代码对齐；动态技能自定义（小写字母数字-）
+  name        String // 显示名
+  description String // 能力说明（何时该用）
+  type        String    @default("DYNAMIC") // BUILTIN / DYNAMIC
+  category    String    @default("general") // verification/analysis/research/report/general
+  content     String? // DYNAMIC 技能的 MD 提示词正文（作为 system prompt 执行）
+  useSearch   Boolean   @default(false) // 执行时是否允许联网搜索（Harness Agent + web_search）
+  isActive    Boolean   @default(true)
+  runCount    Int       @default(0)
+  lastRunAt   DateTime?
+  createdById String? // 创建者（管理员）
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}

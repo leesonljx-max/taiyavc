@@ -9,6 +9,7 @@ import { canEditResearchProject } from '@/lib/research-permissions'
 import { isValidModuleKey } from '@/lib/dd-workbench/resources'
 import { runClaimVerification } from '@/lib/dd-workbench/claim-verifier'
 import { saveVerifiedClaims } from '@/lib/knowledge-base'
+import { recordSkillRun } from '@/lib/skill-registry'
 
 /**
  * POST /api/dd/resources/[projectId]/[moduleKey]/verify
@@ -52,6 +53,7 @@ export async function POST(
       sourceFeature: 'dd-claim-verify',
       sourceProjectName: project.name,
     }).catch(() => 0)
+    await recordSkillRun('claim-verifier').catch(() => {})
 
     return NextResponse.json({ ok: true, verification: result.verification, kbSaved })
   } catch (error) {

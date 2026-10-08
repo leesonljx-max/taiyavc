@@ -16,6 +16,7 @@ import { searchProjectsTool } from '@/lib/dd-harness/projects-tool'
 import { webSearchTool } from '@/lib/dd-harness/tools'
 import { recallMemories, formatMemoriesForPrompt, extractAndSaveMemories } from '@/lib/ai-memory'
 import { recallKnowledge, formatKnowledgeForPrompt } from '@/lib/knowledge-base'
+import { listActiveDynamicSkills, buildRunSkillTool } from '@/lib/skill-registry'
 import { recordTokenUsage } from '@/lib/token-accounting'
 
 // ── System Prompt（一级市场投资人视角 + 三原则 + 模板契约） ──
@@ -90,14 +91,26 @@ export async function runAIResearchChat(
   const knowledge = await recallKnowledge(userMessage).catch(() => [] as Awaited<ReturnType<typeof recallKnowledge>>)
   const knowledgeBlock = formatKnowledgeForPrompt(knowledge)
 
-  // 2. 构建 system prompt：核心契约 + 历史记忆 + 已核验知识库 + 工作记忆
+  // 技能层：激活动态技能挂载为 run_skill 工具（P3）
+  const activeSkills = await listActiveDynamicSkills().catch(() => [])
+  const skillBlock = activeSkills.length > 0
+    ? `\n## 可用专业分析技能（需要深度专业分析时调用 run_skill 工具，传入技能标识与分析输入）\n${activeSkills
+        .map(s => `- ${s.key}：${s.name}——${s.description}${s.useSearch ? '（可联网）' : ''}`)
+        .join('\n')}\n`
+    : ''
+
+  // 2. 构建 system prompt：核心契约 + 历史记忆 + 已核验知识库 + 可用技能 + 工作记忆
   const systemPrompt = [
     AI_RESEARCH_SYSTEM_PROMPT,
     `\n## 历史记忆\n${memoryBlock}`,
     knowledgeBlock,
+    skillBlock,
   ].join('\n')
 
   const tools: HarnessTool[] = [searchProjectsTool, webSearchTool]
+  if (activeSkills.length > 0) {
+    tools.push(buildRunSkillTool())
+  }
 
   // 工作记忆：最近 2 轮原文（拼入首条 user 消息，保持 Agent 单次调用上下文精简）
   const recentContext = opts.recentMessages
