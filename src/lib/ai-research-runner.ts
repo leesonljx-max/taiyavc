@@ -65,6 +65,8 @@ export const AI_RESEARCH_SYSTEM_PROMPT = `你是「AI行研」，一家一级市
 
 export interface AIRunOptions {
   sessionId: string
+  /** 当前用户（P3.5：只挂载本人 CONFIRMED 技能） */
+  userId?: string
   /** 最近 2 轮对话原文（工作记忆，调用方从消息表取） */
   recentMessages: Array<{ role: 'user' | 'assistant'; content: string }>
 }
@@ -91,11 +93,18 @@ export async function runAIResearchChat(
   const knowledge = await recallKnowledge(userMessage).catch(() => [] as Awaited<ReturnType<typeof recallKnowledge>>)
   const knowledgeBlock = formatKnowledgeForPrompt(knowledge)
 
-  // 技能层：激活动态技能挂载为 run_skill 工具（P3）
-  const activeSkills = await listActiveDynamicSkills().catch(() => [])
+  // 技能层：本人 CONFIRMED 动态技能挂载为 run_skill 工具（P3.5 个人化）
+  const activeSkills = await listActiveDynamicSkills(opts.userId).catch(() => [])
   const skillBlock = activeSkills.length > 0
     ? `\n## 可用专业分析技能（需要深度专业分析时调用 run_skill 工具，传入技能标识与分析输入）\n${activeSkills
-        .map(s => `- ${s.key}：${s.name}——${s.description}${s.useSearch ? '（可联网）' : ''}`)
+        .map(s => {
+          const caps = [
+            s.useSearch ? '可联网' : null,
+            s.useProjectLibrary ? '可查项目库' : null,
+            s.usePostInvestment ? '可查投后报告' : null,
+          ].filter(Boolean).join('/')
+          return `- ${s.key}：${s.name}——${s.description}${caps ? `（${caps}）` : ''}`
+        })
         .join('\n')}\n`
     : ''
 
@@ -109,7 +118,7 @@ export async function runAIResearchChat(
 
   const tools: HarnessTool[] = [searchProjectsTool, webSearchTool]
   if (activeSkills.length > 0) {
-    tools.push(buildRunSkillTool())
+    tools.push(buildRunSkillTool(opts.userId))
   }
 
   // 工作记忆：最近 2 轮原文（拼入首条 user 消息，保持 Agent 单次调用上下文精简）

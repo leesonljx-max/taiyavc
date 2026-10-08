@@ -22,6 +22,9 @@ interface SkillView {
   category: string
   content: string | null
   useSearch: boolean
+  useProjectLibrary: boolean
+  usePostInvestment: boolean
+  status: 'DRAFT' | 'CONFIRMED'
   isActive: boolean
   runCount: number
   lastRunAt: string | null
@@ -41,7 +44,8 @@ const CATEGORY_STYLES: Record<string, string> = {
 }
 
 const EMPTY_FORM = {
-  key: '', name: '', description: '', category: 'general', content: '', useSearch: false,
+  key: '', name: '', description: '', category: 'general', content: '',
+  useSearch: false, useProjectLibrary: false, usePostInvestment: false,
 }
 
 export default function AdminSkillsPage() {
@@ -98,7 +102,10 @@ export default function AdminSkillsPage() {
   }
   const openEdit = (s: SkillView) => {
     setEditingKey(s.key)
-    setForm({ key: s.key, name: s.name, description: s.description, category: s.category, content: s.content || '', useSearch: s.useSearch })
+    setForm({
+      key: s.key, name: s.name, description: s.description, category: s.category, content: s.content || '',
+      useSearch: s.useSearch, useProjectLibrary: s.useProjectLibrary, usePostInvestment: s.usePostInvestment,
+    })
     setFormErr('')
     setFormOpen(true)
   }
@@ -210,6 +217,11 @@ export default function AdminSkillsPage() {
                           {CATEGORY_LABELS[s.category] || s.category}
                         </span>
                         {s.useSearch && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-600 border border-sky-100">🌐 可联网</span>}
+                        {s.useProjectLibrary && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-50 text-violet-600 border border-violet-100">📁 项目库</span>}
+                        {s.usePostInvestment && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100">📊 投后报告</span>}
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${s.status === 'CONFIRMED' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                          {s.status === 'CONFIRMED' ? '🟢 已确认使用' : '🟡 调试中'}
+                        </span>
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${s.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-200 text-gray-500'}`}>
                           {s.isActive ? '● 已激活' : '○ 已停用'}
                         </span>
@@ -279,6 +291,14 @@ export default function AdminSkillsPage() {
                 <label className="flex items-center gap-2 mt-4 cursor-pointer">
                   <input type="checkbox" checked={form.useSearch} onChange={e => setForm({ ...form, useSearch: e.target.checked })} className="w-4 h-4" />
                   <span className="text-xs text-gray-600">允许联网搜索（技能执行时可检索最新信息）</span>
+                </label>
+                <label className="flex items-center gap-2 mt-4 cursor-pointer">
+                  <input type="checkbox" checked={form.useProjectLibrary} onChange={e => setForm({ ...form, useProjectLibrary: e.target.checked })} className="w-4 h-4" />
+                  <span className="text-xs text-gray-600">查询项目库（可检索内部项目及尽调结论）</span>
+                </label>
+                <label className="flex items-center gap-2 mt-4 cursor-pointer">
+                  <input type="checkbox" checked={form.usePostInvestment} onChange={e => setForm({ ...form, usePostInvestment: e.target.checked })} className="w-4 h-4" />
+                  <span className="text-xs text-gray-600">查询投后分析报告（可检索已投项目经营分析）</span>
                 </label>
               </div>
               <div>

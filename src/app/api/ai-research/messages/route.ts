@@ -99,9 +99,10 @@ export async function POST(request: Request) {
     // 最后一条是刚存的本次提问，从工作记忆里去掉（已作为 userMessage 传入）
     const workMemory = recentMessages.filter((_, i, arr) => !(i === arr.length - 1))
 
-    // Harness 执行（记忆召回 → 内部库+联网 → 回答）
+    // Harness 执行（记忆召回 → 内部库+联网 → 回答；技能层挂载本人 CONFIRMED 技能）
     const result = await runAIResearchChat(content, {
       sessionId,
+      userId: session.user.id,
       recentMessages: workMemory,
     })
 

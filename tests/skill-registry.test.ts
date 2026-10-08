@@ -76,7 +76,8 @@ const asAdmin = () => asUser(adminId, 'ADMIN')
 const asManager = () => asUser(managerId, 'INVESTMENT_MANAGER')
 
 async function seedSkill(overrides: Record<string, unknown> = {}) {
-  return prisma.agentSkill.create({ data: { ...TEST_SKILL, type: 'DYNAMIC', createdById: adminId, ...overrides } })
+  // P3.5 起 DYNAMIC 技能默认 DRAFT；旧用例语义为"可直接执行"→ 默认 CONFIRMED
+  return prisma.agentSkill.create({ data: { ...TEST_SKILL, type: 'DYNAMIC', status: 'CONFIRMED', createdById: adminId, ...overrides } })
 }
 
 // ── lib ──
@@ -250,8 +251,8 @@ test('API：run 试运行——执行动态技能并计入统计；非管理员 
 
 // ── AI行研 run_skill 集成 ──
 
-test('AI行研：激活动态技能注入 run_skill 工具；Agent 调用技能并统计', async () => {
-  await seedSkill()
+test('AI行研：本人 CONFIRMED 技能注入 run_skill 工具；Agent 调用技能并统计', async () => {
+  await seedSkill({ createdById: managerId })
   const session = await prisma.aIChatSession.create({ data: { userId: managerId } })
 
   // 三段分发：① Agent 首轮（带 run_skill 工具）返回 tool_calls → ② 技能执行（runSingleCall）→ ③ Agent 次轮输出最终回答
@@ -281,7 +282,7 @@ test('AI行研：激活动态技能注入 run_skill 工具；Agent 调用技能�
     return chatCompletions('根据专业技能分析：融资窗口剩余约18个月。')
   }
 
-  const result = await runAIResearchChat('帮我评估具身智能的融资窗口', { sessionId: session.id, recentMessages: [] })
+  const result = await runAIResearchChat('帮我评估具身智能的融资窗口', { sessionId: session.id, userId: managerId, recentMessages: [] })
 
   // system prompt 注入了技能列表
   const agentTools = (firstAgentCall!.tools as Array<{ function: { name: string } }>).map(t => t.function.name)
@@ -305,7 +306,7 @@ test('AI行研：无激活动态技能时不注入 run_skill 工具', async () =
     if (Array.isArray(body.tools)) tools = (body.tools as Array<{ function: { name: string } }>).map(t => t.function.name)
     return chatCompletions('普通回答')
   }
-  await runAIResearchChat('普通问题', { sessionId: session.id, recentMessages: [] })
+  await runAIResearchChat('普通问题', { sessionId: session.id, userId: managerId, recentMessages: [] })
   assert.ok(!tools.includes('run_skill'))
   assert.ok(tools.includes('web_search'))
 })

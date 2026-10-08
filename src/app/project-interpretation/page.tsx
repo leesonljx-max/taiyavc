@@ -11,6 +11,7 @@ import { useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import DashboardLayout from '@/components/DashboardLayout'
+import { SkillPanelLauncher } from '@/components/SkillPanel'
 import ProjectInterpretationPanel from '@/components/ai-research/ProjectInterpretationPanel'
 
 export default function ProjectInterpretationPage() {
@@ -37,6 +38,7 @@ export default function ProjectInterpretationPage() {
     <DashboardLayout
       title="项目解读"
       subtitle="上传 BP 与访谈纪要 · 固定框架解读 · 闭环创建到项目库"
+      actions={<SkillPanelLauncher />}
     >
       <ProjectInterpretationPanel />
     </DashboardLayout>

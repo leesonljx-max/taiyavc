@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import dynamic from 'next/dynamic'
 import DashboardLayout from '@/components/DashboardLayout'
+import { SkillPanelLauncher } from '@/components/SkillPanel'
 
 // ECharts 树图（客户端组件，ssr:false 避免 prerender 报 window undefined）
 const IndustryTreemap = dynamic(() => import('@/components/IndustryTreemap'), {
@@ -241,7 +242,7 @@ export default function StatisticsPage() {
       })()
 
   return (
-    <DashboardLayout>
+    <DashboardLayout actions={<SkillPanelLauncher />}>
       <div className="space-y-6">
         {/* 页面标题 */}
         <div className="flex items-center justify-between">

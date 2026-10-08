@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import DashboardLayout from '@/components/DashboardLayout'
+import { SkillPanelLauncher } from '@/components/SkillPanel'
 import { followStageLabels, followStageColors, type FollowStage } from '../projects/types'
 
 interface PendingItem {
@@ -146,6 +147,7 @@ export default function ResearchPage() {
     <DashboardLayout
       title="项目尽调"
       subtitle="尽调阶段项目的尽调报告与模块资料管理"
+      actions={<SkillPanelLauncher />}
     >
       {/* ── 四概览卡（尽调项目 / 进行中批次 / 已完成尽调项目 / 待决问题） ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">

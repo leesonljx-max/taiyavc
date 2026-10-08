@@ -180,6 +180,8 @@ model User {
   ddReportVersionsFrozen DDReportVersion[] @relation("DDReportFreezer")
   // 项目解读（AI行研）：上传人
   projectInterpretations ProjectInterpretation[] @relation("ProjectInterpretations")
+  // 技能层：创建的动态技能（P3.5 个人技能）
+  agentSkills AgentSkill[]
 }
 
 // 项目线索（用于在新建项目时进行重合检测和合并，也用于AI自动检索）
@@ -1014,8 +1016,9 @@ model KnowledgeEntry {
 
 // Agent 技能层（四层架构·第二层，P3）：可挂载的 AI 分析能力注册表
 // - BUILTIN（代码内置）：ClaimVerifier/竞争态势分析等，随既有功能路径执行；DB 行惰性创建，仅做使用统计
-// - DYNAMIC（动态技能）：管理员创建的 MD 提示词技能（content 即 system prompt），
-//   可选联网搜索；供 AI行研 run_skill 工具调用与管理后台在线试运行
+// - DYNAMIC（动态技能）：任何账号在功能页创建的 MD 提示词技能（content 即 system prompt），
+//   能力勾选：联网搜索/查询项目库/查询投后分析报告；供 AI行研 run_skill 工具调用与功能页在线调试
+//   生命周期：DRAFT 调试中（仅创建者可见）→ CONFIRMED 已确认使用（挂载到本人 AI行研 + 同事可见可引用）
 model AgentSkill {
   id          String    @id @default(cuid())
   key         String    @unique // 稳定标识：内置技能与代码对齐；动态技能自定义（小写字母数字-）
@@ -1025,10 +1028,18 @@ model AgentSkill {
   category    String    @default("general") // verification/analysis/research/report/general
   content     String? // DYNAMIC 技能的 MD 提示词正文（作为 system prompt 执行）
   useSearch   Boolean   @default(false) // 执行时是否允许联网搜索（Harness Agent + web_search）
+  useProjectLibrary Boolean @default(false) // 执行时可查询项目库（search_projects 工具）
+  usePostInvestment  Boolean @default(false) // 执行时可查询投后分析报告（search_post_investment 工具）
+  status      String    @default("DRAFT") // DRAFT 调试中（仅创建者可见）/ CONFIRMED 已确认使用（挂载+同事可见）
   isActive    Boolean   @default(true)
   runCount    Int       @default(0)
   lastRunAt   DateTime?
-  createdById String? // 创建者（管理员）
+  createdById String? // 创建者归属（DYNAMIC 必填；BUILTIN 统计行为空）
+  forkedFromKey String? // 一键引用来源技能 key（fork 时记录，便于溯源）
+  createdBy   User?     @relation(fields: [createdById], references: [id], onDelete: Cascade)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  @@index([createdById, status])
+  @@index([type, status])
 }

@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import DashboardLayout from '@/components/DashboardLayout'
+import { SkillPanelLauncher } from '@/components/SkillPanel'
 import DDWorkbenchShell from '@/components/dd-workbench/DDWorkbenchShell'
 
 interface ResearchProject {
@@ -91,6 +92,7 @@ export default function ResearchDetailPage() {
       subtitle={project.companyFullName || project.industry || ''}
       actions={
         <div className="flex gap-2">
+          <SkillPanelLauncher />
           <button
             onClick={() => router.push(`/projects/${params.projectId}`)}
             className="px-3 py-1.5 bg-white border border-primary-200 text-primary-700 text-sm rounded-lg hover:bg-primary-50 font-medium"
