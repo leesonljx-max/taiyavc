@@ -1,6 +1,6 @@
 {
   "name": "investrack",
-  "version": "2.7.2",
+  "version": "2.3.8",
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
