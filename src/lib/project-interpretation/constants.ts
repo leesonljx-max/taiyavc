@@ -82,6 +82,16 @@ export interface FinancingCase {
   relevance?: string
 }
 
+/** 技能独立分析模块（挂载技能的视角超出七维框架时单列展示；与某维相似的技能已融入对应维度） */
+export interface SkillModule {
+  /** 技能名（原样保留） */
+  skillName: string
+  /** 该技能视角的分析标题 */
+  title: string
+  /** 分析内容（分点 + 重点加粗） */
+  content: string
+}
+
 export interface InterpretationResult {
   /** AI 推断的项目名（用户未填时使用） */
   projectName: string
@@ -103,6 +113,8 @@ export interface InterpretationResult {
   financingCases: FinancingCase[]
   /** 本次解读实际注入的本人技能名（P3.6 可见性；无技能时为空数组，旧记录无此字段） */
   appliedSkills?: string[]
+  /** 挂载技能的独立分析模块（视角超出七维框架时每技能一项；无技能/已融入时为空数组，旧记录无此字段） */
+  skillModules?: SkillModule[]
 }
 
 // ── 校验结果模板（verifyResultJson 固定结构） ──

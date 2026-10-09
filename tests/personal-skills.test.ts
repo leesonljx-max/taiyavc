@@ -194,7 +194,8 @@ test('lib：searchPostInvestmentInternal——LIKE 检索 + 每项目仅最近�
     anomalies: [{ level: 'medium', title: '收入与现金流背离', detail: '收入+52%，现金流-2666万元' }],
     risk_alerts: [{ type: '现金流', level: 'medium', description: '经营现金流为负' }],
   }
-  await prisma.postInvestAnalysis.create({ data: { projectId: proj.id, period: '2026Q2', summaryJson: JSON.stringify(summary) } })
+  // 显式错开 createdAt（同一毫秒创建会让「最近一期」排序不稳定）
+  await prisma.postInvestAnalysis.create({ data: { projectId: proj.id, period: '2026Q2', summaryJson: JSON.stringify(summary), createdAt: new Date(Date.now() - 60_000) } })
   await prisma.postInvestAnalysis.create({ data: { projectId: proj.id, period: '2026Q3', summaryJson: JSON.stringify({ executive_summary: 'Q3 最新结论' }) } })
 
   // 按项目名检索 → 只返回最新一期（Q3）
@@ -396,6 +397,8 @@ test('P3.6：buildUserSkillPromptBlock——无 userId/无技能返回空串；C
   const block = await buildUserSkillPromptBlock(aliceId)
   assert.ok(block.length > 0)
   assert.match(block, /用户自定义分析技能/)
+  assert.match(block, /融入该模块/) // 模块化路由：相似技能融入固定框架模块
+  assert.match(block, /单独产出一个分析模块/) // 模块化路由：独立领域技能单列
   assert.match(block, /以用户技能为准/) // 冲突优先级声明
   assert.match(block, /输出格式必须严格遵守/) // 格式护栏
   assert.match(block, /融资窗口评估/) // 技能名
@@ -440,14 +443,18 @@ test('P3.6：项目解读——挂载技能后解读 system prompt 注入技能�
     return chatCompletions('{}')
   }
 
-  // 1) 无技能：system prompt 为纯固定框架（不含技能块）
+  // 1) 无技能：system prompt 为纯固定框架（不含技能块）；skillModules 清洗为空数组
   asAlice()
   let res = await PI_INTERPRET(new Request(`http://t/api/project-interpretation/${record.id}/interpret`, { method: 'POST' }), { params: { id: record.id } })
   assert.equal(res.status, 200)
   assert.ok(interpretSystem.includes('结构化 JSON 解读'))
   assert.ok(!interpretSystem.includes('用户自定义分析技能'))
+  const saved1 = await prisma.projectInterpretation.findUnique({ where: { id: record.id } })
+  const interp1 = JSON.parse(saved1!.interpretationJson!) as { appliedSkills?: string[]; skillModules?: unknown[] }
+  assert.deepEqual(interp1.appliedSkills, [])
+  assert.deepEqual(interp1.skillModules, [])
 
-  // 2) 挂载 CONFIRMED 技能：解读 system prompt 注入技能块（冲突时以用户技能为准）
+  // 2) 挂载 CONFIRMED 技能：解读 system prompt 注入技能块（模块化路由 + 冲突时以用户技能为准）
   await seedSkill()
   const record2 = await prisma.projectInterpretation.create({
     data: {
@@ -460,17 +467,48 @@ test('P3.6：项目解读——挂载技能后解读 system prompt 注入技能�
       documentText: '光互连芯片项目，A轮，订单增长中。',
     },
   })
+  // 挂载技能后的解读响应：含技能独立模块（视角超出七维框架时单列）
+  const interpretJsonWithSkills = JSON.stringify({
+    projectName: 'P35测试项目解读2', industry: '半导体芯片',
+    marketPosition: '早期卡位', techLeadership: '硅光路线', teamStanding: '清华系',
+    competitionAnalysis: '起步晚', startupWindow: '窗口2-3年', marketEstimate: 'POC为主',
+    skillModules: [
+      { skillName: '融资窗口评估', title: '光互连赛道融资窗口', content: '1. 当前窗口剩余约 **12 个月**\n2. 头部机构已密集布局' },
+    ],
+  })
+  mockState.fetchHandler = (_url, body) => {
+    const system = String((body.messages as Array<{ content: string }>)[0]?.content || '')
+    if (system.includes('结构化 JSON 解读')) {
+      interpretSystem = system
+      return chatCompletions(interpretJsonWithSkills)
+    }
+    if (system.includes('搜索关键词')) {
+      return chatCompletions(JSON.stringify({ queries: [{ text: '光互连 融资', lang: 'zh' }] }))
+    }
+    if (system.includes('融资案例')) {
+      return chatCompletions(JSON.stringify({ cases: [] }))
+    }
+    return chatCompletions('{}')
+  }
   res = await PI_INTERPRET(new Request(`http://t/api/project-interpretation/${record2.id}/interpret`, { method: 'POST' }), { params: { id: record2.id } })
   assert.equal(res.status, 200)
   assert.ok(interpretSystem.includes('结构化 JSON 解读'))
   assert.ok(interpretSystem.includes('用户自定义分析技能'))
+  assert.match(interpretSystem, /单独产出一个分析模块/) // 模块化路由规则注入
+  assert.match(interpretSystem, /skillModules/) // 输出结构含技能独立模块字段
   assert.match(interpretSystem, /以用户技能为准/)
   assert.match(interpretSystem, /融资窗口评估/)
 
-  // 3) appliedSkills 可见性：解读结果落库的应用技能名
+  // 3) appliedSkills 可见性 + skillModules 独立模块持久化（随 interpretationJson 落库）
   const saved2 = await prisma.projectInterpretation.findUnique({ where: { id: record2.id } })
-  const interp2 = JSON.parse(saved2!.interpretationJson!) as { appliedSkills?: string[] }
+  const interp2 = JSON.parse(saved2!.interpretationJson!) as {
+    appliedSkills?: string[]
+    skillModules?: Array<{ skillName: string; title: string; content: string }>
+  }
   assert.deepEqual(interp2.appliedSkills, ['融资窗口评估'])
+  assert.equal(interp2.skillModules!.length, 1)
+  assert.equal(interp2.skillModules![0].skillName, '融资窗口评估')
+  assert.ok(interp2.skillModules![0].content.includes('**12 个月**'))
 })
 
 test('P3.6 可见性：问题清单生成注入本人技能并返回 appliedSkills；无技能时为空数组', async () => {

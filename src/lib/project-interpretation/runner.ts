@@ -84,8 +84,13 @@ const INTERPRET_SYSTEM_PROMPT = `你是一级市场资深投资人。基于项�
   "teamStanding": "团队所在行业的咖位（创始人及核心成员的行业地位与背书，150字内）",
   "competitionAnalysis": "竞争分析（主要竞品、差异化、壁垒，150字内）",
   "startupWindow": "所处行业的创业窗口判断（窗口期长短、时间敏感性、风险，150字内）",
-  "marketEstimate": "根据业务进展和客户 logo 情况预估市场地位（订单/POC/客户质量推断商业化验证程度，150字内）"
+  "marketEstimate": "根据业务进展和客户 logo 情况预估市场地位（订单/POC/客户质量推断商业化验证程度，150字内）",
+  "skillModules": [
+    { "skillName": "用户技能名（原样保留）", "title": "该技能视角的分析标题（如：全球行业发展动态与赛道映射）", "content": "该技能分析框架下的独立分析（分点+加粗，250字内）" }
+  ]
 }
+排版要求（所有分析文本字段统一执行）：内容分点展示——按 1. 2. 3. 编号（或 - 分条）每点独立一行，不要输出一整段文字；每点的重点内容（关键数据/核心结论/重大风险）用 **加粗** 标注。
+skillModules 字段说明：仅当挂载的用户技能分析视角超出上述七维框架（独立领域）时，为该技能输出一项（skillName 原样保留技能名）；与某一维相似的技能应融入对应维度的分析内容；未挂载技能时输出空数组 []。
 要求：结论克制、可核验，文档未提及的信息明确写"文档未披露"而非编造。`
 
 const CASE_QUERY_SYSTEM_PROMPT = `你是一级市场投资研究员。基于项目画像生成 4 组联网搜索关键词，用于检索与该项目重合度高的融资案例（国内外）。
@@ -206,6 +211,23 @@ export async function runInterpretation(input: {
     }
   }
 
+  // 技能独立模块清洗（无技能/已融入时为空数组；最多 5 项，字段截断防溢出）
+  const skillModules = (Array.isArray(base.skillModules) ? base.skillModules : [])
+    .filter(
+      m =>
+        m &&
+        typeof m.skillName === 'string' &&
+        m.skillName.trim() &&
+        typeof m.content === 'string' &&
+        m.content.trim()
+    )
+    .slice(0, 5)
+    .map(m => ({
+      skillName: m.skillName!.trim().slice(0, 50),
+      title: (typeof m.title === 'string' ? m.title : '').trim().slice(0, 60),
+      content: m.content!.trim().slice(0, 2000),
+    }))
+
   return {
     projectName: base.projectName?.trim() || input.projectName,
     industry,
@@ -217,6 +239,7 @@ export async function runInterpretation(input: {
     marketEstimate: base.marketEstimate || '',
     financingCases,
     appliedSkills,
+    skillModules,
   }
 }
 
@@ -240,6 +263,7 @@ const QUESTIONS_SYSTEM_PROMPT = `你是一级市场资深投资人，站在投�
 要求：
 - 技术问题（category=TECH）至少 10 个，聚焦可验证的技术细节（如具体性能指标、工艺良率、第三方验证）
 - 每个问题的 idealAnswer 必须具体、可判断（好的理想答案应包含量化指标或可核验事实）
+- 排版：idealAnswer 内容分点展示（每点独立一行，必要时分点），重点内容（量化指标/可核验事实）用 **加粗** 标注
 - 问题不得空泛（避免"你们的优势是什么"这类问题）
 - isSectorInsight 仅在题目来源赛道沉淀时为 true，其余一律 false
 - claimFlag 仅在题目针对"外部校验发现夸大/矛盾的声明"生成追问时为 true，其余一律 false`
@@ -469,6 +493,7 @@ matchLevel 判定标准：
 - UNCOVERED：访谈纪要中完全没有涉及该问题
 要求：
 - results 数组必须覆盖全部问题，index 与输入问题编号一一对应
+- 排版：gapAnalysis 与 conclusion 内容分点展示（差距点逐条列出，每点一行），重点内容（矛盾之处/缺失关键数据）用 **加粗** 标注
 - 基于事实对比，不做臆测；纪要中明确回避（如"不方便透露"）判 GAP 而非 UNCOVERED`
 
 /**
@@ -539,7 +564,8 @@ const CONCLUSION_SYSTEM_PROMPT = `你是一级市场资深投资人。基于多�
   ],
   "advice": "给投资的下一步建议（80字内）"
 }
-要求：dimensions 按差距从大到小排序；结论必须由校验结果支撑，不得引入未提及的信息。`
+要求：dimensions 按差距从大到小排序；结论必须由校验结果支撑，不得引入未提及的信息。
+排版要求（所有文本字段统一执行）：内容分点展示（每点独立一行，不要一整段文字），重点内容（核心结论/关键数据/重大风险）用 **加粗** 标注。`
 
 /**
  * 生成综合结论：汇总已校验问题的差距分析

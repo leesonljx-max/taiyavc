@@ -46,6 +46,8 @@ export interface PostInvestAnalysisResult {
   cashflow_analysis: { cash_balance: string; runway_months: number | null; assessment: string }
   business_progress: PostInvestBusinessProgress[]
   risk_alerts: PostInvestRiskAlert[]
+  /** 挂载技能的独立分析模块（视角超出固定分析框架时单列；无技能/已融入时为空数组，旧记录无此字段） */
+  skill_modules?: Array<{ skill_name: string; title: string; content: string }>
 }
 
 // ── 指标提取 ──
@@ -169,15 +171,20 @@ const ANALYSIS_SYSTEM_PROMPT = `你是投资机构的投后管理分析 Agent。
   ],
   "risk_alerts": [
     { "type": "财务 或 现金流 或 业务 或 融资 或 管理", "level": "high 或 medium 或 low", "description": "风险描述", "evidence": "证据（引用数据/原文）" }
+  ],
+  "skill_modules": [
+    { "skill_name": "用户技能名（原样保留）", "title": "该技能视角的分析标题", "content": "该技能分析框架下的独立分析（分点+加粗）" }
   ]
 }
+skill_modules 字段说明：仅当挂载的用户技能分析视角超出上述固定分析框架（独立领域）时，为该技能输出一项（skill_name 原样保留技能名）；与某一分析维度相似的技能应融入对应维度的分析内容；未挂载技能时输出空数组 []。
 硬性规则（违反即废稿）：
 1. 所有数字必须来自输入的结构化指标数据或文档摘录，禁止编造、禁止自行计算
 2. 每条异常/风险必须引用具体数据作为证据
 3. 事实与判断分离：先陈述数据，再给判断
 4. 输入数据未覆盖的领域（如无订单信息），business_progress 中不输出该项
 5. 收入增长但经营现金流为负/下降时，必须提示"收入增长与现金流背离，关注回款质量"
-6. 结合历史各期数据做趋势判断：如经营现金流连续两期为负、收入持续增长、订单波动、亏损持续收窄/扩大等，趋势结论必须注明涉及的具体期数与数据`
+6. 结合历史各期数据做趋势判断：如经营现金流连续两期为负、收入持续增长、订单波动、亏损持续收窄/扩大等，趋势结论必须注明涉及的具体期数与数据
+7. 排版（所有分析文本字段统一执行）：内容分点展示——按 1. 2. 3. 编号（或 - 分条）每点独立一行，不要输出一整段文字；重点内容（关键数据/核心结论/重大风险）用 **加粗** 标注`
 
 /** 格式化指标（带同比环比）为 AI 输入 */
 function formatMetricsInput(metrics: MetricWithChange[]): string {
@@ -284,6 +291,22 @@ export async function runPostInvestAnalysis(projectId: string, period: string, u
     },
     business_progress: Array.isArray(parsed.business_progress) ? parsed.business_progress.slice(0, 8) : [],
     risk_alerts: Array.isArray(parsed.risk_alerts) ? parsed.risk_alerts.slice(0, 10) : [],
+    // 技能独立模块清洗（无技能/已融入时为空数组；最多 5 项，字段截断防溢出）
+    skill_modules: (Array.isArray(parsed.skill_modules) ? parsed.skill_modules : [])
+      .filter(
+        m =>
+          m &&
+          typeof m.skill_name === 'string' &&
+          m.skill_name.trim() &&
+          typeof m.content === 'string' &&
+          m.content.trim()
+      )
+      .slice(0, 5)
+      .map(m => ({
+        skill_name: m.skill_name!.trim().slice(0, 50),
+        title: (typeof m.title === 'string' ? m.title : '').trim().slice(0, 60),
+        content: m.content!.trim().slice(0, 2000),
+      })),
   }
 
   // 7. 落库（upsert 覆盖旧分析）

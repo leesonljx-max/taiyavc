@@ -94,6 +94,8 @@ function mockPostInvestAI() {
         cashflow_analysis: { cash_balance: '11700 万元', runway_months: 13.2, assessment: '现金余额可覆盖约 13 个月净消耗，短期安全。' },
         business_progress: [{ area: '订单', rating: 4, detail: '新签订单 2488 万元。' }],
         risk_alerts: [{ type: '现金流', level: 'medium', description: '经营现金流为负。', evidence: '经营现金流 -2666 万元' }],
+        // 技能独立模块（无技能时 AI 应输出空数组；此处 mock 带一项验证清洗与落库）
+        skill_modules: [{ skill_name: '融资窗口评估', title: '本轮融资窗口', content: '1. 窗口剩余约 **12 个月**\n2. 建议加快交割节奏' }],
       }))
     }
     return chatCompletions('{}')
@@ -267,6 +269,10 @@ test('AI 分析：提取指标入库 + 分析落库；无文档 400；runway 由
   assert.ok(analysis)
   const parsed = JSON.parse(analysis.summaryJson)
   assert.ok(parsed.executive_summary.includes('现金流'))
+  // 技能独立模块清洗与落库（skill_modules 随 summaryJson 持久化）
+  assert.equal(parsed.skill_modules.length, 1)
+  assert.equal(parsed.skill_modules[0].skill_name, '融资窗口评估')
+  assert.ok(parsed.skill_modules[0].content.includes('**12 个月**'))
 
   // 详情 API：periods + metricsByPeriod + analyses
   const detail = await (await PI_DETAIL(new Request(`http://t/api/post-investment/${projectId}`), { params: { projectId } })).json()

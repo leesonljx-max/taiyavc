@@ -11,6 +11,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import RichText from '@/components/RichText'
 import type {
   InterpretationResult,
   VerifyResult,
@@ -1043,10 +1044,26 @@ function Detail({
               ].map(d => (
                 <div key={d.label} className="rounded-xl bg-slate-50 border border-gray-100 p-3">
                   <p className="text-[11px] font-bold text-blue-600">{d.label}</p>
-                  <p className="text-xs text-gray-700 leading-relaxed mt-1">{d.value || '—'}</p>
+                  <RichText text={d.value} className="text-xs text-gray-700 mt-1 space-y-0.5" />
                 </div>
               ))}
             </div>
+
+            {/* 技能独立分析模块（挂载技能视角超出七维框架时单列；与某维相似的技能已融入上方对应维度） */}
+            {interpretation.skillModules?.length ? (
+              <div className="mt-3 space-y-2.5">
+                <p className="text-[11px] font-bold text-violet-600">⚡ 你的技能 · 独立分析模块</p>
+                {interpretation.skillModules.map((m, i) => (
+                  <div key={i} className="rounded-xl bg-violet-50/60 border border-violet-200 p-3">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-700">⚡ {m.skillName}</span>
+                      {m.title && <p className="text-[11px] font-bold text-violet-800">{m.title}</p>}
+                    </div>
+                    <RichText text={m.content} className="text-xs text-gray-700 space-y-0.5" strongClassName="font-bold text-violet-900" />
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
             {/* 融资案例表（模型按项目定位/产品/技术智能匹配，含国内外 + 重合度说明） */}
             <div className="mt-4">
@@ -1223,7 +1240,13 @@ function Detail({
                 {/* 新结论高亮展示（含赛道沉淀问题的校验支撑，作为该赛道后续项目的关注重点） */}
                 <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 border-2 border-indigo-200 p-3.5 shadow-sm">
                   <p className="text-xs font-bold text-indigo-600">★ 新结论 · 总体判断</p>
-                  <p className="text-sm text-indigo-900 font-bold mt-1 leading-relaxed">{conclusion.summary}</p>
+                  <RichText
+                    text={conclusion.summary}
+                    className="text-sm text-indigo-900 font-bold mt-1 space-y-0.5"
+                    lineClassName="leading-relaxed"
+                    strongClassName="font-bold text-indigo-950"
+                    placeholder="—"
+                  />
                 </div>
                 {conclusion.dimensions.map((d, i) => (
                   <div key={i} className="flex items-start gap-2.5 rounded-xl border border-gray-100 p-3">
@@ -1232,12 +1255,19 @@ function Detail({
                     </span>
                     <div>
                       <p className="text-xs font-bold text-gray-800">{d.aspect}</p>
-                      <p className="text-xs text-gray-600 mt-0.5 leading-relaxed">{d.conclusion}</p>
+                      <RichText
+                        text={d.conclusion}
+                        className="text-xs text-gray-600 mt-0.5 space-y-0.5"
+                        lineClassName="leading-relaxed"
+                        placeholder="—"
+                      />
                     </div>
                   </div>
                 ))}
                 {conclusion.advice && (
-                  <p className="text-xs text-gray-500 px-1">💡 建议：{conclusion.advice}</p>
+                  <div className="text-xs text-gray-500 px-1">
+                    💡 建议：<RichText text={conclusion.advice} lineClassName="leading-relaxed" placeholder="—" />
+                  </div>
                 )}
               </div>
             ) : (
@@ -1449,11 +1479,16 @@ function QuestionCard({ question }: { question: QuestionView }) {
             </span>
             <p className="text-sm font-bold text-gray-800 leading-snug">{question.question}</p>
           </div>
-          {/* 理想答案（浅色字体） */}
-          <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
+          {/* 理想答案（浅色字体；分点+加粗排版，单行内联/多行分点） */}
+          <div className="text-xs text-gray-400 mt-1.5">
             <span className="font-medium">理想答案：</span>
-            {question.idealAnswer}
-          </p>
+            <RichText
+              text={question.idealAnswer}
+              lineClassName="leading-relaxed"
+              strongClassName="font-bold text-gray-600"
+              placeholder=""
+            />
+          </div>
 
           {/* 批量校验结果（上传一次访谈纪要后自动生成；赛道沉淀题结论高亮展示） */}
           {verified && result && (
@@ -1468,11 +1503,22 @@ function QuestionCard({ question }: { question: QuestionView }) {
                   {MATCH_STYLES[result.matchLevel]?.label || result.matchLevel}
                 </span>
               </div>
-              {result.answerSummary && <p className="text-xs text-gray-600 mt-1.5">回答要点：{result.answerSummary}</p>}
-              <p className="text-xs text-gray-700 mt-1">差距分析：{result.gapAnalysis}</p>
-              <p className={`mt-1 text-xs ${question.sectorInsight ? 'text-indigo-700 font-bold' : 'font-bold text-gray-800'}`}>
-                结论：{result.conclusion}
-              </p>
+              {result.answerSummary && (
+                <p className="text-xs text-gray-600 mt-1.5">回答要点：{result.answerSummary}</p>
+              )}
+              <div className="text-xs text-gray-700 mt-1">
+                差距分析：
+                <RichText text={result.gapAnalysis} lineClassName="leading-relaxed" placeholder="—" />
+              </div>
+              <div className={`mt-1 text-xs ${question.sectorInsight ? 'text-indigo-700 font-bold' : 'font-bold text-gray-800'}`}>
+                结论：
+                <RichText
+                  text={result.conclusion}
+                  lineClassName="leading-relaxed"
+                  strongClassName={question.sectorInsight ? 'font-bold text-indigo-900' : 'font-bold text-gray-900'}
+                  placeholder="—"
+                />
+              </div>
             </div>
           )}
         </div>

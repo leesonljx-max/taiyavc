@@ -12,6 +12,7 @@ import { useSession } from 'next-auth/react'
 import DashboardLayout from '@/components/DashboardLayout'
 import { SkillPanelLauncher } from '@/components/SkillPanel'
 import DocumentPreviewModal from '@/components/DocumentPreviewModal'
+import RichText from '@/components/RichText'
 
 // ── 类型（与 API 对齐） ──
 
@@ -46,6 +47,7 @@ interface AnalysisResult {
   cashflow_analysis: { cash_balance: string; runway_months: number | null; assessment: string }
   business_progress: Array<{ area: string; rating: number; detail: string }>
   risk_alerts: Array<{ type: string; level: 'high' | 'medium' | 'low'; description: string; evidence: string }>
+  skill_modules?: Array<{ skill_name: string; title: string; content: string }>
 }
 
 interface InvestmentInfo {
@@ -554,7 +556,12 @@ export default function PostInvestmentDetailPage() {
               {/* 核心结论 */}
               <div className="p-3.5 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50/50 border border-blue-100">
                 <p className="text-[11px] font-bold text-blue-700 mb-1.5">一、核心结论</p>
-                <p className="text-xs text-gray-700 leading-relaxed">{analysis.executive_summary}</p>
+                <RichText
+                  text={analysis.executive_summary}
+                  className="text-xs text-gray-700 space-y-0.5"
+                  strongClassName="font-bold text-gray-900"
+                  placeholder="—"
+                />
               </div>
 
               {/* 异常指标 */}
@@ -568,7 +575,7 @@ export default function PostInvestmentDetailPage() {
                           <span className="text-[10px] font-bold">{ANOMALY_STYLES[a.level]?.label || a.level}</span>
                           <span className="text-xs font-bold text-gray-800">{a.title}</span>
                         </div>
-                        <p className="mt-1 text-xs text-gray-600 leading-relaxed">{a.detail}</p>
+                        <RichText text={a.detail} className="mt-1 text-xs text-gray-600 space-y-0.5" lineClassName="leading-relaxed" placeholder="—" />
                         <p className="mt-1 text-[10px] text-gray-400">证据：{a.evidence}</p>
                       </div>
                     ))}
@@ -590,7 +597,12 @@ export default function PostInvestmentDetailPage() {
                   </div>
                   <div className="px-2.5 py-2 bg-slate-50 rounded-lg">
                     <p className="text-[10px] text-gray-400">健康评估</p>
-                    <p className="text-xs font-bold text-gray-800 leading-snug">{analysis.cashflow_analysis.assessment}</p>
+                    <RichText
+                      text={analysis.cashflow_analysis.assessment}
+                      className="text-xs font-bold text-gray-800"
+                      lineClassName="leading-snug"
+                      placeholder="—"
+                    />
                   </div>
                 </div>
               </div>
@@ -606,7 +618,7 @@ export default function PostInvestmentDetailPage() {
                           <span className="text-xs font-bold text-gray-800">{b.area}</span>
                           <span className="text-[10px] text-amber-400">{'★'.repeat(Math.max(1, Math.min(5, b.rating)))}</span>
                         </div>
-                        <p className="mt-1 text-xs text-gray-600 leading-relaxed">{b.detail}</p>
+                        <RichText text={b.detail} className="mt-1 text-xs text-gray-600 space-y-0.5" lineClassName="leading-relaxed" placeholder="—" />
                       </div>
                     ))}
                   </div>
@@ -626,13 +638,37 @@ export default function PostInvestmentDetailPage() {
                           </span>
                           <span className="px-1.5 py-0.5 rounded bg-slate-50 text-gray-500 text-[10px] font-bold">{r.type}</span>
                         </div>
-                        <p className="mt-1 text-xs text-gray-700 leading-relaxed">{r.description}</p>
+                        <RichText text={r.description} className="mt-1 text-xs text-gray-700 space-y-0.5" lineClassName="leading-relaxed" placeholder="—" />
                         <p className="mt-1 text-[10px] text-gray-400">证据：{r.evidence}</p>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
+
+              {/* 技能视角分析（挂载技能超出固定分析框架时单列；相似技能已融入上述各维度） */}
+              {analysis.skill_modules?.length ? (
+                <div>
+                  <p className="text-[11px] font-bold text-violet-600 mb-2">⚡ 六、你的技能 · 独立分析模块</p>
+                  <div className="space-y-2">
+                    {analysis.skill_modules.map((m, i) => (
+                      <div key={i} className="px-3 py-2.5 rounded-xl border border-violet-200 bg-violet-50/60">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-700">⚡ {m.skill_name}</span>
+                          {m.title && <span className="text-[11px] font-bold text-violet-800">{m.title}</span>}
+                        </div>
+                        <RichText
+                          text={m.content}
+                          className="mt-1 text-xs text-gray-700 space-y-0.5"
+                          lineClassName="leading-relaxed"
+                          strongClassName="font-bold text-violet-900"
+                          placeholder="—"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           )}
 
