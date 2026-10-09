@@ -92,7 +92,7 @@ export default function ResearchDetailPage() {
       subtitle={project.companyFullName || project.industry || ''}
       actions={
         <div className="flex gap-2">
-          <SkillPanelLauncher />
+          <SkillPanelLauncher scene="dd-workbench" />
           <button
             onClick={() => router.push(`/projects/${params.projectId}`)}
             className="px-3 py-1.5 bg-white border border-primary-200 text-primary-700 text-sm rounded-lg hover:bg-primary-50 font-medium"

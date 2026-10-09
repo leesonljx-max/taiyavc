@@ -111,6 +111,48 @@ export function isBuiltinKey(key: string): boolean {
   return BUILTIN_SKILLS.some(s => s.key === key)
 }
 
+// ── 场景体系（每个功能页一套独立技能设定） ──
+
+/** 技能可挂载的功能场景（skill-registry 单一来源；scenes 空数组 = 存量技能全场景兼容） */
+export const SKILL_SCENES = [
+  { key: 'project-interpretation', label: '项目解读' },
+  { key: 'dd-workbench', label: '项目尽调' },
+  { key: 'post-investment', label: '投后管理' },
+  { key: 'ai-research', label: 'AI行研' },
+  { key: 'industry-news', label: '行业动态' },
+] as const
+
+export type SkillScene = (typeof SKILL_SCENES)[number]['key']
+
+const SCENE_KEYS = SKILL_SCENES.map(s => s.key) as string[]
+
+export function isSkillScene(v: string): v is SkillScene {
+  return SCENE_KEYS.includes(v)
+}
+
+export function skillSceneLabel(scene: string): string {
+  return SKILL_SCENES.find(s => s.key === scene)?.label || scene
+}
+
+/** 场景标签列表（全场景/多场景摘要显示用） */
+export function skillSceneLabels(scenes: string[]): string[] {
+  if (!scenes || scenes.length === 0) return ['全场景']
+  return scenes.filter(isSkillScene).map(skillSceneLabel)
+}
+
+/** 技能是否挂载在指定场景（scenes 空数组 = 存量技能，视为全场景兼容） */
+export function isSkillInScene(scenes: string[] | null | undefined, scene?: string): boolean {
+  if (!scene) return true // 无场景维度（全量视图）
+  if (!scenes || scenes.length === 0) return true // 存量技能全场景
+  return scenes.includes(scene)
+}
+
+/** 清洗 scenes 输入（白名单过滤；空数组合法=全场景兼容态） */
+export function sanitizeScenes(input: unknown): string[] {
+  if (!Array.isArray(input)) return []
+  return Array.from(new Set(input.map(s => String(s)).filter(isSkillScene)))
+}
+
 // ── 查询 ──
 
 /** 技能视图（内置目录 + DB 动态技能，含使用统计） */
@@ -126,6 +168,7 @@ export interface SkillView {
   useProjectLibrary: boolean
   usePostInvestment: boolean
   status: 'DRAFT' | 'CONFIRMED'
+  scenes: string[]
   isActive: boolean
   runCount: number
   lastRunAt: Date | null
@@ -155,6 +198,7 @@ export async function listSkills(): Promise<SkillView[]> {
       useProjectLibrary: false,
       usePostInvestment: false,
       status: 'CONFIRMED',
+      scenes: [], // 内置技能随功能常驻，无场景挂载概念
       isActive: true, // 内置技能随功能常驻
       runCount: row?.runCount ?? 0,
       lastRunAt: row?.lastRunAt ?? null,
@@ -176,6 +220,7 @@ export async function listSkills(): Promise<SkillView[]> {
       useProjectLibrary: row.useProjectLibrary,
       usePostInvestment: row.usePostInvestment,
       status: (row.status === 'CONFIRMED' ? 'CONFIRMED' : 'DRAFT'),
+      scenes: row.scenes,
       isActive: row.isActive,
       runCount: row.runCount,
       lastRunAt: row.lastRunAt,
@@ -189,9 +234,10 @@ export async function listSkills(): Promise<SkillView[]> {
 
 /**
  * 本人已确认使用的动态技能（AI行研 run_skill 工具挂载用，P3.5 个人化）
- * 仅挂载：本人创建 + CONFIRMED + isActive
+ * 仅挂载：本人创建 + CONFIRMED + isActive +（scene 传入时）挂载在该场景
+ * scenes 空数组 = 存量技能，视为全场景兼容
  */
-export async function listActiveDynamicSkills(userId?: string): Promise<Array<{ key: string; name: string; description: string; useSearch: boolean; useProjectLibrary: boolean; usePostInvestment: boolean }>> {
+export async function listActiveDynamicSkills(userId?: string, scene?: string): Promise<Array<{ key: string; name: string; description: string; useSearch: boolean; useProjectLibrary: boolean; usePostInvestment: boolean }>> {
   const rows = await prisma.agentSkill.findMany({
     where: {
       type: 'DYNAMIC',
@@ -199,10 +245,10 @@ export async function listActiveDynamicSkills(userId?: string): Promise<Array<{ 
       status: 'CONFIRMED',
       ...(userId ? { createdById: userId } : {}),
     },
-    select: { key: true, name: true, description: true, useSearch: true, useProjectLibrary: true, usePostInvestment: true },
+    select: { key: true, name: true, description: true, useSearch: true, useProjectLibrary: true, usePostInvestment: true, scenes: true },
     orderBy: [{ runCount: 'desc' }, { updatedAt: 'desc' }],
   })
-  return rows
+  return rows.filter(r => isSkillInScene(r.scenes, scene))
 }
 
 // ── 使用统计（内置技能惰性建行；动态技能直接递增） ──
@@ -340,6 +386,8 @@ export interface PersonalSkillView {
   useProjectLibrary: boolean
   usePostInvestment: boolean
   status: 'DRAFT' | 'CONFIRMED'
+  /** 适用场景（空数组 = 存量技能全场景兼容） */
+  scenes: string[]
   isActive: boolean
   runCount: number
   lastRunAt: Date | null
@@ -353,7 +401,7 @@ export interface PersonalSkillView {
 const SKILL_LIST_SELECT = {
   id: true, key: true, name: true, description: true, category: true, content: true,
   useSearch: true, useProjectLibrary: true, usePostInvestment: true,
-  status: true, isActive: true, runCount: true, lastRunAt: true,
+  status: true, scenes: true, isActive: true, runCount: true, lastRunAt: true,
   createdAt: true, updatedAt: true, forkedFromKey: true, createdById: true,
   createdBy: { select: { name: true, email: true } },
 } as const
@@ -361,7 +409,7 @@ const SKILL_LIST_SELECT = {
 type SkillRowWithCreator = {
   id: string; key: string; name: string; description: string; category: string; content: string | null
   useSearch: boolean; useProjectLibrary: boolean; usePostInvestment: boolean
-  status: string; isActive: boolean; runCount: number; lastRunAt: Date | null
+  status: string; scenes: string[]; isActive: boolean; runCount: number; lastRunAt: Date | null
   createdAt: Date; updatedAt: Date; forkedFromKey: string | null; createdById: string | null
   createdBy: { name: string | null; email: string } | null
 }
@@ -378,6 +426,7 @@ function toPersonalView(row: SkillRowWithCreator): PersonalSkillView {
     useProjectLibrary: row.useProjectLibrary,
     usePostInvestment: row.usePostInvestment,
     status: row.status === 'CONFIRMED' ? 'CONFIRMED' : 'DRAFT',
+    scenes: row.scenes,
     isActive: row.isActive,
     runCount: row.runCount,
     lastRunAt: row.lastRunAt,
@@ -463,20 +512,24 @@ export function validateSkillInput(input: {
 /**
  * 构造"用户自定义分析技能"提示词块，拼接到各页面 AI 功能的 system prompt 末尾：
  * - 无 userId 或本人无 CONFIRMED 技能 → 返回空串（完全走固定框架，零改动）
+ * - scene 传入时只挂载适用该场景的技能（每页一套独立技能设定；scenes 空数组=存量全场景）
  * - 有技能 → 模块化路由规则：与固定框架某模块相似的技能融入该模块分析；
  *   视角超出固定框架的独立技能单独成为一个分析模块（skillModules / 技能视角小节）；
  *   冲突时以用户技能为准；输出格式仍须遵守原要求（格式护栏防止技能覆盖 JSON 结构指令）
  * 每个技能内容截断 2000 字，最多取 5 个，控制上下文长度
  */
-export async function buildUserSkillPromptBlock(userId?: string): Promise<string> {
+export async function buildUserSkillPromptBlock(userId?: string, scene?: string): Promise<string> {
   if (!userId) return ''
   const rows = await prisma.agentSkill.findMany({
     where: { type: 'DYNAMIC', status: 'CONFIRMED', isActive: true, createdById: userId },
-    select: { name: true, description: true, content: true },
+    select: { name: true, description: true, content: true, scenes: true },
     orderBy: [{ runCount: 'desc' }, { updatedAt: 'desc' }],
-    take: 5,
-  }).catch(() => [] as Array<{ name: string; description: string; content: string | null }>)
-  const skills = rows.filter(r => (r.content || '').trim().length >= 10)
+    take: 20,
+  }).catch(() => [] as Array<{ name: string; description: string; content: string | null; scenes: string[] }>)
+  const skills = rows
+    .filter(r => isSkillInScene(r.scenes, scene))
+    .filter(r => (r.content || '').trim().length >= 10)
+    .slice(0, 5)
   if (skills.length === 0) return ''
 
   const skillSections = skills.map(s => {
@@ -500,8 +553,9 @@ export async function buildUserSkillPromptBlock(userId?: string): Promise<string
 /**
  * 一键引用（fork）：复制同事 CONFIRMED 技能为自己的 DRAFT 副本
  * key 冲突自动后缀（key-2 / key-3）；forkedFromKey 记录溯源
+ * scene 传入时副本只挂载该场景（引用自某场景的面板）；缺省继承源技能的 scenes
  */
-export async function forkSkill(sourceKey: string, userId: string): Promise<PersonalSkillView> {
+export async function forkSkill(sourceKey: string, userId: string, scene?: string): Promise<PersonalSkillView> {
   const source = await prisma.agentSkill.findUnique({ where: { key: sourceKey } })
   if (!source || source.type !== 'DYNAMIC' || source.status !== 'CONFIRMED' || !source.isActive) {
     throw new Error('源技能不存在或不可引用（需为同事已确认使用的技能）')
@@ -522,6 +576,7 @@ export async function forkSkill(sourceKey: string, userId: string): Promise<Pers
       usePostInvestment: source.usePostInvestment,
       type: 'DYNAMIC',
       status: 'DRAFT',
+      scenes: scene ? [scene] : source.scenes,
       createdById: userId,
       forkedFromKey: source.key,
     },

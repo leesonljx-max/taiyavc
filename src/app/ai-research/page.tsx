@@ -235,7 +235,7 @@ export default function AIResearchPage() {
   }
 
   return (
-    <DashboardLayout title="AI行研" subtitle="一级市场投资研究助手 · 项目库优先 · 分层记忆" actions={<SkillPanelLauncher />}>
+    <DashboardLayout title="AI行研" subtitle="一级市场投资研究助手 · 项目库优先 · 分层记忆" actions={<SkillPanelLauncher scene="ai-research" />}>
       {/* 项目解读已独立为一级栏目（/project-interpretation），此处仅保留对话研究 */}
       <div className="flex gap-4" style={{ height: 'calc(100vh - 210px)' }}>
         {/* ── 左：会话列表 ── */}

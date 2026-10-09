@@ -242,7 +242,7 @@ export default function StatisticsPage() {
       })()
 
   return (
-    <DashboardLayout actions={<SkillPanelLauncher />}>
+    <DashboardLayout actions={<SkillPanelLauncher scene="industry-news" />}>
       <div className="space-y-6">
         {/* 页面标题 */}
         <div className="flex items-center justify-between">

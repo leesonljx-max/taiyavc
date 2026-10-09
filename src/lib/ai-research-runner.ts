@@ -94,8 +94,8 @@ export async function runAIResearchChat(
   const knowledge = await recallKnowledge(userMessage).catch(() => [] as Awaited<ReturnType<typeof recallKnowledge>>)
   const knowledgeBlock = formatKnowledgeForPrompt(knowledge)
 
-  // 技能层：本人 CONFIRMED 动态技能挂载为 run_skill 工具（P3.5 个人化）
-  const activeSkills = await listActiveDynamicSkills(opts.userId).catch(() => [])
+  // 技能层：本人 CONFIRMED 动态技能挂载为 run_skill 工具（P3.5 个人化；仅挂载「AI行研」场景）
+  const activeSkills = await listActiveDynamicSkills(opts.userId, 'ai-research').catch(() => [])
   const skillBlock = activeSkills.length > 0
     ? `\n## 可用专业分析技能（需要深度专业分析时调用 run_skill 工具，传入技能标识与分析输入）\n${activeSkills
         .map(s => {

@@ -6,13 +6,16 @@ import prisma from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import {
   listMySkills, listColleagueSkills, validateSkillInput,
+  isSkillInScene, isSkillScene, sanitizeScenes,
 } from '@/lib/skill-registry'
 
 /**
- * 个人技能 API（P3.5，所有登录账号可用）
- * GET    /api/skills          我的技能（DRAFT+CONFIRMED）+ 同事技能（其他人 CONFIRMED）
- * POST   /api/skills          创建技能（初始 DRAFT 调试中）
- * PATCH  /api/skills          更新本人技能（提示词/能力勾选变更后回到 DRAFT 重新调试）
+ * 个人技能 API（P3.5，所有登录账号可用；场景化：每页一套独立技能设定）
+ * GET    /api/skills?scene=x  三桶：mySkills（本场景我的）+ librarySkills（我的其他场景技能，可跨场景启用）
+ *                              + colleagueSkills（同事挂载在本场景的 CONFIRMED 技能）
+ *                              无 scene 时兼容全量视图（librarySkills 为空）
+ * POST   /api/skills          创建技能（初始 DRAFT；body.scene → scenes=[scene]，缺省全场景兼容态）
+ * PATCH  /api/skills          更新本人技能（提示词/能力勾选变更后回到 DRAFT；scenes 数组可更新且不重置状态）
  * DELETE /api/skills?key=xxx  删除本人技能
  */
 async function requireUser(): Promise<{ userId: string } | { response: NextResponse }> {
@@ -23,15 +26,23 @@ async function requireUser(): Promise<{ userId: string } | { response: NextRespo
   return { userId: session.user.id }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const auth = await requireUser()
     if ('response' in auth) return auth.response
-    const [mySkills, colleagueSkills] = await Promise.all([
+    const scene = new URL(request.url).searchParams.get('scene') || undefined
+    if (scene && !isSkillScene(scene)) {
+      return NextResponse.json({ error: '无效的场景标识' }, { status: 400 })
+    }
+    const [allMine, allColleagues] = await Promise.all([
       listMySkills(auth.userId),
       listColleagueSkills(auth.userId),
     ])
-    return NextResponse.json({ mySkills, colleagueSkills })
+    // 场景分桶：本场景我的技能 / 我的技能库（其他场景，可跨场景启用）/ 同事挂载在本场景的技能
+    const mySkills = allMine.filter(s => isSkillInScene(s.scenes, scene))
+    const librarySkills = scene ? allMine.filter(s => !isSkillInScene(s.scenes, scene)) : []
+    const colleagueSkills = allColleagues.filter(s => isSkillInScene(s.scenes, scene))
+    return NextResponse.json({ mySkills, librarySkills, colleagueSkills })
   } catch (error) {
     console.error('Skills GET error:', error)
     return NextResponse.json({ error: '获取技能列表失败' }, { status: 500 })
@@ -48,6 +59,16 @@ export async function POST(request: Request) {
     if (!validated.ok) {
       return NextResponse.json({ error: validated.error }, { status: 400 })
     }
+    // 适用场景：scenes 数组优先（编辑器多选），scene 单值兜底（旧客户端）；空数组=全场景兼容态
+    const scene = String(body.scene || '')
+    if (scene && !isSkillScene(scene)) {
+      return NextResponse.json({ error: '无效的场景标识' }, { status: 400 })
+    }
+    const scenes = Array.isArray(body.scenes)
+      ? sanitizeScenes(body.scenes)
+      : scene
+        ? [scene]
+        : []
     const { key, name, description, category, content } = validated.value
     if (await prisma.agentSkill.findUnique({ where: { key } })) {
       return NextResponse.json({ error: `技能标识「${key}」已存在，请换一个` }, { status: 400 })
@@ -61,6 +82,7 @@ export async function POST(request: Request) {
         usePostInvestment: body.usePostInvestment === true,
         type: 'DYNAMIC',
         status: 'DRAFT', // 创建后先调试，确认使用前不挂载
+        scenes,
         createdById: auth.userId,
       },
     })
@@ -106,6 +128,8 @@ export async function PATCH(request: Request) {
     if (body.useSearch !== undefined) data.useSearch = body.useSearch === true
     if (body.useProjectLibrary !== undefined) data.useProjectLibrary = body.useProjectLibrary === true
     if (body.usePostInvestment !== undefined) data.usePostInvestment = body.usePostInvestment === true
+    // 适用场景更新（白名单过滤；场景挂载调整不属于能力变更，不重置 DRAFT/CONFIRMED 状态）
+    if (body.scenes !== undefined) data.scenes = sanitizeScenes(body.scenes)
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: '无可更新字段' }, { status: 400 })
     }

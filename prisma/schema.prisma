@@ -1031,6 +1031,7 @@ model AgentSkill {
   useProjectLibrary Boolean @default(false) // 执行时可查询项目库（search_projects 工具）
   usePostInvestment  Boolean @default(false) // 执行时可查询投后分析报告（search_post_investment 工具）
   status      String    @default("DRAFT") // DRAFT 调试中（仅创建者可见）/ CONFIRMED 已确认使用（挂载+同事可见）
+  scenes      String[]  @default([]) // 适用场景（project-interpretation/dd-workbench/post-investment/ai-research/industry-news）；空数组=存量技能全场景兼容
   isActive    Boolean   @default(true)
   runCount    Int       @default(0)
   lastRunAt   DateTime?

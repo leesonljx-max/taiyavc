@@ -365,8 +365,8 @@ export async function runIndustryNews(
 
   pending.forEach(ind => runningIndustries.add(ind))
   try {
-    // 用户技能块（即时分析时注入本人 CONFIRMED 技能；cron 无 userId → 空串走固定框架）
-    const skillBlock = await buildUserSkillPromptBlock(opts.userId).catch(() => '')
+    // 用户技能块（即时分析时注入本人 CONFIRMED 技能，仅挂载「行业动态」场景；cron 无 userId → 空串走固定框架）
+    const skillBlock = await buildUserSkillPromptBlock(opts.userId, 'industry-news').catch(() => '')
 
     // 阶段 1：每行业一次精准搜索（并发，有同日缓存时直接命中）
     const searchResults = await Promise.all(pending.map(ind => searchIndustry(ind)))

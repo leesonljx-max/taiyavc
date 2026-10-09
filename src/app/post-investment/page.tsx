@@ -72,7 +72,7 @@ export default function PostInvestmentPage() {
   const filteredProjects = (data?.projects || []).filter(p => !fundFilter || p.investment?.fund === fundFilter)
 
   return (
-    <DashboardLayout title="投后管理" subtitle="投后项目的季度经营报告与 AI 经营分析" actions={<SkillPanelLauncher />}>
+    <DashboardLayout title="投后管理" subtitle="投后项目的季度经营报告与 AI 经营分析" actions={<SkillPanelLauncher scene="post-investment" />}>
       {/* ── 四概览卡 ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         <div className="rounded-xl border border-gray-100 bg-white p-4">

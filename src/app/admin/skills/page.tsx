@@ -25,6 +25,8 @@ interface SkillView {
   useProjectLibrary: boolean
   usePostInvestment: boolean
   status: 'DRAFT' | 'CONFIRMED'
+  /** 适用场景（动态技能；空数组 = 存量技能全场景兼容） */
+  scenes?: string[]
   isActive: boolean
   runCount: number
   lastRunAt: string | null
@@ -219,6 +221,11 @@ export default function AdminSkillsPage() {
                         {s.useSearch && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-600 border border-sky-100">🌐 可联网</span>}
                         {s.useProjectLibrary && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-50 text-violet-600 border border-violet-100">📁 项目库</span>}
                         {s.usePostInvestment && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100">📊 投后报告</span>}
+                        {s.type === 'DYNAMIC' && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-600 border border-blue-100">
+                            📍 {s.scenes && s.scenes.length > 0 ? s.scenes.join('、') : '全场景'}
+                          </span>
+                        )}
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${s.status === 'CONFIRMED' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
                           {s.status === 'CONFIRMED' ? '🟢 已确认使用' : '🟡 调试中'}
                         </span>

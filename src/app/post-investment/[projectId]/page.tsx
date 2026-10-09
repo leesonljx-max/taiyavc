@@ -312,7 +312,7 @@ export default function PostInvestmentDetailPage() {
       subtitle={data.project.companyFullName || data.project.industry || ''}
       actions={
         <div className="flex gap-2">
-          <SkillPanelLauncher />
+          <SkillPanelLauncher scene="post-investment" />
           <button onClick={() => router.push(`/projects/${params.projectId}`)} className="px-3 py-1.5 bg-white border border-primary-200 text-primary-700 text-sm rounded-lg hover:bg-primary-50 font-medium">项目详情</button>
           <button onClick={() => router.back()} className="px-3 py-1.5 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200">← 返回</button>
         </div>

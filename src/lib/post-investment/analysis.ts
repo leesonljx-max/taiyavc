@@ -269,8 +269,8 @@ export async function runPostInvestAnalysis(projectId: string, period: string, u
         .join('\n\n')}`.slice(0, 30000)
     : ''
 
-  // 6. AI 分析（合并本期 + 历史期数据；本人技能框架优先于固定框架）
-  const skillBlock = await buildUserSkillPromptBlock(userId).catch(() => '')
+  // 6. AI 分析（合并本期 + 历史期数据；本人技能仅挂载「投后管理」场景，框架优先于固定框架）
+  const skillBlock = await buildUserSkillPromptBlock(userId, 'post-investment').catch(() => '')
   const raw = await callDeepSeek(
     ANALYSIS_SYSTEM_PROMPT + skillBlock,
     `报告期：${period}\n\n【本期结构化指标（同比环比已由程序计算，直接引用，禁止自行计算）】\n${formatMetricsInput(metricsWithChange)}${historyMetricsText ? `\n\n【历史各期指标时序】\n${historyMetricsText}` : ''}\n\n【现金覆盖月数（程序计算）】${runway !== null ? `${runway} 个月` : '无法计算（现金余额或经营现金流缺失/为正）'}\n\n【本期上传文档全文】\n${docsDigest}${historyDocsDigest}`,

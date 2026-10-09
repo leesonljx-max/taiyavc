@@ -172,8 +172,8 @@ export async function runModuleReportGeneration(projectId: string, projectName: 
     return { ok: false, missing, error: `以下模块资料不完整：${missing.join('、')}。请到资料中心补充（上传文档/填写文本（可粘贴截图）任一项即可）` }
   }
 
-  // 用户技能块（本人 CONFIRMED 技能；无技能时为空串，完全走固定框架）
-  const skillBlock = await buildUserSkillPromptBlock(userId).catch(() => '')
+  // 用户技能块（本人 CONFIRMED 技能，仅挂载「项目尽调」场景；无技能时为空串，完全走固定框架）
+  const skillBlock = await buildUserSkillPromptBlock(userId, 'dd-workbench').catch(() => '')
 
   const { DD_TEMPLATE_MODULES } = await import('./template')
   const tplByKey = new Map(DD_TEMPLATE_MODULES.map(m => [m.key, m]))
@@ -271,8 +271,8 @@ export async function runModuleAnalysis(projectId: string, moduleKey: string, us
   const apiKey = process.env.DEEPSEEK_API_KEY
   if (!apiKey) throw new Error('DeepSeek API Key 未配置')
 
-  // 用户技能块（本人 CONFIRMED 技能；无技能时为空串）
-  const skillBlock = await buildUserSkillPromptBlock(userId).catch(() => '')
+  // 用户技能块（本人 CONFIRMED 技能，仅挂载「项目尽调」场景；无技能时为空串）
+  const skillBlock = await buildUserSkillPromptBlock(userId, 'dd-workbench').catch(() => '')
 
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 90000)

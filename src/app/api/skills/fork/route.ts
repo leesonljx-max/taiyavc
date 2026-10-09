@@ -3,12 +3,11 @@ export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { forkSkill } from '@/lib/skill-registry'
+import { forkSkill, isSkillScene } from '@/lib/skill-registry'
 
 /**
- * 一键引用同事技能（P3.5）：复制同事 CONFIRMED 技能为自己的 DRAFT 副本
- * fork 后可自行修改调试，确认使用后挂载到本人 AI行研
- * POST /api/skills/fork { key: 源技能 key }
+ * 一键引用同事技能（P3.5 + 场景化）：复制同事 CONFIRMED 技能为自己的 DRAFT 副本
+ * POST /api/skills/fork { key: 源技能 key, scene?: 引用自的场景（副本挂载该场景；缺省继承源技能 scenes） }
  */
 export async function POST(request: Request) {
   try {
@@ -19,8 +18,12 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}))
     const key = String(body.key || '').trim()
     if (!key) return NextResponse.json({ error: '缺少技能标识' }, { status: 400 })
+    const scene = String(body.scene || '')
+    if (scene && !isSkillScene(scene)) {
+      return NextResponse.json({ error: '无效的场景标识' }, { status: 400 })
+    }
 
-    const skill = await forkSkill(key, session.user.id)
+    const skill = await forkSkill(key, session.user.id, scene || undefined)
     return NextResponse.json({ skill }, { status: 201 })
   } catch (error) {
     const message = error instanceof Error ? error.message : '一键引用失败'

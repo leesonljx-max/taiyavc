@@ -140,11 +140,11 @@ export async function runInterpretation(input: {
 }): Promise<InterpretationResult> {
   const docText = input.documentText.slice(0, MAX_DOC_TEXT)
 
-  // 0. 用户技能块（本人 CONFIRMED 技能；无技能时为空串，完全走固定框架）
-  const skillBlock = await buildUserSkillPromptBlock(input.userId).catch(() => '')
+  // 0. 用户技能块（本人 CONFIRMED 技能，仅挂载「项目解读」场景；无技能时为空串，完全走固定框架）
+  const skillBlock = await buildUserSkillPromptBlock(input.userId, 'project-interpretation').catch(() => '')
   // 应用技能名（可见性：随结果落库，前端展示「本次解读已应用技能」）
   const appliedSkills = skillBlock
-    ? (await listActiveDynamicSkills(input.userId).catch(() => [])).map(s => s.name)
+    ? (await listActiveDynamicSkills(input.userId, 'project-interpretation').catch(() => [])).map(s => s.name)
     : []
 
   // 1. 七维解读（纯文档分析；用户技能框架优先于固定框架）
@@ -317,10 +317,10 @@ export async function runQuestionGeneration(input: {
 }> {
   const docText = input.documentText.slice(0, MAX_DOC_TEXT)
 
-  // 用户技能块（本人 CONFIRMED 技能；无技能时为空串）+ 应用技能名（可见性）
-  const skillBlock = await buildUserSkillPromptBlock(input.userId).catch(() => '')
+  // 用户技能块（本人 CONFIRMED 技能，仅挂载「项目解读」场景；无技能时为空串）+ 应用技能名（可见性）
+  const skillBlock = await buildUserSkillPromptBlock(input.userId, 'project-interpretation').catch(() => '')
   const appliedSkills = skillBlock
-    ? (await listActiveDynamicSkills(input.userId).catch(() => [])).map(s => s.name)
+    ? (await listActiveDynamicSkills(input.userId, 'project-interpretation').catch(() => [])).map(s => s.name)
     : []
 
   const digestParts: string[] = []

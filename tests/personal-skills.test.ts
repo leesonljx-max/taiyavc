@@ -22,7 +22,7 @@ import prisma from '@/lib/prisma'
 import { resetMocks, mockState, chatCompletions } from './helpers/setup'
 import {
   listMySkills, listColleagueSkills, generateUniqueKey, forkSkill, runDynamicSkill,
-  buildUserSkillPromptBlock,
+  buildUserSkillPromptBlock, listActiveDynamicSkills,
 } from '@/lib/skill-registry'
 import { searchPostInvestmentInternal, formatPostInvestHits } from '@/lib/dd-harness/post-investment-tool'
 import { runAIResearchChat } from '@/lib/ai-research-runner'
@@ -220,22 +220,23 @@ test('lib：searchPostInvestmentInternal——LIKE 检索 + 每项目仅最近�
 
 // ── 个人 API ──
 
-test('API：GET /api/skills——401 未登录；返回我的+同事两桶', async () => {
+test('API：GET /api/skills——401 未登录；返回我的+同事两桶（无 scene 兼容全量视图）', async () => {
   mockState.session = null
-  let res = await MY_GET()
+  let res = await MY_GET(new Request('http://t/api/skills'))
   assert.equal(res.status, 401)
 
   asBob()
   await seedSkill() // alice 的 CONFIRMED
   await seedSkill({ key: 'bob-skill', status: 'CONFIRMED', createdById: bobId })
 
-  res = await MY_GET()
+  res = await MY_GET(new Request('http://t/api/skills'))
   assert.equal(res.status, 200)
   const body = await res.json()
   assert.equal(body.mySkills.length, 1)
   assert.equal(body.mySkills[0].key, 'bob-skill')
   assert.equal(body.colleagueSkills.length, 1)
   assert.equal(body.colleagueSkills[0].key, 'alice-skill')
+  assert.equal(body.librarySkills.length, 0) // 无 scene 时不分桶（兼容视图）
 })
 
 test('API：POST /api/skills——创建默认 DRAFT；校验沿用注册表口径', async () => {
@@ -564,4 +565,140 @@ test('P3.6 可见性：问题清单生成注入本人技能并返回 appliedSkil
   assert.deepEqual(body.appliedSkills, ['融资窗口评估'])
   assert.ok(questionsSystem.includes('用户自定义分析技能'))
   assert.match(questionsSystem, /以用户技能为准/)
+})
+
+// ── 场景化技能体系（每页一套独立技能设定） ──
+
+test('场景化：buildUserSkillPromptBlock/listActiveDynamicSkills 按场景过滤——他场景技能不注入；scenes 空=存量全场景兼容', async () => {
+  await seedSkill() // scenes=[]（存量）→ 全场景兼容
+  await seedSkill({ key: 'ai-only', name: '行研专属技能', scenes: ['ai-research'] })
+  await seedSkill({ key: 'pi-only', name: '解读专属技能', scenes: ['project-interpretation'] })
+
+  // 项目解读场景：存量（全场景）+ 解读专属注入；行研专属不注入
+  const piBlock = await buildUserSkillPromptBlock(aliceId, 'project-interpretation')
+  assert.match(piBlock, /融资窗口评估/) // 存量空 scenes → 全场景
+  assert.match(piBlock, /解读专属技能/)
+  assert.ok(!piBlock.includes('行研专属技能'))
+
+  // AI行研场景：存量 + 行研专属注入；解读专属不注入
+  const aiBlock = await buildUserSkillPromptBlock(aliceId, 'ai-research')
+  assert.match(aiBlock, /融资窗口评估/)
+  assert.match(aiBlock, /行研专属技能/)
+  assert.ok(!aiBlock.includes('解读专属技能'))
+
+  // 无场景维度（全量）：全部注入
+  const allBlock = await buildUserSkillPromptBlock(aliceId)
+  assert.match(allBlock, /行研专属技能/)
+  assert.match(allBlock, /解读专属技能/)
+
+  // listActiveDynamicSkills 同口径场景过滤（run_skill 挂载用）
+  const aiSkills = await listActiveDynamicSkills(aliceId, 'ai-research')
+  assert.ok(aiSkills.some(s => s.name === '行研专属技能'))
+  assert.ok(!aiSkills.some(s => s.name === '解读专属技能'))
+})
+
+test('场景化：API GET ?scene= 三桶分桶 + POST scenes 数组 + PATCH scenes 更新不重置状态 + fork 场景', async () => {
+  await seedSkill() // scenes=[] 存量（全场景）→ 任何场景都在 mySkills 桶
+  await seedSkill({ key: 'dd-only', name: '尽调专属技能', scenes: ['dd-workbench'] })
+  await seedSkill({ key: 'alice-draft', status: 'DRAFT', scenes: ['dd-workbench'] }) // DRAFT 不进同事桶
+
+  asAlice()
+  // GET 三桶（dd-workbench 场景）：mySkills=存量+尽调专属+DRAFT；library=无（都在本场景）；colleagues=[]
+  let res = await MY_GET(new Request('http://t/api/skills?scene=dd-workbench'))
+  assert.equal(res.status, 200)
+  let body = await res.json()
+  assert.equal(body.mySkills.length, 3) // 存量（全场景）+ dd-only + alice-draft
+  assert.ok(body.mySkills.some((s: { key: string }) => s.key === 'alice-skill'))
+  assert.equal(body.librarySkills.length, 0)
+  assert.equal(body.colleagueSkills.length, 0)
+
+  // GET 三桶（ai-research 场景）：library 含尽调专属（可跨场景启用）
+  res = await MY_GET(new Request('http://t/api/skills?scene=ai-research'))
+  body = await res.json()
+  assert.ok(body.mySkills.some((s: { key: string }) => s.key === 'alice-skill')) // 存量全场景
+  assert.ok(!body.mySkills.some((s: { key: string }) => s.key === 'dd-only'))
+  assert.ok(body.librarySkills.some((s: { key: string }) => s.key === 'dd-only'))
+  assert.ok(!body.librarySkills.some((s: { key: string }) => s.key === 'alice-skill')) // 存量不进 library
+
+  // POST scenes 数组：创建时多场景适用
+  res = await MY_POST(req('POST', 'http://t/api/skills', {
+    key: 'multi-scene', name: '跨场景技能', description: '多场景适用', category: 'analysis',
+    content: '跨场景技能的提示词内容，超过二十个字以通过校验。',
+    useSearch: false, useProjectLibrary: false, usePostInvestment: false,
+    scenes: ['ai-research', 'post-investment'],
+  }))
+  assert.equal(res.status, 201)
+  assert.deepEqual((await res.json()).skill.scenes, ['ai-research', 'post-investment'])
+
+  // POST 非法场景：被白名单过滤为空数组（全场景兼容），不报错
+  res = await MY_POST(req('POST', 'http://t/api/skills', {
+    key: 'bad-scene', name: '坏场景', description: 'x'.repeat(30), category: 'general',
+    content: '这是一个内容长度超过二十个字的提示词内容，用于通过校验。',
+    scenes: ['not-a-scene'],
+  }))
+  assert.equal(res.status, 201)
+  assert.deepEqual((await res.json()).skill.scenes, [])
+
+  // PATCH scenes 更新：跨场景启用（scenes 追加）且 CONFIRMED 不回 DRAFT
+  await prisma.agentSkill.update({ where: { key: 'dd-only' }, data: { status: 'CONFIRMED' } })
+  res = await MY_PATCH(req('PATCH', 'http://t/api/skills', { key: 'dd-only', scenes: ['dd-workbench', 'ai-research'] }))
+  assert.equal(res.status, 200)
+  const patched = (await res.json()).skill as { scenes: string[]; status: string }
+  assert.deepEqual(patched.scenes, ['dd-workbench', 'ai-research'])
+  assert.equal(patched.status, 'CONFIRMED') // 场景调整不重置状态
+
+  // 同事视角（bob）：ai-research 场景下可见 alice 挂载的 CONFIRMED 技能（存量 + dd-only 跨场景启用后）
+  asBob()
+  res = await MY_GET(new Request('http://t/api/skills?scene=ai-research'))
+  body = await res.json()
+  const colleagueKeys = (body.colleagueSkills as Array<{ key: string }>).map(s => s.key)
+  assert.ok(colleagueKeys.includes('alice-skill')) // 存量全场景
+  assert.ok(colleagueKeys.includes('dd-only')) // 启用 ai-research 后同事在本场景可见
+  assert.ok(!colleagueKeys.includes('alice-draft')) // DRAFT 不进同事桶
+
+  // fork 传场景：副本挂载该场景
+  res = await FORK_POST(req('POST', 'http://t/api/skills/fork', { key: 'dd-only', scene: 'ai-research' }))
+  assert.equal(res.status, 201)
+  assert.deepEqual((await res.json()).skill.scenes, ['ai-research'])
+})
+
+test('场景化：项目解读只注入「项目解读」场景技能（挂载点场景隔离）', async () => {
+  // 行研专属技能（CONFIRMED）不应影响项目解读
+  await seedSkill({ key: 'ai-only-2', name: '行研专属技能2', scenes: ['ai-research'] })
+  const record = await prisma.projectInterpretation.create({
+    data: {
+      userId: aliceId,
+      projectName: 'P35场景隔离解读',
+      fileName: 'bp.txt',
+      fileUrl: '/api/uploads/interpretation-docs/s.txt',
+      fileType: 'text/plain',
+      fileSize: 100,
+      documentText: '某项目BP内容。',
+    },
+  })
+
+  let interpretSystem = ''
+  mockState.fetchHandler = (_url, body) => {
+    const system = String((body.messages as Array<{ content: string }>)[0]?.content || '')
+    if (system.includes('结构化 JSON 解读')) {
+      interpretSystem = system
+      return chatCompletions(JSON.stringify({
+        projectName: 'P35场景隔离解读', industry: 'AI应用',
+        marketPosition: 'x', techLeadership: 'x', teamStanding: 'x',
+        competitionAnalysis: 'x', startupWindow: 'x', marketEstimate: 'x',
+      }))
+    }
+    return chatCompletions('{}')
+  }
+
+  asAlice()
+  const res = await PI_INTERPRET(new Request(`http://t/api/project-interpretation/${record.id}/interpret`, { method: 'POST' }), { params: { id: record.id } })
+  assert.equal(res.status, 200)
+  // 行研专属技能不注入项目解读
+  assert.ok(!interpretSystem.includes('行研专属技能2'))
+  assert.ok(!interpretSystem.includes('用户自定义分析技能'))
+  // appliedSkills 亦为空
+  const saved = await prisma.projectInterpretation.findUnique({ where: { id: record.id } })
+  const interp = JSON.parse(saved!.interpretationJson!) as { appliedSkills?: string[] }
+  assert.deepEqual(interp.appliedSkills, [])
 })

@@ -38,7 +38,7 @@ export default function ProjectInterpretationPage() {
     <DashboardLayout
       title="项目解读"
       subtitle="上传 BP 与访谈纪要 · 固定框架解读 · 闭环创建到项目库"
-      actions={<SkillPanelLauncher />}
+      actions={<SkillPanelLauncher scene="project-interpretation" />}
     >
       <ProjectInterpretationPanel />
     </DashboardLayout>
