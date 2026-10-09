@@ -29,10 +29,20 @@ interface DraftData {
   mainProducts: string
   coreAdvantage: string
   coreTeam: string
+  financialData: string
+  orderProgress: string
+  competitors: string
+  financingPlan: string
   description: string
   financingRound: string
   totalAmount: string
   investmentValuation: number | null
+}
+
+/** BP 关键页图片（draft 接口返回；创建时嵌入对应字段的 HTML） */
+interface BpImage {
+  page: number
+  url: string
 }
 
 /** 预填充创建表单（维护人补全必填项后确认创建） */
@@ -44,6 +54,10 @@ interface CreateProjectForm {
   mainProducts: string
   coreAdvantage: string
   coreTeam: string
+  financialData: string
+  orderProgress: string
+  competitors: string
+  financingPlan: string
   description: string
   financingRound: string
   totalAmount: string
@@ -81,9 +95,13 @@ interface InterpretationSummary {
   id: string
   projectName: string
   industry: string | null
+  marketPosition: string | null
   fileName: string
   status: string
   questionsStatus: string
+  verifyStatus: string
+  hasConclusion: boolean
+  linkedProjectId: string | null
   error: string | null
   createdAt: string
   questionCount: number
@@ -179,6 +197,10 @@ export default function ProjectInterpretationPanel() {
   const ivInputRef = useRef<HTMLInputElement>(null)
   // 自动链路进度：BP+访谈纪要一起上传后自动执行 解读 → 问题清单 → 校验+结论
   const [autoChainStep, setAutoChainStep] = useState<'idle' | 'interpret' | 'questions' | 'verify' | 'done' | 'error'>('idle')
+  // 列表视图：全字段检索 + 分页（15/页）
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 15
 
   const uploadInputRef = useRef<HTMLInputElement>(null)
 
@@ -404,21 +426,36 @@ export default function ProjectInterpretationPanel() {
   )
   }
 
-  // 列表 + 上传视图
+  // 列表 + 上传视图：左右布局（左 1/4 上传区 · 右 3/4 检索/卡片/分页）
+  const filtered = search.trim()
+    ? list.filter(item => {
+        const kw = search.trim().toLowerCase()
+        return (
+          item.projectName.toLowerCase().includes(kw) ||
+          (item.industry || '').toLowerCase().includes(kw) ||
+          (item.marketPosition || '').toLowerCase().includes(kw) ||
+          item.fileName.toLowerCase().includes(kw)
+        )
+      })
+    : list
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+  const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-3xl mx-auto space-y-6">
-        {/* 上传框（初始界面）：BP 与访谈纪要分别选择，点「提交」统一上传 */}
-        <div className="bg-white rounded-2xl border border-primary-100 shadow-sm p-6">
-          <h3 className="text-base font-bold text-gray-900">上传项目文档，开始固定框架解读</h3>
-          <p className="text-xs text-gray-400 mt-1">
-            支持 PDF / Word(docx) / PPT(pptx) / Excel / txt · 选好 BP 与访谈纪要后点击下方「提交」按钮开始分析
+    <div className="h-full flex gap-4 overflow-hidden">
+      {/* ── 左 1/4：上传区（固定不随列表滚动） ── */}
+      <div className="w-[300px] xl:w-[340px] flex-shrink-0 overflow-y-auto pb-4">
+        <div className="bg-white rounded-2xl border border-primary-100 shadow-sm p-4">
+          <h3 className="text-sm font-bold text-gray-900">上传项目文档</h3>
+          <p className="text-[11px] text-gray-400 mt-0.5">
+            PDF / Word / PPT / Excel / txt · 选好 BP 与访谈纪要后点「提交」
           </p>
           <input
             value={projectName}
             onChange={e => setProjectName(e.target.value)}
             placeholder="项目名称（选填，默认取文件名）"
-            className="mt-4 w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-400"
+            className="mt-3 w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-400"
           />
           {/* BP 选择窗口（紧凑单行）：只暂存不上传，等提交按钮统一触发 */}
           <div
@@ -429,7 +466,7 @@ export default function ProjectInterpretationPanel() {
               const f = e.dataTransfer.files?.[0]
               if (f) setBpFile(f)
             }}
-            className={`mt-3 flex items-center gap-2.5 border-2 border-dashed rounded-xl px-4 py-4 cursor-pointer transition-colors ${
+            className={`mt-2.5 flex items-center gap-2.5 border-2 border-dashed rounded-xl px-3 py-3 cursor-pointer transition-colors ${
               bpFile
                 ? 'border-emerald-300 bg-emerald-50/30'
                 : busy
@@ -439,29 +476,29 @@ export default function ProjectInterpretationPanel() {
           >
             {busy ? (
               <>
-                <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-500 flex-shrink-0" />
-                <p className="text-sm text-primary-600">上传中...</p>
+                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-500 flex-shrink-0" />
+                <p className="text-xs text-primary-600">上传中...</p>
               </>
             ) : bpFile ? (
               <>
                 <span className="text-emerald-500 flex-shrink-0">✅</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-emerald-700 truncate">{bpFile.name}</p>
-                  <p className="text-[11px] text-gray-400">{(bpFile.size / 1024 / 1024).toFixed(2)} MB · 点击可重新选择</p>
+                  <p className="text-xs font-bold text-emerald-700 truncate">{bpFile.name}</p>
+                  <p className="text-[10px] text-gray-400">{(bpFile.size / 1024 / 1024).toFixed(2)} MB · 点击重选</p>
                 </div>
                 <button
                   onClick={e => { e.stopPropagation(); setBpFile(null) }}
-                  className="flex-shrink-0 px-2.5 py-1 text-[11px] text-gray-400 hover:text-red-500 border border-gray-200 rounded-lg"
+                  className="flex-shrink-0 px-2 py-0.5 text-[10px] text-gray-400 hover:text-red-500 border border-gray-200 rounded-lg"
                 >
-                  清除重选
+                  清除
                 </button>
               </>
             ) : (
               <>
-                <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
-                <p className="text-sm text-gray-500">点击或拖拽上传项目 BP（PDF / docx / pptx / xlsx / txt）</p>
+                <p className="text-xs text-gray-500">点击或拖拽上传项目 BP</p>
               </>
             )}
           </div>
@@ -475,24 +512,13 @@ export default function ProjectInterpretationPanel() {
               e.target.value = ''
             }}
           />
-          {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
+          {error && <p className="mt-2 text-[11px] text-red-500">{error}</p>}
 
-          {/* 同时上传访谈纪要（可选）：与 BP 一起提交则自动执行全部分析（上传框与 BP 框同尺寸同交互） */}
-          <div className="mt-4 pt-4 border-t border-gray-100">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <p className="text-xs font-bold text-gray-600">
-                同时上传访谈纪要 <span className="text-gray-400 font-normal">（可选，与 BP 一起提交后自动完成全部分析并生成结论）</span>
-              </p>
-              {(ivFile || ivText.trim()) && (
-                <button
-                  onClick={() => { setIvFile(null); setIvText('') }}
-                  className="px-2.5 py-1 text-[11px] text-gray-400 hover:text-red-500 border border-gray-200 rounded-lg"
-                >
-                  清除纪要
-                </button>
-              )}
-            </div>
-            {/* 访谈纪要上传框（紧凑单行，与 BP 框同尺寸同交互） */}
+          {/* 同时上传访谈纪要（可选）：与 BP 一起提交则自动执行全部分析 */}
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <p className="text-[11px] font-bold text-gray-600">
+              同时上传访谈纪要 <span className="text-gray-400 font-normal">（可选，自动完成全部分析）</span>
+            </p>
             <div
               onClick={() => ivInputRef.current?.click()}
               onDragOver={e => e.preventDefault()}
@@ -501,7 +527,7 @@ export default function ProjectInterpretationPanel() {
                 const f = e.dataTransfer.files?.[0]
                 if (f) setIvFile(f)
               }}
-              className={`mt-3 flex items-center gap-2.5 border-2 border-dashed rounded-xl px-4 py-4 cursor-pointer transition-colors ${
+              className={`mt-2 flex items-center gap-2.5 border-2 border-dashed rounded-xl px-3 py-3 cursor-pointer transition-colors ${
                 ivFile
                   ? 'border-emerald-300 bg-emerald-50/30'
                   : 'border-gray-200 hover:border-primary-300 hover:bg-primary-50/20'
@@ -511,16 +537,16 @@ export default function ProjectInterpretationPanel() {
                 <>
                   <span className="text-emerald-500 flex-shrink-0">✅</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-emerald-700 truncate">{ivFile.name}</p>
-                    <p className="text-[11px] text-gray-400">{(ivFile.size / 1024 / 1024).toFixed(2)} MB · 点击可重新选择</p>
+                    <p className="text-xs font-bold text-emerald-700 truncate">{ivFile.name}</p>
+                    <p className="text-[10px] text-gray-400">{(ivFile.size / 1024 / 1024).toFixed(2)} MB</p>
                   </div>
                 </>
               ) : (
                 <>
-                  <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0-4a3 3 0 003-3V5a3 3 0 00-6 0v10a3 3 0 003 3zm7-3a7 7 0 01-14 0" />
                   </svg>
-                  <p className="text-sm text-gray-500">点击或拖拽上传访谈纪要（音频 / pdf / docx / txt / pptx）</p>
+                  <p className="text-xs text-gray-500">上传访谈纪要（音频/文档）</p>
                 </>
               )}
             </div>
@@ -538,34 +564,34 @@ export default function ProjectInterpretationPanel() {
               value={ivText}
               onChange={e => setIvText(e.target.value)}
               rows={3}
-              placeholder="或粘贴访谈纪要全文（音频需配合粘贴转写文本）。与 BP 一起提交后，系统自动：解读项目 → 生成问题清单与理想答案 → 校对访谈回答 → 输出分析结论。"
-              className="mt-3 w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-300"
+              placeholder="或粘贴访谈纪要全文。与 BP 一起提交后自动：解读 → 问题清单 → 校对 → 结论。"
+              className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-xl text-[11px] focus:ring-2 focus:ring-primary-300"
             />
           </div>
 
           {/* 粘贴文本备选通道（扫描件 PDF / 图片型 BP） */}
-          <details className="mt-3">
-            <summary className="text-xs text-gray-400 cursor-pointer hover:text-primary-600 select-none">
+          <details className="mt-2.5">
+            <summary className="text-[11px] text-gray-400 cursor-pointer hover:text-primary-600 select-none">
               📄 扫描件 / 图片型文档？直接粘贴项目文本 →
             </summary>
             <textarea
               value={pastedText}
               onChange={e => setPastedText(e.target.value)}
-              rows={5}
-              placeholder="粘贴项目的文字内容（BP 正文、项目介绍等，至少 100 字）。适合扫描版 PDF 或以图片为主的 PPT——可从原文档复制文字，或粘贴其他来源的项目介绍。"
-              className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-300"
+              rows={4}
+              placeholder="粘贴项目的文字内容（至少 100 字）。适合扫描版 PDF 或以图片为主的 PPT。"
+              className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-xl text-[11px] focus:ring-2 focus:ring-primary-300"
             />
             {pastedText.trim().length > 0 && (
-              <p className="text-[10px] text-gray-400">{pastedText.trim().length} 字（至少 100 字，填好后点击下方「提交」按钮）</p>
+              <p className="text-[10px] text-gray-400">{pastedText.trim().length} 字（至少 100 字）</p>
             )}
           </details>
 
-          {/* 提交按钮：BP/粘贴文本就绪后统一提交；是否带访谈纪要决定自动/手动分析 */}
-          <div className="mt-4 pt-4 border-t border-gray-100">
+          {/* 提交按钮 */}
+          <div className="mt-3 pt-3 border-t border-gray-100">
             <button
               onClick={handleSubmit}
               disabled={busy || pasteBusy || (!bpFile && pastedText.trim().length < 100)}
-              className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-bold rounded-xl shadow-md shadow-indigo-500/25 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              className="w-full px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-500/25 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
             >
               {(busy || pasteBusy)
                 ? '提交中...'
@@ -573,54 +599,140 @@ export default function ProjectInterpretationPanel() {
                   ? '🚀 提交并自动完成全部分析'
                   : '🚀 提交并开始分析'}
             </button>
-            <p className="mt-2 text-[11px] text-gray-400 text-center">
+            <p className="mt-1.5 text-[10px] text-gray-400 text-center">
               {(ivFile || ivText.trim())
-                ? '已附访谈纪要：提交后自动执行 解读项目 → 生成问题清单 → 访谈校对 → 分析结论'
+                ? '已附纪要：自动执行 解读 → 问题清单 → 校对 → 结论'
                 : bpFile || pastedText.trim().length >= 100
-                  ? '仅上传 BP：提交后进入项目页，可分别点击「解读项目」或「生成问题清单」'
-                  : '请先选择 BP 文档（或在上方粘贴项目文本）'}
+                  ? '仅上传 BP：进入项目页手动执行各步骤'
+                  : '请先选择 BP 文档（或粘贴项目文本）'}
             </p>
           </div>
         </div>
+      </div>
 
-        {/* 解读历史 */}
-        <div>
-          <p className="text-sm font-bold text-gray-700 mb-2 px-1">我的解读项目（{list.length}）</p>
-          {list.length === 0 ? (
-            <p className="text-xs text-gray-400 py-6 text-center">暂无解读记录，上传文档开始</p>
+      {/* ── 右 3/4：全字段检索 + 解读项目卡片 + 分页 ── */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* 检索栏 */}
+        <div className="bg-white rounded-2xl border border-primary-100 shadow-sm px-4 py-3 flex items-center gap-3 flex-wrap">
+          <div className="relative flex-1 min-w-[220px]">
+            <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1) }}
+              placeholder="全字段检索：项目名称 / 行业赛道 / 公司定位 / 文档名"
+              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-400 focus:border-primary-400"
+            />
+          </div>
+          <span className="text-[11px] text-gray-400">
+            共 {filtered.length} 个{search.trim() ? `（检索自 ${list.length}）` : ''}
+          </span>
+        </div>
+
+        {/* 卡片列表 */}
+        <div className="flex-1 overflow-y-auto mt-3 pb-4">
+          {pageItems.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-dashed border-gray-200 py-16 text-center">
+              <p className="text-sm text-gray-400">
+                {list.length === 0 ? '暂无解读记录，左侧上传文档开始' : '没有匹配的解读项目，换个关键词试试'}
+              </p>
+            </div>
           ) : (
-            <div className="space-y-2">
-              {list.map(item => (
+            <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-3">
+              {pageItems.map(item => (
                 <div
                   key={item.id}
                   onClick={() => { setError(''); fetchDetail(item.id) }}
-                  className="group bg-white rounded-xl border border-gray-100 hover:border-primary-200 hover:shadow-sm px-4 py-3 flex items-center gap-3 cursor-pointer transition-all"
+                  className="group bg-white rounded-2xl border border-gray-100 hover:border-primary-200 hover:shadow-md px-4 py-3.5 cursor-pointer transition-all flex flex-col"
                 >
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                    item.status === 'INTERPRETED' ? 'bg-emerald-500' : item.status === 'FAILED' ? 'bg-red-400' : 'bg-blue-400'
-                  }`} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-gray-800 truncate">{item.projectName}</p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">
-                      {item.industry || '待解读'} · {new Date(item.createdAt).toLocaleDateString('zh-CN')}
-                    </p>
+                  {/* 第一行：状态灯 + 项目名 + 日期 */}
+                  <div className="flex items-start gap-2">
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${
+                      item.status === 'INTERPRETED' ? 'bg-emerald-500' : item.status === 'FAILED' ? 'bg-red-400' : 'bg-blue-400'
+                    }`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-gray-800 truncate" title={item.projectName}>{item.projectName}</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5 truncate">
+                        {item.industry || '待解读'} · {new Date(item.createdAt).toLocaleDateString('zh-CN')}
+                      </p>
+                    </div>
+                    <button
+                      onClick={e => { e.stopPropagation(); handleDelete(item.id) }}
+                      className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-opacity px-1 flex-shrink-0"
+                      title="删除"
+                    >
+                      ✕
+                    </button>
                   </div>
-                  <div className="flex items-center gap-2 text-[10px] text-gray-400 flex-shrink-0">
-                    {item.questionCount > 0 && <span>问题 {item.questionCount}</span>}
-                    {item.verifiedCount > 0 && <span className="text-emerald-500">已校验 {item.verifiedCount}</span>}
-                    <span className="px-1.5 py-0.5 bg-gray-50 rounded font-bold">
-                      {item.status === 'INTERPRETED' ? '已解读' : item.status === 'FAILED' ? '失败' : item.status === 'INTERPRETING' ? '解读中' : '待解读'}
+                  {/* 第二行：公司定位/市场地位摘要 */}
+                  {item.marketPosition && (
+                    <p className="mt-2 text-[11px] text-gray-500 line-clamp-2 leading-relaxed">{item.marketPosition}</p>
+                  )}
+                  {/* 第三行：解读进展徽标 */}
+                  <div className="mt-2.5 pt-2.5 border-t border-gray-50 flex items-center gap-1.5 flex-wrap">
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                      item.status === 'INTERPRETED' ? 'bg-emerald-50 text-emerald-600'
+                        : item.status === 'FAILED' ? 'bg-red-50 text-red-500'
+                          : item.status === 'INTERPRETING' ? 'bg-blue-50 text-blue-600' : 'bg-gray-50 text-gray-400'
+                    }`}>
+                      {item.status === 'INTERPRETED' ? '已解读' : item.status === 'FAILED' ? '解读失败' : item.status === 'INTERPRETING' ? '解读中' : '待解读'}
                     </span>
+                    {item.questionCount > 0 && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-blue-50 text-blue-500">问题 {item.questionCount}</span>
+                    )}
+                    {item.verifyStatus === 'DONE' ? (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-indigo-50 text-indigo-600">已校验 {item.verifiedCount}/{item.questionCount}</span>
+                    ) : item.verifyStatus === 'RUNNING' ? (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-indigo-50 text-indigo-400">校验中</span>
+                    ) : null}
+                    {item.hasConclusion && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-violet-50 text-violet-600">已出结论</span>
+                    )}
+                    {item.linkedProjectId && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-100 text-emerald-700">✅ 已入项目库</span>
+                    )}
                   </div>
-                  <button
-                    onClick={e => { e.stopPropagation(); handleDelete(item.id) }}
-                    className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-opacity px-1"
-                    title="删除"
-                  >
-                    ✕
-                  </button>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* 分页（超过 15 个分页管理） */}
+          {totalPages > 1 && (
+            <div className="mt-4 flex items-center justify-center gap-1.5 flex-wrap">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={safePage <= 1}
+                className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-xs text-gray-500 hover:border-primary-300 disabled:opacity-40"
+              >
+                上一页
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
+                .map((p, idx, arr) => (
+                  <span key={p} className="flex items-center">
+                    {idx > 0 && p - arr[idx - 1] > 1 && <span className="px-1 text-gray-300 text-xs">…</span>}
+                    <button
+                      onClick={() => setPage(p)}
+                      className={`w-8 h-8 rounded-lg text-xs font-bold transition-colors ${
+                        p === safePage
+                          ? 'bg-primary-600 text-white shadow-sm'
+                          : 'bg-white border border-gray-200 text-gray-500 hover:border-primary-300'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  </span>
+                ))}
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={safePage >= totalPages}
+                className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-xs text-gray-500 hover:border-primary-300 disabled:opacity-40"
+              >
+                下一页
+              </button>
+              <span className="ml-2 text-[11px] text-gray-400">{safePage} / {totalPages} 页 · 每页 {PAGE_SIZE} 个</span>
             </div>
           )}
         </div>
@@ -684,6 +796,8 @@ function Detail({
   const [draftErr, setDraftErr] = useState('')
   const [createFormOpen, setCreateFormOpen] = useState(false)
   const [createForm, setCreateForm] = useState<CreateProjectForm | null>(null)
+  // BP 关键页图片（draft 返回；创建时按字段嵌入 HTML——BP 原文图+文字一起入库）
+  const [bpImages, setBpImages] = useState<Record<string, BpImage[]>>({})
   const [creating, setCreating] = useState(false)
   const [createErr, setCreateErr] = useState('')
   const [createdProjectId, setCreatedProjectId] = useState<string | null>(null)
@@ -703,7 +817,7 @@ function Detail({
     }
   }, [detail.id, detail.verifyStatus, detail.conclusionJson, detail.linkedProjectId])
 
-  /** 第一步：AI 预取填充信息（排版化提取，不创建项目）→ 打开预填充表单 */
+  /** 第一步：AI 预取填充信息（排版化提取 + BP 关键页图片，不创建项目）→ 打开预填充表单 */
   const handleStartFill = async () => {
     if (draftLoading) return
     setDraftLoading(true)
@@ -724,12 +838,17 @@ function Detail({
         mainProducts: d.mainProducts || '',
         coreAdvantage: d.coreAdvantage === '未披露' ? '' : (d.coreAdvantage || ''),
         coreTeam: d.coreTeam === '未披露' ? '' : (d.coreTeam || ''),
+        financialData: d.financialData === '未披露' ? '' : (d.financialData || ''),
+        orderProgress: d.orderProgress === '未披露' ? '' : (d.orderProgress || ''),
+        competitors: d.competitors === '未披露' ? '' : (d.competitors || ''),
+        financingPlan: d.financingPlan === '未披露' ? '' : (d.financingPlan || ''),
         description: d.description || '',
         financingRound: d.financingRound || '',
         totalAmount: d.totalAmount === '待补充' ? '' : (d.totalAmount || ''),
         investmentValuation: d.investmentValuation !== null && d.investmentValuation !== undefined ? String(d.investmentValuation) : '',
         targetDate: data.defaultTargetDate || new Date().toISOString().split('T')[0],
       })
+      setBpImages((data.bpImages as Record<string, BpImage[]>) || {})
       setCreateModalOpen(false)
       setCreateFormOpen(true)
     } catch {
@@ -739,7 +858,7 @@ function Detail({
     }
   }
 
-  /** 第二步：维护人补全必填项后点击「创建项目」完成创建 */
+  /** 第二步：维护人补全必填项后点击「创建项目」完成创建（富文本 markdown + BP 图片一起提交） */
   const handleCreateProject = async () => {
     if (creating || !createForm) return
     const missing: string[] = []
@@ -762,6 +881,7 @@ function Detail({
         body: JSON.stringify({
           ...createForm,
           investmentValuation: createForm.investmentValuation ? Number(createForm.investmentValuation) : null,
+          bpImages,
         }),
       })
       const data = await res.json()
@@ -831,10 +951,85 @@ function Detail({
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="max-w-4xl mx-auto space-y-5 pb-6">
+      <div className="max-w-7xl mx-auto pb-6">
+        {/* ── 顶部管理栏（sticky）：返回 + 项目信息 + 操作按钮 ── */}
+        <div className="sticky top-0 z-20 bg-white/95 backdrop-blur border border-primary-100 rounded-2xl shadow-sm px-5 py-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <button
+              onClick={onBack}
+              className="flex items-center gap-1 px-3 py-1.5 border border-gray-200 rounded-xl text-xs font-bold text-gray-500 hover:border-primary-300 hover:text-primary-600 transition-colors flex-shrink-0"
+            >
+              ← 返回
+            </button>
+            <div className="flex-1 min-w-[200px]">
+              <h3 className="text-base font-bold text-gray-900 truncate">{detail.projectName}</h3>
+              <p className="text-[11px] text-gray-400 truncate">
+                {detail.fileName}
+                {interpretation?.industry && ` · ${interpretation.industry}`}
+                {` · ${new Date(detail.createdAt).toLocaleDateString('zh-CN')}`}
+              </p>
+            </div>
+            {/* 操作按钮：解读与问题清单可并行执行；上传访谈纪要需问题清单就绪 */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={onInterpret}
+                disabled={busy || detail.status === 'INTERPRETING'}
+                className="px-3.5 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl shadow-md shadow-blue-500/25 hover:bg-blue-700 disabled:opacity-50"
+              >
+                {busy && detail.status === 'INTERPRETING' ? '解读中...' : '解读项目'}
+              </button>
+              <button
+                onClick={onQuestions}
+                disabled={busy || detail.questionsStatus === 'GENERATING'}
+                className="px-3.5 py-2 bg-white border border-blue-200 text-blue-700 text-xs font-bold rounded-xl hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {detail.questionsStatus === 'GENERATING' ? '生成中...' : '生成问题清单'}
+              </button>
+              <button
+                onClick={() => setIvOpen(!ivOpen)}
+                disabled={!questionsReady || detail.verifyStatus === 'RUNNING' || busy}
+                title={!questionsReady ? '请先生成问题清单' : '上传一次访谈纪要，自动校验全部问题'}
+                className={`px-3.5 py-2 text-xs font-bold rounded-xl shadow-md disabled:opacity-40 disabled:cursor-not-allowed ${
+                  detail.verifyStatus === 'DONE'
+                    ? 'bg-emerald-500 text-white shadow-emerald-500/25 hover:bg-emerald-600'
+                    : 'bg-gradient-to-r from-indigo-500 to-blue-600 text-white shadow-indigo-500/25'
+                }`}
+              >
+                {detail.verifyStatus === 'RUNNING' ? '校验中...' : detail.verifyStatus === 'DONE' ? '重新上传访谈纪要' : '上传访谈纪要'}
+              </button>
+              {!createdProjectId && detail.verifyStatus === 'DONE' && detail.conclusionJson && (
+                <button
+                  onClick={() => { setDraftErr(''); setCreateErr(''); setCreateModalOpen(true) }}
+                  className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-bold rounded-xl shadow-md hover:from-blue-700 hover:to-indigo-700"
+                >
+                  创建到项目库
+                </button>
+              )}
+            </div>
+          </div>
+          {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
+          {detail.status === 'FAILED' && detail.error && <p className="mt-2 text-xs text-red-500">上次执行失败：{detail.error}</p>}
+
+          {/* 已创建到项目库（闭环） */}
+          {createdProjectId && (
+            <div className="mt-2.5 flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-3.5 py-2">
+              <span className="text-sm">✅</span>
+              <p className="text-xs text-emerald-700 flex-1">该项目已创建到项目库（初聊阶段）</p>
+              <a
+                href={`/projects/${createdProjectId}`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1.5 bg-emerald-500 text-white text-xs font-bold rounded-lg hover:bg-emerald-600"
+              >
+                查看项目 →
+              </a>
+            </div>
+          )}
+        </div>
+
         {/* 自动链路进度（BP+访谈纪要一起上传触发） */}
         {chainActive && (
-          <div className={`rounded-2xl border p-4 ${
+          <div className={`mt-4 rounded-2xl border p-4 ${
             autoChainStep === 'done' ? 'bg-emerald-50 border-emerald-200' : autoChainStep === 'error' ? 'bg-red-50 border-red-200' : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200'
           }`}>
             <div className="flex items-center gap-2 flex-wrap">
@@ -876,151 +1071,18 @@ function Detail({
           </div>
         )}
 
-        {/* 头部 + 三个执行按钮 */}
-        <div className="bg-white rounded-2xl border border-primary-100 shadow-sm p-5">
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div>
-              <button
-                onClick={onBack}
-                className="flex items-center gap-1.5 px-3 py-1.5 mb-2 border border-gray-200 rounded-xl text-xs font-bold text-gray-500 hover:border-primary-300 hover:text-primary-600 transition-colors"
-              >
-                ← 返回上一级
-              </button>
-              <h3 className="text-lg font-bold text-gray-900">{detail.projectName}</h3>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {detail.fileName}
-                {interpretation?.industry && ` · ${interpretation.industry}`}
-                {` · ${new Date(detail.createdAt).toLocaleDateString('zh-CN')}`}
-              </p>
-            </div>
-            {/* 三个按钮：解读与问题清单可并行执行；上传访谈纪要需问题清单就绪 */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                onClick={onInterpret}
-                disabled={busy || detail.status === 'INTERPRETING'}
-                className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-xl shadow-md shadow-blue-500/25 hover:bg-blue-700 disabled:opacity-50"
-              >
-                {busy && detail.status === 'INTERPRETING' ? '解读中...' : '解读项目'}
-              </button>
-              <button
-                onClick={onQuestions}
-                disabled={busy || detail.questionsStatus === 'GENERATING'}
-                className="px-4 py-2 bg-white border border-blue-200 text-blue-700 text-sm font-bold rounded-xl hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {detail.questionsStatus === 'GENERATING' ? '生成中...' : '生成问题清单'}
-              </button>
-              <button
-                onClick={() => setIvOpen(!ivOpen)}
-                disabled={!questionsReady || detail.verifyStatus === 'RUNNING' || busy}
-                title={!questionsReady ? '请先生成问题清单' : '上传一次访谈纪要，自动校验全部问题'}
-                className={`px-4 py-2 text-sm font-bold rounded-xl shadow-md disabled:opacity-40 disabled:cursor-not-allowed ${
-                  detail.verifyStatus === 'DONE'
-                    ? 'bg-emerald-500 text-white shadow-emerald-500/25 hover:bg-emerald-600'
-                    : 'bg-gradient-to-r from-indigo-500 to-blue-600 text-white shadow-indigo-500/25'
-                }`}
-              >
-                {detail.verifyStatus === 'RUNNING' ? '校验中...' : detail.verifyStatus === 'DONE' ? '重新上传访谈纪要' : '上传访谈纪要'}
-              </button>
-            </div>
-          </div>
-          {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
-          {detail.status === 'FAILED' && detail.error && <p className="mt-2 text-xs text-red-500">上次执行失败：{detail.error}</p>}
+        {/* ── 主体两列：左=项目解读信息（七维+融资案例+综合结论）｜右=访谈校验+外部校验+问题清单 ── */}
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-5 gap-4 items-start">
+          <div className="lg:col-span-3 space-y-4">
 
-          {/* 已创建到项目库（闭环） */}
-          {createdProjectId && (
-            <div className="mt-3 flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-3.5 py-2.5">
-              <span className="text-sm">✅</span>
-              <p className="text-xs text-emerald-700 flex-1">该项目已创建到项目库（初聊阶段）</p>
-              <a
-                href={`/projects/${createdProjectId}`}
-                target="_blank"
-                rel="noreferrer"
-                className="px-3 py-1.5 bg-emerald-500 text-white text-xs font-bold rounded-lg hover:bg-emerald-600"
-              >
-                查看项目 →
-              </a>
-            </div>
-          )}
-          {/* 结论已生成但尚未创建：手动入口（弹窗关闭后） */}
-          {!createdProjectId && detail.verifyStatus === 'DONE' && detail.conclusionJson && (
-            <div className="mt-3 flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 px-3.5 py-2.5">
-              <span className="text-sm">💡</span>
-              <p className="text-xs text-gray-600 flex-1">校验结论已生成，可创建到项目库（AI 预填充 BP 信息，由你补全必填项后确认创建）</p>
-              <button
-                onClick={() => { setDraftErr(''); setCreateErr(''); setCreateModalOpen(true) }}
-                className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-bold rounded-lg hover:from-blue-700 hover:to-indigo-700"
-              >
-                创建到项目库
-              </button>
-            </div>
-          )}
-
-          {/* 访谈纪要批量校验区（一次上传 → 自动校验全部问题 + 综合结论） */}
-          {(ivOpen || detail.verifyStatus === 'RUNNING') && (
-            <div className="mt-4 pt-4 border-t border-gray-100 space-y-2.5">
-              <p className="text-xs font-bold text-gray-600">
-                上传一次访谈纪要，系统自动校验全部问题并生成综合结论
-                {detail.interviewFileName && (
-                  <span className="text-gray-400 font-normal ml-2">上次：📎 {detail.interviewFileName}</span>
-                )}
-                <button
-                  onClick={() => setIvOpen(false)}
-                  className="ml-2 px-2 py-0.5 border border-gray-200 rounded-lg text-[10px] font-bold text-gray-400 hover:text-gray-600 hover:border-gray-300"
-                >
-                  收起 ↑
-                </button>
-              </p>
-              {detail.verifyStatus === 'RUNNING' ? (
-                <div className="flex items-center gap-2 text-sm text-indigo-600 py-2">
-                  <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-500" />
-                  批量校验中：AI 正在逐题对比访谈回答与理想答案（约 1-2 分钟）...
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                      onClick={() => ivFileRef.current?.click()}
-                      className="px-3 py-1.5 bg-white border border-gray-200 text-xs font-bold rounded-lg hover:border-blue-300 text-gray-600"
-                    >
-                      {ivFile ? `已选：${ivFile.name}` : '选择访谈纪要（音频/文档）'}
-                    </button>
-                    <input
-                      ref={ivFileRef}
-                      type="file"
-                      accept=".mp3,.wav,.m4a,.aac,.ogg,.flac,.pdf,.docx,.txt,.md,.pptx"
-                      className="hidden"
-                      onChange={e => {
-                        setIvFile(e.target.files?.[0] || null)
-                        e.target.value = ''
-                      }}
-                    />
-                    <button
-                      onClick={submitInterview}
-                      disabled={ivBusy || (!ivFile && !ivText.trim())}
-                      className="px-4 py-1.5 bg-gradient-to-r from-indigo-500 to-blue-600 text-white text-xs font-bold rounded-lg disabled:opacity-40"
-                    >
-                      {ivBusy ? '校验中...' : '提交并自动校验全部问题'}
-                    </button>
-                  </div>
-                  <textarea
-                    value={ivText}
-                    onChange={e => setIvText(e.target.value)}
-                    rows={4}
-                    placeholder="或直接粘贴访谈纪要全文（音频转写内容/访谈记录）。粘贴文字可不选文件。"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs"
-                  />
-                  <p className="text-[10px] text-gray-400">音频文件会保存留档，需配合粘贴转写文本；支持 pdf/docx/txt/pptx 自动提取</p>
-                  {ivErr && <p className="text-xs text-red-500">{ivErr}</p>}
-                </>
-              )}
-            </div>
-          )}
-          {detail.verifyStatus === 'DONE' && !ivOpen && (
-            <p className="mt-2 text-[11px] text-emerald-600">
-              ✓ 访谈校验已完成（{verifiedCount}/{detail.questions.length} 题已分析）{detail.interviewFileName && ` · 📎 ${detail.interviewFileName}`}
+        {/* 未解读占位 */}
+        {!interpretation && (
+          <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-8 text-center">
+            <p className="text-sm text-gray-400">
+              {detail.status === 'INTERPRETING' ? 'AI 正在按固定七维框架解读项目…' : '尚未解读——点击上方「解读项目」开始固定七维框架分析'}
             </p>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* 解读结果（七维 + 融资案例） */}
         {interpretation && (
@@ -1116,6 +1178,146 @@ function Detail({
             </div>
           </div>
         )}
+
+        {/* 综合结论（原问题清单下方，重排后归入左列解读信息区） */}
+        {detail.questions.length > 0 && (
+          <div className="bg-white rounded-2xl border border-primary-100 shadow-sm p-5">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h4 className="text-sm font-bold text-gray-900">综合分析结论</h4>
+              <button
+                onClick={onConclusion}
+                disabled={busy || verifiedCount < 3}
+                title={verifiedCount < 3 ? '至少 3 个问题被访谈覆盖后可生成（上传访谈纪要后自动生成）' : '基于最新校验结果重新生成'}
+                className="px-3.5 py-2 bg-white border border-indigo-200 text-indigo-600 text-xs font-bold rounded-xl hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {conclusion ? '🔄 重新生成' : '手动生成'}
+              </button>
+            </div>
+            {conclusion ? (
+              <div className="mt-3 space-y-2.5">
+                {/* 新结论高亮展示（含赛道沉淀问题的校验支撑，作为该赛道后续项目的关注重点） */}
+                <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 border-2 border-indigo-200 p-3.5 shadow-sm">
+                  <p className="text-xs font-bold text-indigo-600">★ 新结论 · 总体判断</p>
+                  <RichText
+                    text={conclusion.summary}
+                    className="text-sm text-indigo-900 font-bold mt-1 space-y-0.5"
+                    lineClassName="leading-relaxed"
+                    strongClassName="font-bold text-indigo-950"
+                    placeholder="—"
+                  />
+                </div>
+                {conclusion.dimensions.map((d, i) => (
+                  <div key={i} className="flex items-start gap-2.5 rounded-xl border border-gray-100 p-3">
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0 mt-0.5 ${MATCH_STYLES[d.gapLevel]?.cls || 'bg-gray-100'}`}>
+                      {MATCH_STYLES[d.gapLevel]?.label || d.gapLevel}
+                    </span>
+                    <div>
+                      <p className="text-xs font-bold text-gray-800">{d.aspect}</p>
+                      <RichText
+                        text={d.conclusion}
+                        className="text-xs text-gray-600 mt-0.5 space-y-0.5"
+                        lineClassName="leading-relaxed"
+                        placeholder="—"
+                      />
+                    </div>
+                  </div>
+                ))}
+                {conclusion.advice && (
+                  <div className="text-xs text-gray-500 px-1">
+                    💡 建议：<RichText text={conclusion.advice} lineClassName="leading-relaxed" placeholder="—" />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-gray-400">
+                上传一次访谈纪要后，系统自动校验全部问题并生成综合结论（如：技术壁垒方面差距较大 → 技术壁垒不高）。
+              </p>
+            )}
+          </div>
+        )}
+          </div>{/* 左列结束 */}
+
+          {/* ── 右列：访谈纪要上传 + 外部校验 + 问题清单 ── */}
+          <div className="lg:col-span-2 space-y-4">
+            {/* 访谈纪要批量校验卡（一次上传 → 自动校验全部问题 + 综合结论） */}
+            <div className="bg-white rounded-2xl border border-primary-100 shadow-sm p-5">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h4 className="text-sm font-bold text-gray-900">📋 访谈纪要校验</h4>
+                {detail.verifyStatus === 'DONE' && !ivOpen && (
+                  <span className="text-[11px] text-emerald-600">
+                    ✓ 已完成（{verifiedCount}/{detail.questions.length} 题）
+                  </span>
+                )}
+              </div>
+              {detail.interviewFileName && !ivOpen && (
+                <p className="mt-1 text-[11px] text-gray-400">📎 上次纪要：{detail.interviewFileName}</p>
+              )}
+              {ivOpen || detail.verifyStatus === 'RUNNING' ? (
+                <div className="mt-3 space-y-2.5">
+                  <p className="text-xs font-bold text-gray-600">
+                    上传一次访谈纪要，系统自动校验全部问题并生成综合结论
+                    <button
+                      onClick={() => setIvOpen(false)}
+                      className="ml-2 px-2 py-0.5 border border-gray-200 rounded-lg text-[10px] font-bold text-gray-400 hover:text-gray-600 hover:border-gray-300"
+                    >
+                      收起 ↑
+                    </button>
+                  </p>
+                  {detail.verifyStatus === 'RUNNING' ? (
+                    <div className="flex items-center gap-2 text-sm text-indigo-600 py-2">
+                      <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-500" />
+                      批量校验中：AI 正在逐题对比访谈回答与理想答案（约 1-2 分钟）...
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          onClick={() => ivFileRef.current?.click()}
+                          className="px-3 py-1.5 bg-white border border-gray-200 text-xs font-bold rounded-lg hover:border-blue-300 text-gray-600"
+                        >
+                          {ivFile ? `已选：${ivFile.name}` : '选择访谈纪要（音频/文档）'}
+                        </button>
+                        <input
+                          ref={ivFileRef}
+                          type="file"
+                          accept=".mp3,.wav,.m4a,.aac,.ogg,.flac,.pdf,.docx,.txt,.md,.pptx"
+                          className="hidden"
+                          onChange={e => {
+                            setIvFile(e.target.files?.[0] || null)
+                            e.target.value = ''
+                          }}
+                        />
+                        <button
+                          onClick={submitInterview}
+                          disabled={ivBusy || (!ivFile && !ivText.trim())}
+                          className="px-4 py-1.5 bg-gradient-to-r from-indigo-500 to-blue-600 text-white text-xs font-bold rounded-lg disabled:opacity-40"
+                        >
+                          {ivBusy ? '校验中...' : '提交并自动校验全部问题'}
+                        </button>
+                      </div>
+                      <textarea
+                        value={ivText}
+                        onChange={e => setIvText(e.target.value)}
+                        rows={4}
+                        placeholder="或直接粘贴访谈纪要全文（音频转写内容/访谈记录）。粘贴文字可不选文件。"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs"
+                      />
+                      <p className="text-[10px] text-gray-400">音频文件会保存留档，需配合粘贴转写文本；支持 pdf/docx/txt/pptx 自动提取</p>
+                      {ivErr && <p className="text-xs text-red-500">{ivErr}</p>}
+                    </>
+                  )}
+                </div>
+              ) : (
+                <button
+                  onClick={() => setIvOpen(true)}
+                  disabled={!questionsReady}
+                  className="mt-3 w-full px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-blue-600 text-white text-xs font-bold rounded-xl shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={!questionsReady ? '请先生成问题清单' : ''}
+                >
+                  {detail.verifyStatus === 'DONE' ? '重新上传访谈纪要' : '上传访谈纪要（自动校验全部问题）'}
+                </button>
+              )}
+            </div>
 
         {/* 外部校验（BP 关键声明联网交叉核验；夸大/矛盾声明自动进入问题清单优先追问） */}
         {interpretation && (
@@ -1220,63 +1422,8 @@ function Detail({
             </div>
           </div>
         )}
-
-        {/* 综合结论 */}
-        {detail.questions.length > 0 && (
-          <div className="bg-white rounded-2xl border border-primary-100 shadow-sm p-5">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <h4 className="text-sm font-bold text-gray-900">综合分析结论</h4>
-              <button
-                onClick={onConclusion}
-                disabled={busy || verifiedCount < 3}
-                title={verifiedCount < 3 ? '至少 3 个问题被访谈覆盖后可生成（上传访谈纪要后自动生成）' : '基于最新校验结果重新生成'}
-                className="px-3.5 py-2 bg-white border border-indigo-200 text-indigo-600 text-xs font-bold rounded-xl hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {conclusion ? '🔄 重新生成' : '手动生成'}
-              </button>
-            </div>
-            {conclusion ? (
-              <div className="mt-3 space-y-2.5">
-                {/* 新结论高亮展示（含赛道沉淀问题的校验支撑，作为该赛道后续项目的关注重点） */}
-                <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 border-2 border-indigo-200 p-3.5 shadow-sm">
-                  <p className="text-xs font-bold text-indigo-600">★ 新结论 · 总体判断</p>
-                  <RichText
-                    text={conclusion.summary}
-                    className="text-sm text-indigo-900 font-bold mt-1 space-y-0.5"
-                    lineClassName="leading-relaxed"
-                    strongClassName="font-bold text-indigo-950"
-                    placeholder="—"
-                  />
-                </div>
-                {conclusion.dimensions.map((d, i) => (
-                  <div key={i} className="flex items-start gap-2.5 rounded-xl border border-gray-100 p-3">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0 mt-0.5 ${MATCH_STYLES[d.gapLevel]?.cls || 'bg-gray-100'}`}>
-                      {MATCH_STYLES[d.gapLevel]?.label || d.gapLevel}
-                    </span>
-                    <div>
-                      <p className="text-xs font-bold text-gray-800">{d.aspect}</p>
-                      <RichText
-                        text={d.conclusion}
-                        className="text-xs text-gray-600 mt-0.5 space-y-0.5"
-                        lineClassName="leading-relaxed"
-                        placeholder="—"
-                      />
-                    </div>
-                  </div>
-                ))}
-                {conclusion.advice && (
-                  <div className="text-xs text-gray-500 px-1">
-                    💡 建议：<RichText text={conclusion.advice} lineClassName="leading-relaxed" placeholder="—" />
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="mt-3 text-xs text-gray-400">
-                上传一次访谈纪要后，系统自动校验全部问题并生成综合结论（如：技术壁垒方面差距较大 → 技术壁垒不高）。
-              </p>
-            )}
-          </div>
-        )}
+          </div>{/* 右列结束 */}
+        </div>{/* 两列 grid 结束 */}
 
         {/* 创建到项目库·第一步：校验结论生成后提醒（AI 预填充，不直接创建） */}
         {createModalOpen && (
@@ -1291,8 +1438,9 @@ function Detail({
               <div className="space-y-3">
                 <h4 className="text-base font-bold text-gray-900">将该项目创建到项目库？</h4>
                 <p className="text-xs text-gray-500 leading-relaxed">
-                  系统将按<b>项目库创建模板</b>，从 BP 与解读结论中预填充项目信息——
-                  <b className="text-primary-700">主要产品、核心优势、核心团队</b>截取 BP 原文相关页与文字总结（分点排版、重点加粗）。
+                  系统将按<b>项目库创建模板</b>，从 BP 与访谈纪要中预填充项目信息——
+                  <b className="text-primary-700">主要产品、核心优势、核心团队、财务数据、订单进展、竞争对手、融资规划</b>
+                  截取 BP 原文相关页与文字总结（分点排版、重点加粗），PDF/PPT 的 BP 还会<b>截取关键页图片</b>一起带入。
                   预填充后由<b>你补全必填项并确认</b>，才会创建项目。
                 </p>
                 {draftErr && (
@@ -1392,11 +1540,15 @@ function Detail({
                       className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-400 focus:border-primary-400" />
                   </div>
                 </div>
-                {/* 富文本字段：编辑 + 排版预览 */}
+                {/* 富文本字段：编辑 + 排版预览（markdown 分点+加粗，创建时转 HTML 入库） */}
                 {([
                   ['mainProducts', '主要产品', 'AI 截取 BP 产品/服务相关页的原文关键表述', 6],
                   ['coreAdvantage', '核心优势', 'AI 截取 BP 技术壁垒/差异化/里程碑相关段落', 5],
                   ['coreTeam', '核心团队', 'BP 核心成员（一人一点）+ 访谈纪要中的团队补充信息', 8],
+                  ['financialData', '财务数据', 'BP 与访谈纪要中的营收/毛利/现金流/历史融资', 4],
+                  ['orderProgress', '订单进展', 'BP 与访谈纪要中的订单/POC/客户/合同金额', 4],
+                  ['competitors', '竞争对手', 'BP 与访谈纪要中的竞品及对比要点', 4],
+                  ['financingPlan', '融资规划', '本轮融资用途/资金分配/里程碑（BP+访谈纪要）', 3],
                   ['description', '项目描述', '综合 BP、访谈纪要与解读结论的综述', 4],
                 ] as const).map(([field, label, hint, rows]) => (
                   <div key={field}>
@@ -1414,6 +1566,29 @@ function Detail({
                       <p className="text-[10px] text-gray-400 mb-1">排版预览</p>
                       <RichPreview text={createForm[field]} />
                     </div>
+                    {/* BP 关键页配图（PDF 整页截图/PPTX 页内图；创建时嵌入该字段） */}
+                    {bpImages[field]?.length > 0 && (
+                      <div className="mt-1.5 rounded-lg border border-sky-100 bg-sky-50/40 px-3 py-2">
+                        <p className="text-[10px] text-sky-700 font-bold mb-1.5">
+                          📎 BP 原文配图（{bpImages[field].length} 张 · 创建时自动嵌入「{label}」）
+                        </p>
+                        <div className="flex gap-2 flex-wrap">
+                          {bpImages[field].map((img, i) =>
+                            img.url.split(';').filter(Boolean).map((u, j) => (
+                              <div key={`${i}-${j}`} className="relative group">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={u}
+                                  alt={`BP第${img.page}页`}
+                                  className="h-20 rounded-lg border border-sky-200 object-cover object-top"
+                                />
+                                <span className="absolute bottom-0.5 right-0.5 px-1 rounded bg-black/50 text-white text-[9px]">P{img.page}</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
                 {createErr && (

@@ -20,10 +20,43 @@ function localBpPath(fileUrl: string): string | null {
 }
 
 /**
+ * markdown 分点排版 → 项目库 HTML（详情页 dangerouslySetInnerHTML 渲染）：
+ * - 每行独立 <p>（分点分段）；**加粗** → <strong>
+ * - BP 图片（bpImages）追加为 <img>（主要产品/核心优势等字段的原文配图）
+ */
+function markdownFieldToHtml(md: string, images?: Array<{ page: number; url: string }>): string {
+  const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const lines = (md || '')
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean)
+  const htmlParts = lines.map(line => {
+    const safe = escapeHtml(line)
+    const withBold = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    return `<p>${withBold}</p>`
+  })
+  if (images && images.length > 0) {
+    for (const img of images) {
+      // url 可能是 ; 分隔的多图（PPTX 同页多图）
+      for (const url of img.url.split(';').filter(Boolean)) {
+        const safeUrl = url.replace(/"/g, '%22')
+        htmlParts.push(`<p><img src="${safeUrl}" alt="BP第${img.page}页" style="max-width:100%;border-radius:8px;border:1px solid #e5e7eb;margin-top:6px" /></p>`)
+      }
+    }
+  }
+  return htmlParts.join('')
+}
+
+/** 预填表单可编辑的富文本字段（markdown 编辑 → HTML 入库；bpImages 随字段嵌入） */
+const RICH_FIELDS = ['mainProducts', 'coreAdvantage', 'coreTeam', 'financialData', 'orderProgress', 'competitors', 'financingPlan', 'description'] as const
+
+/**
  * POST /api/project-interpretation/[id]/create-project
  * 确认创建（P5：预填充表单由维护人补全必填项后提交，不再由 AI 直接创建）：
  * - body：表单数据（name/companyFullName/industry/companyPosition/mainProducts/coreAdvantage/coreTeam/
- *   description/financingRound/totalAmount/investmentValuation/targetDate）
+ *   financialData/orderProgress/competitors/financingPlan/description/financingRound/totalAmount/
+ *   investmentValuation/targetDate + bpImages 关键页图片映射）
+ * - 富文本字段：markdown（分点+**加粗**）→ HTML 入库；bpImages 追加 <img>（BP 原文图）
  * - 必填校验：项目名称/所处行业/公司定位/融资金额/投资估值/初聊日期（与项目库新建页一致）
  * - 重名 409 拦截；创建后自动把 BP 原文转存到项目文档并回写 linkedProjectId（防重复创建）
  */
@@ -54,10 +87,6 @@ export async function POST(
     const companyFullName = String(body.companyFullName || '').trim().slice(0, 100) || null
     const industry = String(body.industry || '').trim().slice(0, 50)
     const companyPosition = String(body.companyPosition || '').trim().slice(0, 100)
-    const mainProducts = String(body.mainProducts || '').trim().slice(0, 2000)
-    const coreAdvantage = String(body.coreAdvantage || '').trim().slice(0, 2000) || '未披露'
-    const coreTeam = String(body.coreTeam || '').trim().slice(0, 4000) || '未披露'
-    const description = String(body.description || '').trim().slice(0, 1000) || null
     const financingRound = String(body.financingRound || '').trim().slice(0, 30) || null
     const totalAmount = String(body.totalAmount || '').trim().slice(0, 30)
     const investmentValuationRaw = body.investmentValuation
@@ -67,6 +96,21 @@ export async function POST(
         : Number(investmentValuationRaw)
     const targetDateRaw = String(body.targetDate || '').trim()
     const targetDate = targetDateRaw ? new Date(targetDateRaw) : null
+
+    // 富文本字段：markdown → HTML（bpImages 按 URL 白名单追加 <img>，防篡改注入外链）
+    const bpImages = (body.bpImages && typeof body.bpImages === 'object'
+      ? body.bpImages
+      : {}) as Record<string, Array<{ page: number; url: string }>>
+    const safeImages = (field: string): Array<{ page: number; url: string }> =>
+      (Array.isArray(bpImages[field]) ? bpImages[field] : [])
+        .filter(img => img && typeof img.url === 'string' && img.url.startsWith('/api/uploads/interpretation-images/'))
+        .slice(0, 3)
+
+    const richHtml: Record<string, string> = {}
+    for (const field of RICH_FIELDS) {
+      const md = String(body[field] || '').trim()
+      richHtml[field] = markdownFieldToHtml(md, safeImages(field))
+    }
 
     const missing: string[] = []
     if (!name) missing.push('项目名称')
@@ -94,7 +138,7 @@ export async function POST(
       )
     }
 
-    // ── 创建到项目库（初聊阶段） ──
+    // ── 创建到项目库（初聊阶段；富文本字段已转 HTML：分点分段+加粗+BP 配图） ──
     const initialStage = 'INITIAL_TALK'
     const project = await prisma.project.create({
       data: {
@@ -102,11 +146,14 @@ export async function POST(
         companyFullName,
         industry,
         companyPosition,
-        mainProducts: mainProducts || '未披露',
-        coreAdvantage,
-        coreTeam,
-        competitors: null,
-        description,
+        mainProducts: richHtml.mainProducts || '未披露',
+        coreAdvantage: richHtml.coreAdvantage || '未披露',
+        coreTeam: richHtml.coreTeam || '未披露',
+        financialData: richHtml.financialData || null,
+        orderProgress: richHtml.orderProgress || null,
+        competitors: richHtml.competitors || null,
+        financingPlan: richHtml.financingPlan || null,
+        description: richHtml.description || null,
         financingRound,
         totalAmount,
         investmentValuation,

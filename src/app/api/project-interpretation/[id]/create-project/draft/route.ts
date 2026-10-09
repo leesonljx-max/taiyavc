@@ -5,8 +5,10 @@ import { getServerSession } from 'next-auth'
 import prisma from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { runProjectDraftExtraction } from '@/lib/project-interpretation/runner'
+import { buildPagedBpText, extractBpPageImages, bpLocalPath } from '@/lib/project-interpretation/bp-images'
 import { searchWebDual } from '@/lib/tavily-search'
 import type { InterpretationResult, OverallConclusion } from '@/lib/project-interpretation/constants'
+import { readFile } from 'fs/promises'
 
 /** 从搜索结果提取公司全称（与 create-project 同口径） */
 function extractCompanyFullName(searchTexts: string[], projectName: string): string | null {
@@ -25,8 +27,10 @@ function extractCompanyFullName(searchTexts: string[], projectName: string): str
 /**
  * POST /api/project-interpretation/[id]/create-project/draft
  * 预取填充信息（P5：不直接创建项目）：
- * AI 按项目库模板提取（排版化：序号分点 + 重点加粗；主要产品/核心优势/核心团队截取 BP 原文），
- * 公司全称缺失时联网补全；返回 draft 供前端预填充创建表单，由维护人补全必填项后确认创建。
+ * AI 按项目库模板提取（排版化：序号分点独立成行 + 重点加粗；主要产品/核心优势/核心团队/财务数据/
+ * 订单进展/竞争对手/融资规划 结合 BP 原文与访谈纪要），公司全称缺失时联网补全；
+ * PDF/PPTX 按页提取 → AI 标注 keyPages → 渲染关键页图片（BP 原文图+文字一起预填）。
+ * 返回 draft + bpImages 供前端预填充创建表单，由维护人补全必填项后确认创建。
  * 重名时返回 409（前端提示先处理同名项目）。
  */
 export async function POST(
@@ -50,7 +54,18 @@ export async function POST(
       return NextResponse.json({ error: '请先完成访谈校验并生成综合结论后再创建到项目库' }, { status: 400 })
     }
 
-    // ── AI 按项目库模板提取（BP 原文 + 访谈纪要 + 七维解读 + 综合结论） ──
+    // ── BP 按页文本（PDF/PPTX；带 [第N页] 标记供 AI 标注 keyPages） ──
+    let pagedText: string | null = null
+    let bpBuffer: Buffer | null = null
+    const localPath = bpLocalPath(record.fileUrl)
+    if (localPath) {
+      try {
+        bpBuffer = await readFile(localPath)
+        pagedText = await buildPagedBpText(bpBuffer, record.fileName)
+      } catch { /* 本地文件缺失/提取失败 → 回退全文（无页码标记） */ }
+    }
+
+    // ── AI 按项目库模板提取（BP 按页原文 + 访谈纪要 + 七维解读 + 综合结论） ──
     let interpretation: InterpretationResult | null = null
     if (record.interpretationJson) {
       try { interpretation = JSON.parse(record.interpretationJson) } catch { interpretation = null }
@@ -64,10 +79,29 @@ export async function POST(
     const draft = await runProjectDraftExtraction({
       projectName: record.projectName,
       documentText: record.documentText || '',
+      pagedText,
       interviewText: record.interviewText,
       interpretation,
       conclusionSummary,
     })
+
+    // ── BP 关键页图片（keyPages → PDF 整页截图 / PPTX 页内嵌图片） ──
+    const bpImages: Record<string, Array<{ page: number; url: string }>> = {}
+    if (bpBuffer && draft.keyPages && Object.keys(draft.keyPages).length > 0) {
+      try {
+        const allPages = Array.from(new Set(Object.values(draft.keyPages).flat())).slice(0, 6)
+        const rendered = await extractBpPageImages(bpBuffer, record.fileName, allPages, record.id)
+        const byPage = new Map(rendered.map(r => [r.page, r]))
+        for (const [field, pages] of Object.entries(draft.keyPages)) {
+          const imgs = pages
+            .map(p => byPage.get(p))
+            .filter((x): x is { page: number; url: string } => !!x)
+          if (imgs.length > 0) bpImages[field] = imgs
+        }
+      } catch (imgErr) {
+        console.error('BP key page images error:', imgErr) // 图片失败不阻塞文字预填
+      }
+    }
 
     // ── 公司全称补全：AI 未提取到时联网搜索 ──
     if (!draft.companyFullName.trim()) {
@@ -101,7 +135,11 @@ export async function POST(
     }
 
     // 初聊日期默认取解读上传日期（表单可改）
-    return NextResponse.json({ draft, defaultTargetDate: record.createdAt.toISOString().split('T')[0] })
+    return NextResponse.json({
+      draft,
+      bpImages: Object.keys(bpImages).length > 0 ? bpImages : {},
+      defaultTargetDate: record.createdAt.toISOString().split('T')[0],
+    })
   } catch (error) {
     console.error('Draft extraction error:', error)
     const detail = error instanceof Error ? error.message : '未知错误'

@@ -29,7 +29,7 @@ const MIME_TYPES: Record<string, string> = {
 }
 
 // 只允许访问这些目录
-const ALLOWED_DIRS = new Set(['avatars', 'project-docs', 'project-images', 'research-docs', 'interpretation-docs', 'post-investment-docs'])
+const ALLOWED_DIRS = new Set(['avatars', 'project-docs', 'project-images', 'research-docs', 'interpretation-docs', 'interpretation-images', 'post-investment-docs'])
 
 export async function GET(
   _request: Request,

@@ -7,7 +7,8 @@ import { authOptions } from '@/lib/auth'
 
 /**
  * GET /api/project-interpretation
- * 我的解读项目列表（新→旧），含问题/校验进度统计
+ * 我的解读项目列表（新→旧），含问题/校验进度统计 + 卡片展示字段
+ * （行业/公司定位摘要/校验状态/是否已创建项目库）
  */
 export async function GET() {
   try {
@@ -25,6 +26,9 @@ export async function GET() {
         fileName: true,
         status: true,
         questionsStatus: true,
+        verifyStatus: true,
+        conclusionJson: true,
+        linkedProjectId: true,
         error: true,
         createdAt: true,
         updatedAt: true,
@@ -38,9 +42,12 @@ export async function GET() {
     return NextResponse.json({
       interpretations: records.map(r => {
         let industry: string | null = null
+        let marketPosition: string | null = null
         if (r.interpretationJson) {
           try {
-            industry = (JSON.parse(r.interpretationJson) as { industry?: string }).industry || null
+            const parsed = JSON.parse(r.interpretationJson) as { industry?: string; marketPosition?: string }
+            industry = parsed.industry || null
+            marketPosition = parsed.marketPosition ? parsed.marketPosition.replace(/\*\*/g, '').slice(0, 60) : null
           } catch {
             industry = null
           }
@@ -49,9 +56,13 @@ export async function GET() {
           id: r.id,
           projectName: r.projectName,
           industry,
+          marketPosition,
           fileName: r.fileName,
           status: r.status,
           questionsStatus: r.questionsStatus,
+          verifyStatus: r.verifyStatus,
+          hasConclusion: !!r.conclusionJson,
+          linkedProjectId: r.linkedProjectId,
           error: r.error,
           createdAt: r.createdAt.toISOString(),
           questionCount: r.questions.length,

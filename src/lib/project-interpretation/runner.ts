@@ -385,23 +385,37 @@ const PROJECT_DRAFT_SYSTEM_PROMPT = `你是一级市场投资经理。基于项�
   "companyFullName": "公司全称（BP 中有则提取，无则空字符串）",
   "industry": "所处行业（AI应用/AI硬件/AI基础设施/具身智能/商业航天/量子计算/脑机接口/可控核聚变/半导体设备/半导体芯片/光学/新材料/其他）",
   "companyPosition": "公司定位一句话（30字内）",
-  "mainProducts": "主要产品：从 BP 原文中定位产品/服务相关页面与段落，截取原文关键表述与量化指标（200字内）",
-  "coreAdvantage": "核心优势：从 BP 原文中定位技术壁垒/差异化/里程碑相关段落，截取原文关键表述（200字内）",
+  "mainProducts": "主要产品：从 BP 原文中定位产品/服务相关页面与段落，截取原文关键表述与量化指标（300字内）",
+  "coreAdvantage": "核心优势：从 BP 原文中定位技术壁垒/差异化/里程碑相关段落，截取原文关键表述（300字内）",
   "coreTeam": "核心团队：BP 中提到的核心团队成员必须全部列出；并总结访谈纪要中关于团队的补充信息（认识方式、创业契机等）（500字内）",
+  "financialData": "财务数据：从 BP 与访谈纪要中提取营收/毛利/净利/现金流/历史融资等财务信息（未提及的项不写，200字内）",
+  "orderProgress": "订单进展：从 BP 与访谈纪要中提取订单/POC/客户/合同金额等商业化进展（200字内）",
+  "competitors": "竞争对手：从 BP 与访谈纪要中提取主要竞品及其对比要点（竞品名+与本项目差异，200字内）",
+  "financingPlan": "融资规划：本轮融资用途/资金分配/里程碑规划（从 BP 与访谈纪要提取，150字内）",
   "description": "项目描述：综合 BP、访谈纪要与解读结论的项目综述（200字内）",
   "financingRound": "本轮融资轮次（如 天使轮/A轮/Pre-A轮；未披露则空字符串）",
   "totalAmount": "本轮融资金额（如 8000万/2亿；未披露则'待补充'）",
-  "investmentValuation": 投资估值（亿元，数字；未披露则 null）
+  "investmentValuation": 投资估值（亿元，数字；未披露则 null）,
+  "keyPages": {
+    "mainProducts": [BP 中主要产品所在页码数组],
+    "coreAdvantage": [页码数组],
+    "coreTeam": [页码数组],
+    "financialData": [页码数组],
+    "orderProgress": [页码数组],
+    "competitors": [页码数组],
+    "financingPlan": [页码数组]
+  }
 }
-排版要求（mainProducts / coreAdvantage / coreTeam / description 四个字段统一执行）：
-- 不要输出一整段文字：按序号分点列示（1. 2. 3. ...），每点独立成行，一点讲一件事
-- 每点的重点内容（关键数据、里程碑、核心结论）用 **加粗** 标注
+排版要求（mainProducts / coreAdvantage / coreTeam / financialData / orderProgress / competitors / financingPlan / description 八个字段统一严格执行）：
+- 按序号分点列示（1. 2. 3. ...），每点必须以换行符 \\n 独立成行——严禁把多个分点写进同一行或挤成一整段
+- 一点讲一件事；每点的重点内容（关键数据、里程碑、核心结论）用 **加粗** 标注
 - coreTeam 按成员分点（每人一点：姓名/职务/背景履历要点），访谈补充信息另起一点
 内容要求：
 - mainProducts / coreAdvantage / coreTeam 三个字段必须优先截取 BP 原文中对应页/段落的关键句（保留原文表述与量化数据），再辅以文字串联，不得凭空编造
+- financialData / orderProgress / competitors / financingPlan 四个字段必须同时结合 BP 原文与访谈纪要提取（访谈中项目方的口头补充往往是关键信息），未提及则写"未披露"
 - coreTeam 必须穷尽 BP 中出现的所有核心成员（不得只写创始人），并融合访谈纪要中的团队认识方式、创业契机等信息
 - 其他字段（行业/定位/轮次/金额/估值等）也应尽量从 BP 与访谈纪要中提取完整，文档确实未提及才写"未披露"/null
-- 结论克制、可核验`
+keyPages 要求：输入的 BP 文档带 [第N页] 页码标记时，标注各字段内容主要来源的页码（每字段 1-2 页，整数数组）；文档无页码标记时 keyPages 各字段输出空数组`
 
 /** 项目库草稿（AI 按项目库模板从 BP/解读/访谈纪要/结论提取） */
 export interface ProjectDraft {
@@ -412,24 +426,53 @@ export interface ProjectDraft {
   mainProducts: string
   coreAdvantage: string
   coreTeam: string
+  financialData: string
+  orderProgress: string
+  competitors: string
+  financingPlan: string
   description: string
   financingRound: string
   totalAmount: string
   investmentValuation: number | null
+  /** 各字段来源 BP 页码（图片截取用；无页码文档为空对象） */
+  keyPages?: Record<string, number[]>
+}
+
+/**
+ * 分点排版后处理：AI 可能忽略换行指令把 "1.xxx 2.xxx" 挤在一行——
+ * 强制把行内编号分点拆为独立行（每点一行），保证项目库渲染分点分段
+ * 防误拆：编号后紧跟数字视为小数（如 1.5亿）不拆；单处编号不拆
+ */
+export function enforceLineBreaks(text: string): string {
+  if (!text) return text
+  const marker = /(\d{1,2})[.、](?!\d)/g
+  return text
+    .split('\n')
+    .map(line => {
+      const hits = Array.from(line.matchAll(marker))
+      if (hits.length < 2) return line // 单处编号（小数/单点）不动
+      // 在非行首的编号前断行（编号前是文字/标点/空白的场景）
+      return line.replace(/(?<=\S)[ \t；;，,]*(\d{1,2})[.、](?!\d)\s*/g, '\n$1. ')
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 /**
  * 闭环创建：从解读全量材料提取项目库模板字段
- * （主要产品/核心优势/核心团队 截取 BP 原文对应资料 + 文字描述；访谈纪要补充团队认识/创业契机等）
+ * （主要产品/核心优势/核心团队/财务数据/订单进展/竞争对手/融资规划 截取 BP 原文对应资料 + 文字描述；访谈纪要补充）
+ * pagedText：带 [第N页] 标记的按页 BP 文本（PDF/PPTX 提取；提供时 AI 额外输出 keyPages 页码标注）
  */
 export async function runProjectDraftExtraction(input: {
   projectName: string
   documentText: string
+  pagedText?: string | null
   interviewText?: string | null
   interpretation: InterpretationResult | null
   conclusionSummary: string
 }): Promise<ProjectDraft> {
-  const docText = input.documentText.slice(0, MAX_DOC_TEXT)
+  const docText = (input.pagedText || input.documentText).slice(0, MAX_DOC_TEXT)
   const digestParts: string[] = []
   if (input.interpretation) {
     digestParts.push(
@@ -437,7 +480,7 @@ export async function runProjectDraftExtraction(input: {
     )
   }
   if (input.interviewText && input.interviewText.trim()) {
-    digestParts.push(`访谈纪要（含团队认识方式、创业契机、业务细节等补充信息）：\n${input.interviewText.slice(0, 8000)}`)
+    digestParts.push(`访谈纪要（含团队认识方式、创业契机、财务/订单/竞争/融资等业务细节补充）：\n${input.interviewText.slice(0, 8000)}`)
   }
   if (input.conclusionSummary) {
     digestParts.push(`访谈校验综合结论：${input.conclusionSummary}`)
@@ -446,27 +489,43 @@ export async function runProjectDraftExtraction(input: {
 
   const { parsed } = await callDeepSeekJson<Partial<ProjectDraft>>(
     PROJECT_DRAFT_SYSTEM_PROMPT,
-    `项目：${input.projectName}\n${digest}BP 文档原文：\n\n${docText}\n\n请按项目库模板输出提取 JSON。`,
-    3000
+    `项目：${input.projectName}\n${digest}BP 文档原文${input.pagedText ? '（含 [第N页] 页码标记，keyPages 据此标注）' : ''}：\n\n${docText}\n\n请按项目库模板输出提取 JSON。`,
+    3500
   )
   if (!parsed || !parsed.name || !parsed.mainProducts) {
     throw new Error('AI 提取项目信息不完整，请重试')
   }
+
+  const keyPages: Record<string, number[]> = {}
+  if (parsed.keyPages && typeof parsed.keyPages === 'object') {
+    for (const [field, pages] of Object.entries(parsed.keyPages)) {
+      if (Array.isArray(pages)) {
+        const nums = pages.map(p => Number(p)).filter(n => Number.isInteger(n) && n > 0 && n < 500).slice(0, 2)
+        if (nums.length > 0) keyPages[field] = nums
+      }
+    }
+  }
+
   return {
     name: String(parsed.name).trim().slice(0, 50),
     companyFullName: parsed.companyFullName ? String(parsed.companyFullName).slice(0, 100) : '',
     industry: parsed.industry ? String(parsed.industry).slice(0, 50) : '',
     companyPosition: parsed.companyPosition ? String(parsed.companyPosition).slice(0, 100) : '',
-    mainProducts: String(parsed.mainProducts).slice(0, 2000),
-    coreAdvantage: parsed.coreAdvantage ? String(parsed.coreAdvantage).slice(0, 2000) : '未披露',
-    coreTeam: parsed.coreTeam ? String(parsed.coreTeam).slice(0, 4000) : '未披露',
-    description: parsed.description ? String(parsed.description).slice(0, 1000) : '',
+    mainProducts: enforceLineBreaks(String(parsed.mainProducts).slice(0, 2000)),
+    coreAdvantage: parsed.coreAdvantage ? enforceLineBreaks(String(parsed.coreAdvantage).slice(0, 2000)) : '未披露',
+    coreTeam: parsed.coreTeam ? enforceLineBreaks(String(parsed.coreTeam).slice(0, 4000)) : '未披露',
+    financialData: parsed.financialData ? enforceLineBreaks(String(parsed.financialData).slice(0, 2000)) : '',
+    orderProgress: parsed.orderProgress ? enforceLineBreaks(String(parsed.orderProgress).slice(0, 2000)) : '',
+    competitors: parsed.competitors ? enforceLineBreaks(String(parsed.competitors).slice(0, 2000)) : '',
+    financingPlan: parsed.financingPlan ? enforceLineBreaks(String(parsed.financingPlan).slice(0, 1500)) : '',
+    description: parsed.description ? enforceLineBreaks(String(parsed.description).slice(0, 1000)) : '',
     financingRound: parsed.financingRound ? String(parsed.financingRound).slice(0, 30) : '',
     totalAmount: parsed.totalAmount ? String(parsed.totalAmount).slice(0, 30) : '待补充',
     investmentValuation:
       typeof parsed.investmentValuation === 'number' && Number.isFinite(parsed.investmentValuation)
         ? parsed.investmentValuation
         : null,
+    keyPages: Object.keys(keyPages).length > 0 ? keyPages : undefined,
   }
 }
 

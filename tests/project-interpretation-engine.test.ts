@@ -17,6 +17,7 @@ import { POST as VERIFY } from '@/app/api/project-interpretation/[id]/verify/rou
 import { POST as CONCLUSION } from '@/app/api/project-interpretation/[id]/conclusion/route'
 import { POST as CREATE_PROJECT } from '@/app/api/project-interpretation/[id]/create-project/route'
 import { POST as CREATE_DRAFT } from '@/app/api/project-interpretation/[id]/create-project/draft/route'
+import { enforceLineBreaks } from '@/lib/project-interpretation/runner'
 import { resetMocks, mockState, chatCompletions } from './helpers/setup'
 
 const USER_EMAIL = 'pi2-user@test.com'
@@ -25,6 +26,27 @@ let userId: string
 let recordId: string
 
 const DOC_TEXT = '光子计算芯片项目。核心团队来自清华，产品为硅光计算加速芯片，已获云厂商POC订单，拟融资2亿元。'
+
+// ── 分点排版后处理（AI 挤一行 → 强制每点独立成行；小数防误拆） ──
+
+test('enforceLineBreaks：行内编号分点拆为独立行；小数/年份不误拆；已分点内容不动', () => {
+  // 挤在一行的分点 → 拆为每点一行
+  assert.equal(
+    enforceLineBreaks('1. 产品A 2. 产品B 3. 产品C'),
+    '1. 产品A\n2. 产品B\n3. 产品C'
+  )
+  // 标点分隔的挤行分点 → 拆分
+  assert.equal(
+    enforceLineBreaks('1. 营收1200万；2. 毛利45%；3. 净利300万'),
+    '1. 营收1200万\n2. 毛利45%\n3. 净利300万'
+  )
+  // 小数与年份不拆（编号后紧跟数字 = 小数；单处编号不动）
+  assert.equal(enforceLineBreaks('2025年营收 1.5亿元'), '2025年营收 1.5亿元')
+  assert.equal(enforceLineBreaks('增长率约3.14%'), '增长率约3.14%')
+  // 已正确分点（多行）→ 原样保留
+  const already = '1. 第一点\n2. 第二点\n3. 第三点'
+  assert.equal(enforceLineBreaks(already), already)
+})
 
 beforeEach(async () => {
   resetMocks()
@@ -624,7 +646,7 @@ test('create-project：AI 按项目库模板提取并创建（主要产品/核�
   asUser()
   await seedVerified()
 
-  // mock 项目库模板提取（P5：排版化——序号分点 + 重点加粗）
+  // mock 项目库模板提取（P5：排版化——序号分点 + 重点加粗；含新四字段与 keyPages）
   mockState.fetchHandler = (url, body) => {
     const system = String((body.messages as Array<{ content: string }>)[0]?.content || '')
     if (system.includes('项目库创建模板')) {
@@ -637,10 +659,15 @@ test('create-project：AI 按项目库模板提取并创建（主要产品/核�
           mainProducts: '1. **硅光计算加速芯片**——BP 原文：产品为硅光计算加速芯片\n2. 已获**云厂商 POC 订单**',
           coreAdvantage: '1. **硅光混合计算路线**，有流片经验（BP 原文截取）\n2. 差异化在互联架构',
           coreTeam: '1. 张三——创始人/CEO，清华博士（BP 原文）\n2. 访谈补充：团队在清华实验室共事多年',
+          financialData: '1. 2025 年营收 **1200 万元**（BP 原文）\n2. 访谈补充：经营现金流为负',
+          orderProgress: '1. 已获**云厂商 POC 订单** 3 个\n2. 在谈合同金额约 **5000 万**',
+          competitors: '1. **曦智科技**——同为光计算路线，已 B 轮\n2. 差异化在互联架构',
+          financingPlan: '1. 本轮 **2 亿元**用于流片\n2. 里程碑：18 个月内完成工程样片',
           description: '1. 硅光计算芯片项目\n2. 已获**云厂商 POC 订单**',
           financingRound: 'A轮',
           totalAmount: '2亿',
           investmentValuation: 8,
+          keyPages: { mainProducts: [3], coreAdvantage: [5] },
         })
       )
     }
@@ -663,6 +690,14 @@ test('create-project：AI 按项目库模板提取并创建（主要产品/核�
   // 排版化产物：分点 + 加粗
   assert.match(draftBody.draft.mainProducts, /1\. \*\*硅光计算加速芯片\*\*/)
   assert.match(draftBody.draft.coreTeam, /1\. 张三/)
+  // 新四字段（BP + 访谈纪要结合提取）
+  assert.match(draftBody.draft.financialData, /1200 万元/)
+  assert.match(draftBody.draft.orderProgress, /POC 订单/)
+  assert.match(draftBody.draft.competitors, /曦智科技/)
+  assert.match(draftBody.draft.financingPlan, /流片/)
+  // keyPages 透传（BP 页码标注；txt 无分页图片场景 bpImages 为空对象）
+  assert.deepEqual(draftBody.draft.keyPages, { mainProducts: [3], coreAdvantage: [5] })
+  assert.deepEqual(draftBody.bpImages, {})
   assert.ok(draftBody.defaultTargetDate)
   // 未创建项目（draft 阶段无落库）
   assert.equal(await prisma.project.count({ where: { name: '光子芯片' } }), 0)
@@ -672,7 +707,7 @@ test('create-project：AI 按项目库模板提取并创建（主要产品/核�
   assert.equal(res.status, 400)
   assert.match((await res.json()).error, /必填项/)
 
-  // ── 第二步：补全表单后创建 → 项目落库（字段=提交的表单数据） + linkedProjectId 回写 ──
+  // ── 第二步：补全表单后创建 → 项目落库（markdown 转 HTML：分点 <p> + <strong> 加粗 + BP 配图 <img>） ──
   const formPayload = {
     name: '光子芯片',
     companyFullName: '光子芯片科技（北京）有限公司',
@@ -681,11 +716,19 @@ test('create-project：AI 按项目库模板提取并创建（主要产品/核�
     mainProducts: draftBody.draft.mainProducts,
     coreAdvantage: draftBody.draft.coreAdvantage,
     coreTeam: draftBody.draft.coreTeam,
+    financialData: draftBody.draft.financialData,
+    orderProgress: draftBody.draft.orderProgress,
+    competitors: draftBody.draft.competitors,
+    financingPlan: draftBody.draft.financingPlan,
     description: draftBody.draft.description,
     financingRound: 'A轮',
     totalAmount: '2亿',
     investmentValuation: 8,
     targetDate: '2026-10-01',
+    // BP 关键页配图（模拟 draft 返回的截图；创建时按字段嵌入 HTML）
+    bpImages: {
+      mainProducts: [{ page: 3, url: '/api/uploads/interpretation-images/test-p3.png' }],
+    },
   }
   res = await CREATE_PROJECT(
     post(`http://t/api/project-interpretation/${recordId}/create-project`, {
@@ -702,9 +745,17 @@ test('create-project：AI 按项目库模板提取并创建（主要产品/核�
   assert.ok(project)
   assert.equal(project!.name, '光子芯片')
   assert.equal(project!.industry, '半导体芯片')
-  assert.ok(project!.mainProducts!.includes('**硅光计算加速芯片**'))
+  // 富文本字段已转 HTML：每点独立 <p>（分点分段）+ <strong>（加粗）+ BP 配图 <img>
+  assert.ok(project!.mainProducts!.includes('<strong>硅光计算加速芯片</strong>'))
+  assert.ok(project!.mainProducts!.includes('<img src="/api/uploads/interpretation-images/test-p3.png"'))
+  assert.ok((project!.mainProducts!.match(/<p>/g) || []).length >= 2, '分点应各自独立成段')
   assert.ok(project!.coreAdvantage!.includes('流片'))
   assert.ok(project!.coreTeam!.includes('张三'))
+  // 新四字段落库（HTML）
+  assert.ok(project!.financialData!.includes('<strong>1200 万元</strong>'))
+  assert.ok(project!.orderProgress!.includes('POC 订单'))
+  assert.ok(project!.competitors!.includes('曦智科技'))
+  assert.ok(project!.financingPlan!.includes('流片'))
   assert.equal(project!.followStage, 'INITIAL_TALK')
   assert.equal(project!.totalAmount, '2亿')
   assert.equal(project!.investmentValuation, 8)
