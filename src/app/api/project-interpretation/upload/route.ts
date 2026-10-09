@@ -120,8 +120,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            `无法从文档提取到有效文本（仅提取到 ${documentText.length} 字符，可能为扫描件/图片型文档）。` +
-            '建议：① 上传可复制文本的 PDF/DOCX/PPTX；② 使用下方的"粘贴项目文本"直接粘贴内容',
+            `无法从文档提取到有效文本（仅提取到 ${documentText.length} 字符，可能为扫描件/图片型或加密文档）。` +
+            '建议：① 上传可复制文本的 PDF/DOCX/PPTX（加密 PDF 请先解除密码保护后重新导出）；② 使用下方的"粘贴项目文本"直接粘贴内容',
         },
         { status: 400 }
       )
