@@ -32,6 +32,7 @@ import { POST as CONFIRM_POST } from '@/app/api/skills/confirm/route'
 import { POST as FORK_POST } from '@/app/api/skills/fork/route'
 import { POST as RUN_POST } from '@/app/api/skills/run/route'
 import { POST as PI_INTERPRET } from '@/app/api/project-interpretation/[id]/interpret/route'
+import { POST as PI_QUESTIONS } from '@/app/api/project-interpretation/[id]/questions/route'
 
 const SUFFIX = String(Date.now()).slice(-6)
 const ALICE_EMAIL = `ps-alice-${SUFFIX}@test.com`
@@ -465,4 +466,64 @@ test('P3.6：项目解读——挂载技能后解读 system prompt 注入技能�
   assert.ok(interpretSystem.includes('用户自定义分析技能'))
   assert.match(interpretSystem, /以用户技能为准/)
   assert.match(interpretSystem, /融资窗口评估/)
+
+  // 3) appliedSkills 可见性：解读结果落库的应用技能名
+  const saved2 = await prisma.projectInterpretation.findUnique({ where: { id: record2.id } })
+  const interp2 = JSON.parse(saved2!.interpretationJson!) as { appliedSkills?: string[] }
+  assert.deepEqual(interp2.appliedSkills, ['融资窗口评估'])
+})
+
+test('P3.6 可见性：问题清单生成注入本人技能并返回 appliedSkills；无技能时为空数组', async () => {
+  // 16 问（11 技术 + 5 其他）mock
+  const questionsJson = JSON.stringify({
+    questions: [
+      ...Array.from({ length: 11 }, (_, i) => ({ category: 'TECH', question: `技术问题${i + 1}`, idealAnswer: `理想答案${i + 1}`, isSectorInsight: false, claimFlag: false })),
+      { category: 'MARKET', question: '市场问题1', idealAnswer: '理想：市场规模', isSectorInsight: false, claimFlag: false },
+      { category: 'TEAM', question: '团队问题1', idealAnswer: '理想：团队背景', isSectorInsight: false, claimFlag: false },
+      { category: 'BUSINESS', question: '业务问题1', idealAnswer: '理想：订单', isSectorInsight: false, claimFlag: false },
+      { category: 'BUSINESS', question: '业务问题2', idealAnswer: '理想：复购', isSectorInsight: false, claimFlag: false },
+      { category: 'FINANCE', question: '财务问题1', idealAnswer: '理想：现金流', isSectorInsight: false, claimFlag: false },
+    ],
+  })
+
+  let questionsSystem = ''
+  mockState.fetchHandler = (_url, body) => {
+    const system = String((body.messages as Array<{ content: string }>)[0]?.content || '')
+    if (system.includes('访谈必问问题清单')) {
+      questionsSystem = system
+      return chatCompletions(questionsJson)
+    }
+    return chatCompletions('{}')
+  }
+
+  const record = await prisma.projectInterpretation.create({
+    data: {
+      userId: aliceId,
+      projectName: 'P35测试问题清单',
+      fileName: 'bp.txt',
+      fileUrl: '/api/uploads/interpretation-docs/z.txt',
+      fileType: 'text/plain',
+      fileSize: 100,
+      documentText: '硅光计算芯片项目，核心团队来自清华。',
+      verifyStatus: 'DONE', conclusionJson: '{}',
+    },
+  })
+
+  // 1) 无技能：不注入，appliedSkills 为空数组
+  asAlice()
+  let res = await PI_QUESTIONS(new Request(`http://t/api/project-interpretation/${record.id}/questions`, { method: 'POST' }), { params: { id: record.id } })
+  assert.equal(res.status, 200)
+  let body = await res.json()
+  assert.deepEqual(body.appliedSkills, [])
+  assert.ok(questionsSystem.includes('访谈必问问题清单'))
+  assert.ok(!questionsSystem.includes('用户自定义分析技能'))
+
+  // 2) 挂载技能：system prompt 注入 + 返回应用技能名
+  await seedSkill()
+  res = await PI_QUESTIONS(new Request(`http://t/api/project-interpretation/${record.id}/questions`, { method: 'POST' }), { params: { id: record.id } })
+  assert.equal(res.status, 200)
+  body = await res.json()
+  assert.deepEqual(body.appliedSkills, ['融资窗口评估'])
+  assert.ok(questionsSystem.includes('用户自定义分析技能'))
+  assert.match(questionsSystem, /以用户技能为准/)
 })

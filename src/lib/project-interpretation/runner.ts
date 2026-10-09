@@ -13,7 +13,7 @@ import { searchWebDual, type SearchResult } from '@/lib/tavily-search'
 import { parseAgentJson } from '@/lib/dd-harness/agent'
 import { recordTokenUsage } from '@/lib/token-accounting'
 import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
-import { buildUserSkillPromptBlock } from '@/lib/skill-registry'
+import { buildUserSkillPromptBlock, listActiveDynamicSkills } from '@/lib/skill-registry'
 import {
   PI_RULES,
   isPIMatchLevel,
@@ -137,6 +137,10 @@ export async function runInterpretation(input: {
 
   // 0. 用户技能块（本人 CONFIRMED 技能；无技能时为空串，完全走固定框架）
   const skillBlock = await buildUserSkillPromptBlock(input.userId).catch(() => '')
+  // 应用技能名（可见性：随结果落库，前端展示「本次解读已应用技能」）
+  const appliedSkills = skillBlock
+    ? (await listActiveDynamicSkills(input.userId).catch(() => [])).map(s => s.name)
+    : []
 
   // 1. 七维解读（纯文档分析；用户技能框架优先于固定框架）
   const { parsed: base } = await callDeepSeekJson<Partial<InterpretationResult>>(
@@ -212,6 +216,7 @@ export async function runInterpretation(input: {
     startupWindow: base.startupWindow || '',
     marketEstimate: base.marketEstimate || '',
     financingCases,
+    appliedSkills,
   }
 }
 
@@ -280,8 +285,20 @@ export async function runQuestionGeneration(input: {
   interpretation?: InterpretationResult | null
   sectorInsights?: Array<{ question: string; idealAnswer: string; conclusion: string }>
   claimFindings?: Array<{ claim: string; verdict: string; note: string }>
-}): Promise<Array<{ category: string; question: string; idealAnswer: string; isSectorInsight: boolean; claimFlag: boolean }>> {
+  /** P3.6：传入时注入本人 CONFIRMED 技能（问题视角受技能框架影响），并返回应用技能名 */
+  userId?: string
+}): Promise<{
+  questions: Array<{ category: string; question: string; idealAnswer: string; isSectorInsight: boolean; claimFlag: boolean }>
+  appliedSkills: string[]
+}> {
   const docText = input.documentText.slice(0, MAX_DOC_TEXT)
+
+  // 用户技能块（本人 CONFIRMED 技能；无技能时为空串）+ 应用技能名（可见性）
+  const skillBlock = await buildUserSkillPromptBlock(input.userId).catch(() => '')
+  const appliedSkills = skillBlock
+    ? (await listActiveDynamicSkills(input.userId).catch(() => [])).map(s => s.name)
+    : []
+
   const digestParts: string[] = []
   if (input.interpretation) {
     digestParts.push(
@@ -322,7 +339,7 @@ export async function runQuestionGeneration(input: {
   }
 
   const { parsed } = await callDeepSeekJson<{ questions?: Array<{ category?: string; question?: string; idealAnswer?: string; isSectorInsight?: boolean; claimFlag?: boolean }> }>(
-    QUESTIONS_SYSTEM_PROMPT,
+    QUESTIONS_SYSTEM_PROMPT + skillBlock,
     `项目：${input.projectName}\n${digest}${claimDigest}${insightDigest}\n项目文档内容：\n\n${docText}\n\n请输出访谈问题清单 JSON。`,
     6000
   )
@@ -332,7 +349,7 @@ export async function runQuestionGeneration(input: {
   if (!valid) {
     throw new Error(error || '问题清单生成不符合固定框架规则')
   }
-  return cleaned
+  return { questions: cleaned, appliedSkills }
 }
 
 // ═══════════ 固定模板：闭环创建项目库草稿 ═══════════

@@ -165,6 +165,8 @@ export default function ProjectInterpretationPanel() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [projectName, setProjectName] = useState('')
+  // 最近一次问题清单生成实际应用的本人技能名（即时可见性；解读的应用技能持久化在 interpretationJson）
+  const [questionSkills, setQuestionSkills] = useState<string[]>([])
   // 粘贴文本备选通道（扫描件 PDF / 图片型 BP 直接粘贴项目内容）
   const [pastedText, setPastedText] = useState('')
   const [pasteBusy, setPasteBusy] = useState(false)
@@ -225,6 +227,9 @@ export default function ProjectInterpretationPanel() {
         await fetchDetail(interpretationId)
         return
       }
+      // 本次问题生成应用的技能名（即时可见性）
+      const qData = await r2.json().catch(() => ({}))
+      if (Array.isArray(qData.appliedSkills)) setQuestionSkills(qData.appliedSkills as string[])
 
       // 3. 访谈校验（无请求内容 → 回退使用上传时存入的访谈全文）→ 自动综合结论
       setAutoChainStep('verify')
@@ -344,6 +349,8 @@ export default function ProjectInterpretationPanel() {
         await fetchDetail(detail.id)
         return
       }
+      // 问题清单生成响应携带本次应用的技能名（即时可见性）
+      if (Array.isArray(data.appliedSkills)) setQuestionSkills(data.appliedSkills as string[])
       await fetchDetail(detail.id)
       await fetchList()
     } catch {
@@ -384,6 +391,7 @@ export default function ProjectInterpretationPanel() {
       busy={busy}
       error={error}
       autoChainStep={autoChainStep}
+      questionSkills={questionSkills}
       onBack={() => { setAutoChainStep('idle'); backToList() }}
       onInterpret={() => runAction('interpret', '解读')}
       onQuestions={() => runAction('questions', '生成问题清单')}
@@ -627,6 +635,7 @@ function Detail({
   busy,
   error,
   autoChainStep,
+  questionSkills,
   onBack,
   onInterpret,
   onQuestions,
@@ -639,6 +648,7 @@ function Detail({
   busy: boolean
   error: string
   autoChainStep: 'idle' | 'interpret' | 'questions' | 'verify' | 'done' | 'error'
+  questionSkills: string[]
   onBack: () => void
   onInterpret: () => void
   onQuestions: () => void
@@ -1014,7 +1024,14 @@ function Detail({
         {/* 解读结果（七维 + 融资案例） */}
         {interpretation && (
           <div className="bg-white rounded-2xl border border-primary-100 shadow-sm p-5">
-            <h4 className="text-sm font-bold text-gray-900 mb-3">项目解读 · 固定七维框架</h4>
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <h4 className="text-sm font-bold text-gray-900">项目解读 · 固定七维框架</h4>
+              {interpretation.appliedSkills?.length ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-violet-50 border border-violet-200 text-[10px] font-medium text-violet-700">
+                  ⚡ 已应用你的 {interpretation.appliedSkills.length} 个技能：{interpretation.appliedSkills.join('、')}
+                </span>
+              ) : null}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {[
                 { label: '市场地位', value: interpretation.marketPosition },
@@ -1155,6 +1172,14 @@ function Detail({
               </h4>
               <span className="text-xs text-gray-400">已分析 {verifiedCount}/{detail.questions.length} · 上传一次访谈纪要自动校验</span>
             </div>
+            {questionSkills.length > 0 && (
+              <div className="mb-3 flex items-center gap-2 rounded-xl bg-violet-50 border border-violet-200 px-3 py-2">
+                <span className="text-xs">⚡</span>
+                <p className="text-[11px] text-violet-700">
+                  本次生成<b>已应用你的 {questionSkills.length} 个技能</b>：{questionSkills.join('、')}（技能的分析视角已影响问题设计；重新生成会应用你当前确认的技能）
+                </p>
+              </div>
+            )}
             {claimCount > 0 && (
               <div className="mb-3 flex items-center gap-2 rounded-xl bg-red-50 border border-red-200 px-3 py-2">
                 <span className="text-xs">🔍</span>

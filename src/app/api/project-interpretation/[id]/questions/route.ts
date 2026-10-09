@@ -76,12 +76,13 @@ export async function POST(
     })
 
     try {
-      const questions = await runQuestionGeneration({
+      const { questions, appliedSkills } = await runQuestionGeneration({
         projectName: record.projectName,
         documentText: record.documentText || '',
         interpretation,
         sectorInsights,
         claimFindings,
+        userId: session.user.id, // P3.6：注入本人 CONFIRMED 技能（问题视角受技能框架影响）
       })
 
       // 覆盖式重建（事务：删旧建新；重新生成问题后旧校验结果作废）
@@ -124,6 +125,7 @@ export async function POST(
           idealAnswer: q.idealAnswer,
           verifyStatus: q.verifyStatus,
         })),
+        appliedSkills, // 本次生成实际应用的本人技能名（前端展示）
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : '问题清单生成失败'

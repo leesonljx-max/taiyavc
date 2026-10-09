@@ -101,6 +101,8 @@ export interface InterpretationResult {
   marketEstimate: string
   /** 该行业 10 条融资案例 */
   financingCases: FinancingCase[]
+  /** 本次解读实际注入的本人技能名（P3.6 可见性；无技能时为空数组，旧记录无此字段） */
+  appliedSkills?: string[]
 }
 
 // ── 校验结果模板（verifyResultJson 固定结构） ──
