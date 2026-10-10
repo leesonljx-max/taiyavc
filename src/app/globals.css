@@ -203,3 +203,80 @@ body {
 .page-enter {
   animation: page-enter 0.35s ease-out;
 }
+
+/* ═══════════════════════════════════════════
+   v2.4.0 交互升级：卡片悬浮立体 + 悬停晃动 + 3D 按钮 + 翻转切换
+   ═══════════════════════════════════════════ */
+
+/* 卡片悬浮立体：多层阴影营造悬浮感，悬停时上浮加深 */
+.card-float {
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  box-shadow:
+    0 1px 2px rgba(15, 42, 63, 0.06),
+    0 4px 12px rgba(15, 42, 63, 0.07);
+}
+.card-float:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 2px 4px rgba(15, 42, 63, 0.08),
+    0 10px 24px rgba(15, 42, 63, 0.12);
+}
+
+/* 悬停轻微晃动（与 card-float 叠用：hover 触发一次 0.45s） */
+@keyframes card-wiggle {
+  0% { transform: translateY(-3px) rotate(0deg); }
+  25% { transform: translateY(-4px) rotate(0.35deg); }
+  50% { transform: translateY(-4px) rotate(-0.35deg); }
+  75% { transform: translateY(-3.5px) rotate(0.15deg); }
+  100% { transform: translateY(-3px) rotate(0deg); }
+}
+.card-float-wiggle:hover {
+  animation: card-wiggle 0.45s ease-in-out;
+  box-shadow:
+    0 2px 4px rgba(15, 42, 63, 0.08),
+    0 10px 24px rgba(15, 42, 63, 0.12);
+}
+
+/* 3D 按压按钮（#0686AD 底色上传框）：底部实体厚度 + 按下下陷 */
+.btn-3d {
+  background: #0686AD;
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 4px 0 #04607e, 0 6px 12px rgba(6, 134, 173, 0.35);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.2s ease;
+}
+.btn-3d:hover {
+  background: #0796c2;
+  transform: translateY(-1px);
+  box-shadow: 0 5px 0 #04607e, 0 8px 16px rgba(6, 134, 173, 0.4);
+}
+.btn-3d:active {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 #04607e, 0 2px 6px rgba(6, 134, 173, 0.3);
+}
+
+/* 提交后卡片 3D 翻转切换（正面表单 ⇄ 背面提交中） */
+.flip-scene {
+  perspective: 1200px;
+}
+.flip-card {
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.6s cubic-bezier(0.4, 0.1, 0.2, 1);
+}
+.flip-card.flipped {
+  transform: rotateY(180deg);
+}
+.flip-face {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.flip-face-back {
+  position: absolute;
+  inset: 0;
+  transform: rotateY(180deg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}

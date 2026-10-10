@@ -201,6 +201,8 @@ export default function ProjectInterpretationPanel() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 15
+  // 提交后上传卡片 3D 翻转切换（正面表单 ⇄ 背面"提交中"）
+  const [flipping, setFlipping] = useState(false)
 
   const uploadInputRef = useRef<HTMLInputElement>(null)
 
@@ -343,18 +345,25 @@ export default function ProjectInterpretationPanel() {
   }
 
   /**
-   * 主提交按钮：BP 文件优先，其次粘贴文本；访谈纪要（文件/粘贴）随请求一并携带。
+   * 主提交按钮：点击后上传卡片 3D 翻转到背面（提交中），请求完成/失败后翻回。
+   * BP 文件优先，其次粘贴文本；访谈纪要（文件/粘贴）随请求一并携带。
    * - BP + 访谈纪要 → 提交后自动执行 解读 → 问题清单 → 校对 → 结论
    * - 仅 BP → 提交后进入项目页，手动点击「解读项目」/「生成问题清单」
    */
   const handleSubmit = async () => {
     if (busy || pasteBusy) return
-    if (bpFile) {
-      await handleUpload(bpFile)
-      return
-    }
-    if (pastedText.trim().length >= 100) {
-      await handlePasteUpload()
+    setFlipping(true) // 翻转到背面：🚀 提交中
+    try {
+      if (bpFile) {
+        await handleUpload(bpFile)
+        return
+      }
+      if (pastedText.trim().length >= 100) {
+        await handlePasteUpload()
+      }
+    } finally {
+      // 成功切到详情视图 / 失败停在本页 → 均翻回正面（失败时正面可见错误提示）
+      setFlipping(false)
     }
   }
 
@@ -444,168 +453,172 @@ export default function ProjectInterpretationPanel() {
 
   return (
     <div className="h-full flex gap-4 overflow-hidden">
-      {/* ── 左 1/4：上传区（固定不随列表滚动） ── */}
+      {/* ── 左 1/4：上传区（固定不随列表滚动；提交时 3D 翻转切换） ── */}
       <div className="w-[300px] xl:w-[340px] flex-shrink-0 overflow-y-auto pb-4">
-        <div className="bg-white rounded-2xl border border-primary-100 shadow-sm p-4">
-          <h3 className="text-sm font-bold text-gray-900">上传项目文档</h3>
-          <p className="text-[11px] text-gray-400 mt-0.5">
-            PDF / Word / PPT / Excel / txt · 选好 BP 与访谈纪要后点「提交」
-          </p>
-          <input
-            value={projectName}
-            onChange={e => setProjectName(e.target.value)}
-            placeholder="项目名称（选填，默认取文件名）"
-            className="mt-3 w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-400"
-          />
-          {/* BP 选择窗口（紧凑单行）：只暂存不上传，等提交按钮统一触发 */}
-          <div
-            onClick={() => uploadInputRef.current?.click()}
-            onDragOver={e => e.preventDefault()}
-            onDrop={e => {
-              e.preventDefault()
-              const f = e.dataTransfer.files?.[0]
-              if (f) setBpFile(f)
-            }}
-            className={`mt-2.5 flex items-center gap-2.5 border-2 border-dashed rounded-xl px-3 py-3 cursor-pointer transition-colors ${
-              bpFile
-                ? 'border-emerald-300 bg-emerald-50/30'
-                : busy
-                  ? 'border-primary-200 bg-primary-50/30'
-                  : 'border-gray-200 hover:border-primary-300 hover:bg-primary-50/20'
-            }`}
-          >
-            {busy ? (
-              <>
-                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-500 flex-shrink-0" />
-                <p className="text-xs text-primary-600">上传中...</p>
-              </>
-            ) : bpFile ? (
-              <>
-                <span className="text-emerald-500 flex-shrink-0">✅</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-emerald-700 truncate">{bpFile.name}</p>
-                  <p className="text-[10px] text-gray-400">{(bpFile.size / 1024 / 1024).toFixed(2)} MB · 点击重选</p>
-                </div>
-                <button
-                  onClick={e => { e.stopPropagation(); setBpFile(null) }}
-                  className="flex-shrink-0 px-2 py-0.5 text-[10px] text-gray-400 hover:text-red-500 border border-gray-200 rounded-lg"
+        <div className="flip-scene">
+          <div className={`flip-card ${flipping ? 'flipped' : ''}`}>
+            {/* 正面：上传表单（卡片悬浮立体） */}
+            <div className="flip-face card-float bg-white rounded-2xl border border-primary-100 p-4">
+              <h3 className="text-sm font-bold text-gray-900">上传项目文档</h3>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                PDF / Word / PPT / Excel / txt · 选好 BP 与访谈纪要后点「提交」
+              </p>
+              <input
+                value={projectName}
+                onChange={e => setProjectName(e.target.value)}
+                placeholder="项目名称（选填，默认取文件名）"
+                className="mt-3 w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-400"
+              />
+              {/* BP 上传按钮：#0686AD 底色 + 3D 按压效果 */}
+              <div
+                onClick={() => !busy && uploadInputRef.current?.click()}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => {
+                  e.preventDefault()
+                  const f = e.dataTransfer.files?.[0]
+                  if (f) setBpFile(f)
+                }}
+                className={`btn-3d mt-2.5 flex items-center gap-2.5 rounded-xl px-3 py-3 cursor-pointer select-none ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}
+              >
+                {busy ? (
+                  <>
+                    <span className="animate-spin rounded-full h-4 w-4 border-2 border-white/40 border-t-white flex-shrink-0" />
+                    <p className="text-xs font-bold">上传中...</p>
+                  </>
+                ) : bpFile ? (
+                  <>
+                    <span className="flex-shrink-0">✅</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold truncate">{bpFile.name}</p>
+                      <p className="text-[10px] text-white/70">{(bpFile.size / 1024 / 1024).toFixed(2)} MB · 点击重选</p>
+                    </div>
+                    <button
+                      onClick={e => { e.stopPropagation(); setBpFile(null) }}
+                      className="flex-shrink-0 px-2 py-0.5 text-[10px] text-white/80 hover:text-white border border-white/40 rounded-lg"
+                    >
+                      清除
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                    <p className="text-xs font-medium">点击或拖拽上传项目 BP</p>
+                  </>
+                )}
+              </div>
+              <input
+                ref={uploadInputRef}
+                type="file"
+                accept=".pdf,.docx,.pptx,.xlsx,.txt,.md"
+                className="hidden"
+                onChange={e => {
+                  setBpFile(e.target.files?.[0] || null)
+                  e.target.value = ''
+                }}
+              />
+              {error && <p className="mt-2 text-[11px] text-red-500">{error}</p>}
+
+              {/* 同时上传访谈纪要（可选）：#0686AD 底色 + 3D 按压效果 */}
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <p className="text-[11px] font-bold text-gray-600">
+                  同时上传访谈纪要 <span className="text-gray-400 font-normal">（可选，自动完成全部分析）</span>
+                </p>
+                <div
+                  onClick={() => ivInputRef.current?.click()}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => {
+                    e.preventDefault()
+                    const f = e.dataTransfer.files?.[0]
+                    if (f) setIvFile(f)
+                  }}
+                  className="btn-3d mt-2 flex items-center gap-2.5 rounded-xl px-3 py-3 cursor-pointer select-none"
                 >
-                  清除
+                  {ivFile ? (
+                    <>
+                      <span className="flex-shrink-0">✅</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold truncate">{ivFile.name}</p>
+                        <p className="text-[10px] text-white/70">{(ivFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0-4a3 3 0 003-3V5a3 3 0 00-6 0v10a3 3 0 003 3zm7-3a7 7 0 01-14 0" />
+                      </svg>
+                      <p className="text-xs font-medium">上传访谈纪要（音频/文档）</p>
+                    </>
+                  )}
+                </div>
+                <input
+                  ref={ivInputRef}
+                  type="file"
+                  accept=".mp3,.wav,.m4a,.aac,.ogg,.flac,.pdf,.docx,.txt,.md,.pptx"
+                  className="hidden"
+                  onChange={e => {
+                    setIvFile(e.target.files?.[0] || null)
+                    e.target.value = ''
+                  }}
+                />
+                <textarea
+                  value={ivText}
+                  onChange={e => setIvText(e.target.value)}
+                  rows={3}
+                  placeholder="或粘贴访谈纪要全文。与 BP 一起提交后自动：解读 → 问题清单 → 校对 → 结论。"
+                  className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-xl text-[11px] focus:ring-2 focus:ring-primary-300"
+                />
+              </div>
+
+              {/* 粘贴文本备选通道（扫描件 PDF / 图片型 BP） */}
+              <details className="mt-2.5">
+                <summary className="text-[11px] text-gray-400 cursor-pointer hover:text-primary-600 select-none">
+                  📄 扫描件 / 图片型文档？直接粘贴项目文本 →
+                </summary>
+                <textarea
+                  value={pastedText}
+                  onChange={e => setPastedText(e.target.value)}
+                  rows={4}
+                  placeholder="粘贴项目的文字内容（至少 100 字）。适合扫描版 PDF 或以图片为主的 PPT。"
+                  className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-xl text-[11px] focus:ring-2 focus:ring-primary-300"
+                />
+                {pastedText.trim().length > 0 && (
+                  <p className="text-[10px] text-gray-400">{pastedText.trim().length} 字（至少 100 字）</p>
+                )}
+              </details>
+
+              {/* 提交按钮 */}
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <button
+                  onClick={handleSubmit}
+                  disabled={busy || pasteBusy || (!bpFile && pastedText.trim().length < 100)}
+                  className="w-full px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-500/25 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  {(busy || pasteBusy)
+                    ? '提交中...'
+                    : (ivFile || ivText.trim())
+                      ? '🚀 提交并自动完成全部分析'
+                      : '🚀 提交并开始分析'}
                 </button>
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                <p className="text-xs text-gray-500">点击或拖拽上传项目 BP</p>
-              </>
-            )}
-          </div>
-          <input
-            ref={uploadInputRef}
-            type="file"
-            accept=".pdf,.docx,.pptx,.xlsx,.txt,.md"
-            className="hidden"
-            onChange={e => {
-              setBpFile(e.target.files?.[0] || null)
-              e.target.value = ''
-            }}
-          />
-          {error && <p className="mt-2 text-[11px] text-red-500">{error}</p>}
-
-          {/* 同时上传访谈纪要（可选）：与 BP 一起提交则自动执行全部分析 */}
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <p className="text-[11px] font-bold text-gray-600">
-              同时上传访谈纪要 <span className="text-gray-400 font-normal">（可选，自动完成全部分析）</span>
-            </p>
-            <div
-              onClick={() => ivInputRef.current?.click()}
-              onDragOver={e => e.preventDefault()}
-              onDrop={e => {
-                e.preventDefault()
-                const f = e.dataTransfer.files?.[0]
-                if (f) setIvFile(f)
-              }}
-              className={`mt-2 flex items-center gap-2.5 border-2 border-dashed rounded-xl px-3 py-3 cursor-pointer transition-colors ${
-                ivFile
-                  ? 'border-emerald-300 bg-emerald-50/30'
-                  : 'border-gray-200 hover:border-primary-300 hover:bg-primary-50/20'
-              }`}
-            >
-              {ivFile ? (
-                <>
-                  <span className="text-emerald-500 flex-shrink-0">✅</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-emerald-700 truncate">{ivFile.name}</p>
-                    <p className="text-[10px] text-gray-400">{(ivFile.size / 1024 / 1024).toFixed(2)} MB</p>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0-4a3 3 0 003-3V5a3 3 0 00-6 0v10a3 3 0 003 3zm7-3a7 7 0 01-14 0" />
-                  </svg>
-                  <p className="text-xs text-gray-500">上传访谈纪要（音频/文档）</p>
-                </>
-              )}
+                <p className="mt-1.5 text-[10px] text-gray-400 text-center">
+                  {(ivFile || ivText.trim())
+                    ? '已附纪要：自动执行 解读 → 问题清单 → 校对 → 结论'
+                    : bpFile || pastedText.trim().length >= 100
+                      ? '仅上传 BP：进入项目页手动执行各步骤'
+                      : '请先选择 BP 文档（或粘贴项目文本）'}
+                </p>
+              </div>
             </div>
-            <input
-              ref={ivInputRef}
-              type="file"
-              accept=".mp3,.wav,.m4a,.aac,.ogg,.flac,.pdf,.docx,.txt,.md,.pptx"
-              className="hidden"
-              onChange={e => {
-                setIvFile(e.target.files?.[0] || null)
-                e.target.value = ''
-              }}
-            />
-            <textarea
-              value={ivText}
-              onChange={e => setIvText(e.target.value)}
-              rows={3}
-              placeholder="或粘贴访谈纪要全文。与 BP 一起提交后自动：解读 → 问题清单 → 校对 → 结论。"
-              className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-xl text-[11px] focus:ring-2 focus:ring-primary-300"
-            />
-          </div>
 
-          {/* 粘贴文本备选通道（扫描件 PDF / 图片型 BP） */}
-          <details className="mt-2.5">
-            <summary className="text-[11px] text-gray-400 cursor-pointer hover:text-primary-600 select-none">
-              📄 扫描件 / 图片型文档？直接粘贴项目文本 →
-            </summary>
-            <textarea
-              value={pastedText}
-              onChange={e => setPastedText(e.target.value)}
-              rows={4}
-              placeholder="粘贴项目的文字内容（至少 100 字）。适合扫描版 PDF 或以图片为主的 PPT。"
-              className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-xl text-[11px] focus:ring-2 focus:ring-primary-300"
-            />
-            {pastedText.trim().length > 0 && (
-              <p className="text-[10px] text-gray-400">{pastedText.trim().length} 字（至少 100 字）</p>
-            )}
-          </details>
-
-          {/* 提交按钮 */}
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <button
-              onClick={handleSubmit}
-              disabled={busy || pasteBusy || (!bpFile && pastedText.trim().length < 100)}
-              className="w-full px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-500/25 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-            >
-              {(busy || pasteBusy)
-                ? '提交中...'
-                : (ivFile || ivText.trim())
-                  ? '🚀 提交并自动完成全部分析'
-                  : '🚀 提交并开始分析'}
-            </button>
-            <p className="mt-1.5 text-[10px] text-gray-400 text-center">
-              {(ivFile || ivText.trim())
-                ? '已附纪要：自动执行 解读 → 问题清单 → 校对 → 结论'
-                : bpFile || pastedText.trim().length >= 100
-                  ? '仅上传 BP：进入项目页手动执行各步骤'
-                  : '请先选择 BP 文档（或粘贴项目文本）'}
-            </p>
+            {/* 背面：提交中状态（翻转后显示） */}
+            <div className="flip-face flip-face-back bg-gradient-to-br from-[#0686AD] to-[#0a4e68] rounded-2xl text-center px-6">
+              <span className="animate-spin rounded-full h-10 w-10 border-4 border-white/30 border-t-white" />
+              <p className="mt-4 text-sm font-bold text-white">🚀 已提交，正在启动分析</p>
+              <p className="mt-1.5 text-[11px] text-white/70 leading-relaxed">
+                解读项目 → 生成问题清单 → 访谈校对 → 分析结论
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -644,7 +657,7 @@ export default function ProjectInterpretationPanel() {
                 <div
                   key={item.id}
                   onClick={() => { setError(''); fetchDetail(item.id) }}
-                  className="group bg-white rounded-2xl border border-gray-100 hover:border-primary-200 hover:shadow-md px-4 py-3.5 cursor-pointer transition-all flex flex-col"
+                  className="card-float group bg-white rounded-2xl border border-gray-100 hover:border-primary-200 px-4 py-3.5 cursor-pointer flex flex-col"
                 >
                   {/* 第一行：状态灯 + 项目名 + 日期 */}
                   <div className="flex items-start gap-2">
@@ -1077,7 +1090,7 @@ function Detail({
 
         {/* 未解读占位 */}
         {!interpretation && (
-          <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-8 text-center">
+          <div className="card-float bg-white rounded-2xl border border-dashed border-gray-200 p-8 text-center">
             <p className="text-sm text-gray-400">
               {detail.status === 'INTERPRETING' ? 'AI 正在按固定七维框架解读项目…' : '尚未解读——点击上方「解读项目」开始固定七维框架分析'}
             </p>
@@ -1086,7 +1099,7 @@ function Detail({
 
         {/* 解读结果（七维 + 融资案例） */}
         {interpretation && (
-          <div className="bg-white rounded-2xl border border-primary-100 shadow-sm p-5">
+          <div className="card-float card-float-wiggle bg-white rounded-2xl border border-primary-100 p-5">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
               <h4 className="text-sm font-bold text-gray-900">项目解读 · 固定七维框架</h4>
               {interpretation.appliedSkills?.length ? (
@@ -1104,7 +1117,7 @@ function Detail({
                 { label: '行业创业窗口', value: interpretation.startupWindow },
                 { label: '市场地位预估（业务进展 + 客户 logo）', value: interpretation.marketEstimate },
               ].map(d => (
-                <div key={d.label} className="rounded-xl bg-slate-50 border border-gray-100 p-3">
+                <div key={d.label} className="card-float card-float-wiggle rounded-xl bg-slate-50 border border-gray-100 p-3">
                   <p className="text-[11px] font-bold text-blue-600">{d.label}</p>
                   <RichText text={d.value} className="text-xs text-gray-700 mt-1 space-y-0.5" />
                 </div>
@@ -1116,7 +1129,7 @@ function Detail({
               <div className="mt-3 space-y-2.5">
                 <p className="text-[11px] font-bold text-violet-600">⚡ 你的技能 · 独立分析模块</p>
                 {interpretation.skillModules.map((m, i) => (
-                  <div key={i} className="rounded-xl bg-violet-50/60 border border-violet-200 p-3">
+                  <div key={i} className="card-float card-float-wiggle rounded-xl bg-violet-50/60 border border-violet-200 p-3">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-700">⚡ {m.skillName}</span>
                       {m.title && <p className="text-[11px] font-bold text-violet-800">{m.title}</p>}
@@ -1181,7 +1194,7 @@ function Detail({
 
         {/* 综合结论（原问题清单下方，重排后归入左列解读信息区） */}
         {detail.questions.length > 0 && (
-          <div className="bg-white rounded-2xl border border-primary-100 shadow-sm p-5">
+          <div className="card-float card-float-wiggle bg-white rounded-2xl border border-primary-100 p-5">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <h4 className="text-sm font-bold text-gray-900">综合分析结论</h4>
               <button
@@ -1240,7 +1253,7 @@ function Detail({
           {/* ── 右列：访谈纪要上传 + 外部校验 + 问题清单 ── */}
           <div className="lg:col-span-2 space-y-4">
             {/* 访谈纪要批量校验卡（一次上传 → 自动校验全部问题 + 综合结论） */}
-            <div className="bg-white rounded-2xl border border-primary-100 shadow-sm p-5">
+            <div className="card-float card-float-wiggle bg-white rounded-2xl border border-primary-100 p-5">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <h4 className="text-sm font-bold text-gray-900">📋 访谈纪要校验</h4>
                 {detail.verifyStatus === 'DONE' && !ivOpen && (
@@ -1321,7 +1334,7 @@ function Detail({
 
         {/* 外部校验（BP 关键声明联网交叉核验；夸大/矛盾声明自动进入问题清单优先追问） */}
         {interpretation && (
-          <div className="bg-white rounded-2xl border border-sky-100 shadow-sm p-5">
+          <div className="card-float card-float-wiggle bg-white rounded-2xl border border-sky-100 p-5">
             <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
               <h4 className="text-sm font-bold text-sky-700">
                 🔍 外部校验 <span className="font-normal text-gray-400 text-xs">· 联网交叉核验 BP 关键声明（客户/订单/性能/融资等）</span>
@@ -1384,7 +1397,7 @@ function Detail({
 
         {/* 问题清单 */}
         {detail.questions.length > 0 && (
-          <div className="bg-white rounded-2xl border border-primary-100 shadow-sm p-5">
+          <div className="card-float card-float-wiggle bg-white rounded-2xl border border-primary-100 p-5">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
               <h4 className="text-sm font-bold text-gray-900">
                 访谈问题清单（{detail.questions.length} 问 · 技术 {detail.questions.filter(q => q.category === 'TECH').length}）

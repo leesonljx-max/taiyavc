@@ -66,7 +66,8 @@ export async function GET(request: Request) {
     const [projects, total] = await Promise.all([
       prisma.project.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        // id 次级排序：同毫秒创建的项目顺序稳定，分页翻页不重叠/不漏项
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         ...(paged ? { skip: (page - 1) * pageSize, take: pageSize } : {}),
         // 只查询列表页需要的字段，避免返回大文本字段
         select: {
