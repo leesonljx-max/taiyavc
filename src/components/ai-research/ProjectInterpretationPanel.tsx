@@ -980,26 +980,31 @@ function Detail({
   const [ivText, setIvText] = useState('')
   const [ivBusy, setIvBusy] = useState(false)
   const [ivErr, setIvErr] = useState('')
+  // 音频自动转写完成提示（详情页卡片顶部绿色提示）
+  const [ivNotice, setIvNotice] = useState('')
   const ivFileRef = useRef<HTMLInputElement>(null)
 
   const submitInterview = async () => {
+    if (!ivFile && !ivText.trim()) return
     setIvBusy(true)
     setIvErr('')
     try {
       const fd = new FormData()
       if (ivFile) fd.append('file', ivFile)
       if (ivText.trim()) fd.append('text', ivText.trim())
-      else if (ivFile && /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(ivFile.name)) {
-        setIvErr('音频文件需要粘贴访谈纪要文字后提交')
-        setIvBusy(false)
-        return
-      }
+      // 音频无需粘贴文字：服务器自动转写后校验（未配置转写服务时返回 400 提示粘贴文字）
       const res = await fetch(`/api/project-interpretation/${detail.id}/verify`, { method: 'POST', body: fd })
       const data = await res.json()
       if (!res.ok) {
         setIvErr(data.error || '校验失败')
         return
       }
+      // 音频自动转写完成 → 卡片顶部显示转写概况
+      setIvNotice(
+        data.autoTranscribed
+          ? `🎙️ 音频已自动转写（约 ${data.transcribedLength || 0} 字）并完成校验`
+          : ''
+      )
       setIvFile(null)
       setIvText('')
       setIvOpen(false)
@@ -1325,6 +1330,9 @@ function Detail({
               {detail.interviewFileName && !ivOpen && (
                 <p className="mt-1 text-[11px] text-gray-400">📎 上次纪要：{detail.interviewFileName}</p>
               )}
+              {ivNotice && !ivOpen && (
+                <p className="mt-1 text-[11px] text-emerald-600">{ivNotice}</p>
+              )}
               {ivOpen || detail.verifyStatus === 'RUNNING' ? (
                 <div className="mt-3 space-y-2.5">
                   <p className="text-xs font-bold text-gray-600">
@@ -1372,10 +1380,12 @@ function Detail({
                         value={ivText}
                         onChange={e => setIvText(e.target.value)}
                         rows={4}
-                        placeholder="或直接粘贴访谈纪要全文（音频转写内容/访谈记录）。粘贴文字可不选文件。"
+                        placeholder="或直接粘贴访谈纪要全文（访谈记录）。粘贴文字可不选文件。"
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs"
                       />
-                      <p className="text-[10px] text-gray-400">音频文件会保存留档，需配合粘贴转写文本；支持 pdf/docx/txt/pptx 自动提取</p>
+                      <p className="text-[10px] text-gray-400">
+                        🎙️ 音频（mp3/m4a/wav 等）自动转写成文字校验，无需手动填写；也支持 pdf/docx/txt/pptx 自动提取
+                      </p>
                       {ivErr && <p className="text-xs text-red-500">{ivErr}</p>}
                     </>
                   )}

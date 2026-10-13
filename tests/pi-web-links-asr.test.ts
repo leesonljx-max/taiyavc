@@ -12,6 +12,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import prisma from '@/lib/prisma'
 import { POST as UPLOAD } from '@/app/api/project-interpretation/upload/route'
+import { POST as VERIFY } from '@/app/api/project-interpretation/[id]/verify/route'
 import { POST as CREATE_PROJECT } from '@/app/api/project-interpretation/[id]/create-project/route'
 import { POST as CREATE_DRAFT } from '@/app/api/project-interpretation/[id]/create-project/draft/route'
 import { parseUrlsFromText, fetchWebLinkContent, fetchWebLinks } from '@/lib/project-interpretation/web-content'
@@ -228,6 +229,72 @@ test('POST 上传：音频无 ASR 配置/转写失败 → 400 提示需粘贴文
   const res = await UPLOAD(new Request('http://t/api/project-interpretation/upload', { method: 'POST', body: fd }))
   assert.equal(res.status, 400)
   assert.match((await res.json()).error, /音频文件需要配合粘贴访谈纪要文本/)
+})
+
+test('POST verify（详情页批量校验）：仅上传音频 → 自动转写后批量校验，无需粘贴文字', async () => {
+  asUser()
+  // 造 READY 问题清单记录
+  const rec = await prisma.projectInterpretation.create({
+    data: {
+      userId,
+      projectName: '音频校验项目',
+      fileName: 'bp.txt',
+      fileUrl: '',
+      fileType: 'text/plain',
+      fileSize: 1,
+      documentText: DOC_TEXT,
+      questionsStatus: 'READY',
+    },
+  })
+  await prisma.interpretationQuestion.createMany({
+    data: [
+      { interpretationId: rec.id, order: 1, category: 'TECH', question: 'Q1 芯片指标？', idealAnswer: 'A1 量化指标' },
+      { interpretationId: rec.id, order: 2, category: 'TECH', question: 'Q2 良率？', idealAnswer: 'A2 良率数据' },
+      { interpretationId: rec.id, order: 3, category: 'MARKET', question: 'Q3 订单？', idealAnswer: 'A3 订单情况' },
+    ],
+  })
+
+  // ASR mock + 批量校验 mock（覆盖 2 题 < 3 → 不触发综合结论）
+  process.env.ASR_API_KEY = 'test-asr-key'
+  process.env.ASR_BASE_URL = 'http://asrmock.test/v1'
+  mockState.fetchHandler = (url, body) => {
+    if (String(url).includes('/audio/transcriptions')) {
+      return { text: '转写内容：我们的技术指标是 10 TOPS/W，相比上一代提升约三倍，目前良率还在爬坡阶段，产能规划已经和代工厂谈定，市场侧订单不方便透露具体金额，但节奏是逐季度放量的，团队核心成员都有十年以上行业经验。' }
+    }
+    const system = String((body.messages as Array<{ content: string }>)[0]?.content || '')
+    if (system.includes('闭环校验')) {
+      return chatCompletions(
+        JSON.stringify({
+          results: [
+            { index: 1, matchLevel: 'HIGH', answerSummary: '给出指标', gapAnalysis: '吻合', conclusion: '指标可信' },
+            { index: 2, matchLevel: 'PARTIAL', answerSummary: '部分回答', gapAnalysis: '细节缺失', conclusion: '需追问' },
+            { index: 3, matchLevel: 'UNCOVERED', answerSummary: '', gapAnalysis: '未涉及', conclusion: '建议下次访谈补充' },
+          ],
+        })
+      )
+    }
+    return chatCompletions('{}')
+  }
+
+  const fd = new FormData()
+  fd.append('file', new File([new Uint8Array([1, 2, 3, 4])], 'meeting.mp3', { type: 'audio/mpeg' }))
+  const res = await VERIFY(
+    new Request(`http://t/api/project-interpretation/${rec.id}/verify`, { method: 'POST', body: fd }),
+    { params: { id: rec.id } }
+  )
+  assert.equal(res.status, 200)
+  const body = await res.json()
+  assert.equal(body.autoTranscribed, true)
+  assert.ok(body.transcribedLength > 0)
+  assert.equal(body.coveredCount, 2)
+  assert.equal(body.conclusionGenerated, false)
+
+  // 转写文本已作为访谈全文存入记录
+  const record = await prisma.projectInterpretation.findUnique({ where: { id: rec.id } })
+  assert.ok(record)
+  assert.equal(record!.interviewFileName, 'meeting.mp3')
+  assert.ok(record!.interviewText!.includes('10 TOPS/W'))
+  assert.equal(record!.verifyStatus, 'DONE')
 })
 
 // ── draft / create-project：去重 + 默认日期 + webLinks 复制 ──
