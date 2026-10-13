@@ -25,6 +25,8 @@ export interface ParsedInterview {
   fileUrl: string | null
   /** 音频已留档但缺少转写文本（未配置 ASR 或转写失败） */
   needTranscript: boolean
+  /** 自动转写不可用的具体原因（调用方据此给出针对性提示） */
+  needTranscriptReason?: 'NOT_CONFIGURED' | 'FILE_TOO_LARGE' | 'TRANSCRIBE_FAILED'
   /** 本次由音频自动转写生成（前端提示"已自动转写"） */
   autoTranscribed?: boolean
   error?: string
@@ -79,13 +81,25 @@ export async function parseInterviewSource(
     } else if (!text) {
       // 音频且无粘贴文本：尝试自动转写（ASR 已配置时，转写文本直接作为访谈纪要参与校验）
       if (isAsrConfigured()) {
+        // 转写接口单文件 25MB 上限：超限明确提示（而非笼统的"转写失败"）
+        if (buffer.length > ASR_MAX_FILE_SIZE) {
+          return {
+            text: '',
+            fileName,
+            fileUrl,
+            needTranscript: true,
+            needTranscriptReason: 'FILE_TOO_LARGE',
+          }
+        }
         const transcript = await transcribeAudio(buffer, file.name)
         if (transcript && transcript.length > 0) {
           return { text: transcript, fileName, fileUrl, needTranscript: false, autoTranscribed: true }
         }
+        // 已配置但转写失败（网络/密钥/音频格式问题）
+        return { text: '', fileName, fileUrl, needTranscript: true, needTranscriptReason: 'TRANSCRIBE_FAILED' }
       }
-      // 未配置 ASR 或转写失败：留档，等待粘贴文本
-      return { text: '', fileName, fileUrl, needTranscript: true }
+      // 未配置 ASR：留档，等待粘贴文本
+      return { text: '', fileName, fileUrl, needTranscript: true, needTranscriptReason: 'NOT_CONFIGURED' }
     }
   }
 

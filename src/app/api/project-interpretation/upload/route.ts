@@ -65,12 +65,15 @@ export async function POST(request: Request) {
       if (interview.error) {
         return NextResponse.json({ error: interview.error }, { status: 400 })
       }
-      // 音频留档但既无粘贴文本也无自动转写 → 提示（保持自动链路可走通的最小要求）
+      // 音频留档但既无粘贴文本也无自动转写 → 按原因给出针对性提示
       if (interview.needTranscript) {
-        return NextResponse.json(
-          { error: '音频文件需要配合粘贴访谈纪要文本提交（或等服务器配置语音转写服务后自动转写）' },
-          { status: 400 }
-        )
+        const hint =
+          interview.needTranscriptReason === 'FILE_TOO_LARGE'
+            ? `音频大小超过 25MB 转写上限（当前约 ${Math.round((interviewFile?.size || 0) / 1024 / 1024)} MB）。请压缩后上传（如转为 32kbps 单声道 MP3）或直接粘贴访谈纪要文字`
+            : interview.needTranscriptReason === 'TRANSCRIBE_FAILED'
+              ? '音频转写失败（网络或转写服务异常，详见服务器日志）。请重试，或直接粘贴访谈纪要文字'
+              : '音频文件需要配合粘贴访谈纪要文本提交（或等服务器配置语音转写服务后自动转写）'
+        return NextResponse.json({ error: hint }, { status: 400 })
       }
     }
 

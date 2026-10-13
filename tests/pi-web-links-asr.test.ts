@@ -231,6 +231,25 @@ test('POST 上传：音频无 ASR 配置/转写失败 → 400 提示需粘贴文
   assert.match((await res.json()).error, /音频文件需要配合粘贴访谈纪要文本/)
 })
 
+test('POST 上传：音频超过 25MB 转写上限 → 400 明确提示压缩（ASR 已配置）', async () => {
+  asUser()
+  process.env.ASR_API_KEY = 'test-asr-key'
+  try {
+    const fd = new FormData()
+    fd.append('files', new File([DOC_TEXT], 'bp.txt', { type: 'text/plain' }))
+    // 26MB 假音频（超过 ASR_MAX_FILE_SIZE 25MB，仍在访谈文件 50MB 限制内）
+    fd.append('interviewFile', new File([new Uint8Array(26 * 1024 * 1024)], 'long-meeting.mp3', { type: 'audio/mpeg' }))
+    const res = await UPLOAD(new Request('http://t/api/project-interpretation/upload', { method: 'POST', body: fd }))
+    assert.equal(res.status, 400)
+    const { error } = await res.json()
+    assert.match(error, /超过 25MB 转写上限/)
+    assert.match(error, /26 MB/)
+    assert.match(error, /压缩/)
+  } finally {
+    delete process.env.ASR_API_KEY
+  }
+})
+
 test('POST verify（详情页批量校验）：仅上传音频 → 自动转写后批量校验，无需粘贴文字', async () => {
   asUser()
   // 造 READY 问题清单记录

@@ -61,16 +61,19 @@ export async function POST(
           return NextResponse.json({ error: parsed.error }, { status: 400 })
         }
         if (parsed.needTranscript) {
-          // 音频已留档但自动转写不可用（未配置 ASR/超限/转写失败）：保存文件引用并提示
+          // 音频已留档但自动转写不可用：按原因给出针对性提示
+          const hint =
+            parsed.needTranscriptReason === 'FILE_TOO_LARGE'
+              ? `音频已保存，但大小超过 25MB 转写上限（当前约 ${Math.round((file?.size || 0) / 1024 / 1024)} MB）。请压缩后重新上传（如转为 32kbps 单声道 MP3），或直接粘贴访谈纪要文字`
+              : parsed.needTranscriptReason === 'TRANSCRIBE_FAILED'
+                ? '音频已保存，但转写失败（网络或转写服务异常，详见服务器日志）。请重试，或直接粘贴访谈纪要文字'
+                : '音频文件已保存，但服务器未配置语音转写服务。请粘贴访谈纪要文字后再次提交校验。'
           await prisma.projectInterpretation.update({
             where: { id: record.id },
             data: { interviewFileName: parsed.fileName, interviewFileUrl: parsed.fileUrl },
           })
           return NextResponse.json(
-            {
-              error: '音频文件已保存，但自动转写不可用（服务器未配置语音转写服务或转写失败）。请粘贴访谈纪要文字后再次提交校验。',
-              needTranscript: true,
-            },
+            { error: hint, needTranscript: true },
             { status: 400 }
           )
         }

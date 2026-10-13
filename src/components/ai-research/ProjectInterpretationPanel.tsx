@@ -583,7 +583,7 @@ export default function ProjectInterpretationPanel() {
                   同时上传访谈纪要 <span className="text-gray-400 font-normal">（可选，自动完成全部分析）</span>
                 </p>
                 <p className="text-[10px] text-gray-400 mt-0.5">
-                  🎙️ 音频（mp3/m4a/wav 等）自动转写成文字参与校验，无需手动填写纪要
+                  🎙️ 音频（mp3/m4a/wav 等，≤25MB）自动转写成文字参与校验，无需手动填写纪要
                 </p>
                 <div
                   onClick={() => ivInputRef.current?.click()}
@@ -1384,7 +1384,7 @@ function Detail({
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs"
                       />
                       <p className="text-[10px] text-gray-400">
-                        🎙️ 音频（mp3/m4a/wav 等）自动转写成文字校验，无需手动填写；也支持 pdf/docx/txt/pptx 自动提取
+                        🎙️ 音频（mp3/m4a/wav 等，≤25MB）自动转写成文字校验，无需手动填写；也支持 pdf/docx/txt/pptx 自动提取
                       </p>
                       {ivErr && <p className="text-xs text-red-500">{ivErr}</p>}
                     </>
