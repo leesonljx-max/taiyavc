@@ -1,13 +1,14 @@
 /**
  * 访谈纪要内容解析（上传与批量校验共用）
  *
- * 三通道：文档（自动提取文本）/ 音频（留档，需配合粘贴转写）/ 直接粘贴文本
+ * 三通道：文档（自动提取文本）/ 音频（自动转写，需服务器配置 ASR；无配置时留档待粘贴）/ 直接粘贴文本
  * 音频无转写时返回 needTranscript=true（文件已保存，由调用方决定提示与持久化）
  */
 
-import { writeFile, mkdir } from 'fs/promises'
+import { writeFile, mkdir, readFile } from 'fs/promises'
 import { join } from 'path'
 import { extractTextFromFile } from '@/lib/document-extract'
+import { transcribeAudio, isAsrConfigured, ASR_MAX_FILE_SIZE } from './speech-to-text'
 import {
   PI_INTERVIEW_MAX_SIZE,
   PI_INTERVIEW_AUDIO_EXTENSIONS,
@@ -18,12 +19,14 @@ import {
 const UPLOAD_DIR = join(process.cwd(), 'public', 'interpretation-docs')
 
 export interface ParsedInterview {
-  /** 访谈全文（文档提取或粘贴；音频无转写时为空） */
+  /** 访谈全文（文档提取/音频自动转写/粘贴） */
   text: string
   fileName: string | null
   fileUrl: string | null
-  /** 音频已留档但缺少转写文本 */
+  /** 音频已留档但缺少转写文本（未配置 ASR 或转写失败） */
   needTranscript: boolean
+  /** 本次由音频自动转写生成（前端提示"已自动转写"） */
+  autoTranscribed?: boolean
   error?: string
 }
 
@@ -74,10 +77,29 @@ export async function parseInterviewSource(
         if (docText) text = text ? `${text}\n${docText}` : docText
       }
     } else if (!text) {
-      // 音频且无转写文本：留档，等待转写
+      // 音频且无粘贴文本：尝试自动转写（ASR 已配置时，转写文本直接作为访谈纪要参与校验）
+      if (isAsrConfigured()) {
+        const transcript = await transcribeAudio(buffer, file.name)
+        if (transcript && transcript.length > 0) {
+          return { text: transcript, fileName, fileUrl, needTranscript: false, autoTranscribed: true }
+        }
+      }
+      // 未配置 ASR 或转写失败：留档，等待粘贴文本
       return { text: '', fileName, fileUrl, needTranscript: true }
     }
   }
 
   return { text, fileName, fileUrl, needTranscript: false }
+}
+
+/** 从留档音频文件路径重新转写（verify 兜底：上传时未转写成功、后续配置了 ASR 的场景） */
+export async function transcribeSavedAudio(fileUrl: string): Promise<string | null> {
+  const m = fileUrl.match(/^\/api\/uploads\/interpretation-docs\/([A-Za-z0-9._-]+)$/)
+  if (!m) return null
+  try {
+    const buffer = await readFile(join(UPLOAD_DIR, m[1]))
+    return await transcribeAudio(buffer, m[1])
+  } catch {
+    return null
+  }
 }

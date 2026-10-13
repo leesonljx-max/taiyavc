@@ -126,6 +126,9 @@ const mockFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<
     ? mockState.fetchHandler(url, body)
     : chatCompletions('{}')
 
+  // handler 直接返回完整 Response（网页抓取 / ASR multipart 等非 JSON 场景）
+  if (data instanceof Response) return data
+
   return {
     ok: true,
     status: 200,

@@ -500,7 +500,10 @@ export async function runProjectDraftExtraction(input: {
   if (parsed.keyPages && typeof parsed.keyPages === 'object') {
     for (const [field, pages] of Object.entries(parsed.keyPages)) {
       if (Array.isArray(pages)) {
-        const nums = pages.map(p => Number(p)).filter(n => Number.isInteger(n) && n > 0 && n < 500).slice(0, 2)
+        // 页码清洗 + 去重（同一页只截取一次），每字段最多 2 页
+        const nums = [...new Set(
+          pages.map(p => Number(p)).filter(n => Number.isInteger(n) && n > 0 && n < 500)
+        )].slice(0, 2)
         if (nums.length > 0) keyPages[field] = nums
       }
     }

@@ -160,6 +160,8 @@ export async function POST(
         followStage: initialStage,
         passedStages: JSON.stringify(computePassedStages([], initialStage)),
         targetDate: targetDate!,
+        // 解读时抓取的网页资料一并带入项目库（详情页"网页资料"卡展示）
+        webLinksJson: record.linksJson,
         createdById: session.user.id,
       },
       select: { id: true, name: true },

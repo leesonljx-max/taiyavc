@@ -189,8 +189,10 @@ export default function ProjectInterpretationPanel() {
   // 粘贴文本备选通道（扫描件 PDF / 图片型 BP 直接粘贴项目内容）
   const [pastedText, setPastedText] = useState('')
   const [pasteBusy, setPasteBusy] = useState(false)
-  // BP 文件先选择暂存，点「提交」后统一上传（可与访谈纪要一起提交）
-  const [bpFile, setBpFile] = useState<File | null>(null)
+  // 项目文档（BP + 其他资料，支持多选）先暂存，点「提交」后统一上传
+  const [bpFiles, setBpFiles] = useState<File[]>([])
+  // 网页链接（每行/空格分隔，最多 5 个；抓取网页内容与 BP 合并分析，仅链接也可解读）
+  const [webLinks, setWebLinks] = useState('')
   // 初始上传：同时上传访谈纪要（可选）
   const [ivFile, setIvFile] = useState<File | null>(null)
   const [ivText, setIvText] = useState('')
@@ -266,6 +268,11 @@ export default function ProjectInterpretationPanel() {
         await fetchDetail(interpretationId)
         return
       }
+      // 音频自动转写完成校验 → 顶部提示转写概况（无需手动填写纪要）
+      const vData = await r3.json().catch(() => ({}))
+      if (vData.autoTranscribed) {
+        setError(`ℹ️ 音频已自动转写（约 ${vData.transcribedLength || 0} 字）并完成访谈校验`)
+      }
       setAutoChainStep('done')
       await fetchDetail(interpretationId)
       await fetchList()
@@ -280,14 +287,22 @@ export default function ProjectInterpretationPanel() {
     }
   }
 
-  /** 粘贴文本备选通道（扫描件/图片型文档） */
+  /** 部分网页链接抓取失败时提示（不阻塞主流程；进入详情页后顶部可见） */
+  const notifyLinkFailures = (interpretation: { failedLinks?: string[] }) => {
+    if (Array.isArray(interpretation.failedLinks) && interpretation.failedLinks.length > 0) {
+      setError(`⚠️ ${interpretation.failedLinks.length} 个网页链接抓取失败已跳过：${interpretation.failedLinks.join('、')}`)
+    }
+  }
+
+  /** 粘贴文本 / 网页链接备选通道（扫描件/图片型文档；仅网页链接无 BP 也可解读） */
   const handlePasteUpload = async () => {
-    if (!pastedText.trim() || pasteBusy) return
+    if (pasteBusy || (!pastedText.trim() && !webLinks.trim())) return
     setPasteBusy(true)
     setError('')
     try {
       const fd = new FormData()
-      fd.append('text', pastedText.trim())
+      if (pastedText.trim()) fd.append('text', pastedText.trim())
+      if (webLinks.trim()) fd.append('links', webLinks.trim())
       if (projectName.trim()) fd.append('projectName', projectName.trim())
       if (ivText.trim()) fd.append('interviewText', ivText.trim())
       if (ivFile) fd.append('interviewFile', ivFile)
@@ -299,10 +314,12 @@ export default function ProjectInterpretationPanel() {
       }
       const id = data.interpretation.id as string
       setPastedText('')
-      setBpFile(null)
+      setWebLinks('')
+      setBpFiles([])
       setIvText('')
       setIvFile(null)
       setProjectName('')
+      notifyLinkFailures(data.interpretation)
       await fetchList()
       await fetchDetail(id)
       if (data.interpretation.hasInterview) runAutoChain(id)
@@ -313,12 +330,15 @@ export default function ProjectInterpretationPanel() {
     }
   }
 
-  const handleUpload = async (file: File) => {
+  /** 多文件上传（BP + 其他资料 + 网页链接 + 可选访谈纪要，一次提交） */
+  const handleUpload = async () => {
+    if (bpFiles.length === 0 || busy) return
     setBusy(true)
     setError('')
     try {
       const fd = new FormData()
-      fd.append('file', file)
+      bpFiles.forEach(f => fd.append('files', f))
+      if (webLinks.trim()) fd.append('links', webLinks.trim())
       if (projectName.trim()) fd.append('projectName', projectName.trim())
       if (ivText.trim()) fd.append('interviewText', ivText.trim())
       if (ivFile) fd.append('interviewFile', ivFile)
@@ -330,9 +350,11 @@ export default function ProjectInterpretationPanel() {
       }
       const id = data.interpretation.id as string
       setProjectName('')
-      setBpFile(null)
+      setBpFiles([])
+      setWebLinks('')
       setIvText('')
       setIvFile(null)
+      notifyLinkFailures(data.interpretation)
       await fetchList()
       await fetchDetail(id)
       // 同时上传了访谈纪要 → 自动执行完整分析链路；仅 BP → 手动点「解读项目」/「生成问题清单」
@@ -346,21 +368,21 @@ export default function ProjectInterpretationPanel() {
 
   /**
    * 主提交按钮：点击后上传卡片 3D 翻转到背面（提交中），请求完成/失败后翻回。
-   * BP 文件优先，其次粘贴文本；访谈纪要（文件/粘贴）随请求一并携带。
-   * - BP + 访谈纪要 → 提交后自动执行 解读 → 问题清单 → 校对 → 结论
-   * - 仅 BP → 提交后进入项目页，手动点击「解读项目」/「生成问题清单」
+   * 文档（多份）优先，其次粘贴文本/网页链接；访谈纪要（文件/粘贴/音频自动转写）随请求一并携带。
+   * - 文档 + 访谈纪要 → 提交后自动执行 解读 → 问题清单 → 校对 → 结论
+   * - 仅文档/链接 → 提交后进入项目页，手动点击「解读项目」/「生成问题清单」
    */
   const handleSubmit = async () => {
     if (busy || pasteBusy) return
+    const hasLinks = webLinks.trim().length > 0
+    if (!bpFiles.length && !hasLinks && pastedText.trim().length < 100) return
     setFlipping(true) // 翻转到背面：🚀 提交中
     try {
-      if (bpFile) {
-        await handleUpload(bpFile)
+      if (bpFiles.length > 0) {
+        await handleUpload()
         return
       }
-      if (pastedText.trim().length >= 100) {
-        await handlePasteUpload()
-      }
+      await handlePasteUpload()
     } finally {
       // 成功切到详情视图 / 失败停在本页 → 均翻回正面（失败时正面可见错误提示）
       setFlipping(false)
@@ -461,22 +483,22 @@ export default function ProjectInterpretationPanel() {
             <div className="flip-face card-float bg-white rounded-2xl border border-primary-100 p-4">
               <h3 className="text-sm font-bold text-gray-900">上传项目文档</h3>
               <p className="text-[11px] text-gray-400 mt-0.5">
-                PDF / Word / PPT / Excel / txt · 选好 BP 与访谈纪要后点「提交」
+                PDF / Word / PPT / Excel / txt · 支持 BP + 多份补充资料 · 可附网页链接
               </p>
               <input
                 value={projectName}
                 onChange={e => setProjectName(e.target.value)}
-                placeholder="项目名称（选填，默认取文件名）"
+                placeholder="项目名称（选填，默认取文件名/网页标题）"
                 className="mt-3 w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-primary-400"
               />
-              {/* BP 上传按钮：#0686AD 底色 + 3D 按压效果 */}
+              {/* 文档上传按钮（多选）：#0686AD 底色 + 3D 按压效果 */}
               <div
                 onClick={() => !busy && uploadInputRef.current?.click()}
                 onDragOver={e => e.preventDefault()}
                 onDrop={e => {
                   e.preventDefault()
-                  const f = e.dataTransfer.files?.[0]
-                  if (f) setBpFile(f)
+                  const fs = Array.from(e.dataTransfer.files || [])
+                  if (fs.length) setBpFiles(prev => [...prev, ...fs])
                 }}
                 className={`btn-3d mt-2.5 flex items-center gap-2.5 rounded-xl px-3 py-3 cursor-pointer select-none ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}
               >
@@ -485,26 +507,22 @@ export default function ProjectInterpretationPanel() {
                     <span className="animate-spin rounded-full h-4 w-4 border-2 border-white/40 border-t-white flex-shrink-0" />
                     <p className="text-xs font-bold">上传中...</p>
                   </>
-                ) : bpFile ? (
+                ) : bpFiles.length > 0 ? (
                   <>
                     <span className="flex-shrink-0">✅</span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold truncate">{bpFile.name}</p>
-                      <p className="text-[10px] text-white/70">{(bpFile.size / 1024 / 1024).toFixed(2)} MB · 点击重选</p>
+                      <p className="text-xs font-bold truncate">已选 {bpFiles.length} 份文档</p>
+                      <p className="text-[10px] text-white/70">
+                        {(bpFiles.reduce((s, f) => s + f.size, 0) / 1024 / 1024).toFixed(2)} MB · 首份为 BP 主体 · 点击继续添加
+                      </p>
                     </div>
-                    <button
-                      onClick={e => { e.stopPropagation(); setBpFile(null) }}
-                      className="flex-shrink-0 px-2 py-0.5 text-[10px] text-white/80 hover:text-white border border-white/40 rounded-lg"
-                    >
-                      清除
-                    </button>
                   </>
                 ) : (
                   <>
                     <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
-                    <p className="text-xs font-medium">点击或拖拽上传项目 BP</p>
+                    <p className="text-xs font-medium">点击或拖拽上传 BP 及其他资料（可多选）</p>
                   </>
                 )}
               </div>
@@ -512,18 +530,60 @@ export default function ProjectInterpretationPanel() {
                 ref={uploadInputRef}
                 type="file"
                 accept=".pdf,.docx,.pptx,.xlsx,.txt,.md"
+                multiple
                 className="hidden"
                 onChange={e => {
-                  setBpFile(e.target.files?.[0] || null)
+                  const fs = Array.from(e.target.files || [])
+                  if (fs.length) setBpFiles(prev => [...prev, ...fs])
                   e.target.value = ''
                 }}
               />
+              {/* 已选文件列表（逐个可移除） */}
+              {bpFiles.length > 0 && (
+                <div className="mt-2 space-y-1.5">
+                  {bpFiles.map((f, i) => (
+                    <div key={`${f.name}-${f.size}-${i}`} className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-1.5">
+                      <span className="text-[10px] flex-shrink-0">{i === 0 ? '📘' : '📄'}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[11px] font-medium text-gray-700 truncate">
+                          {i === 0 && <span className="text-[#0686AD] font-bold">[BP] </span>}
+                          {f.name}
+                        </p>
+                        <p className="text-[10px] text-gray-400">{(f.size / 1024 / 1024).toFixed(2)} MB</p>
+                      </div>
+                      <button
+                        onClick={() => setBpFiles(prev => prev.filter((_, idx) => idx !== i))}
+                        className="flex-shrink-0 text-gray-300 hover:text-red-500 text-xs px-1"
+                        title="移除"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* 网页链接：抓取正文与文档合并分析；仅链接（无 BP）也可解读 */}
+              <textarea
+                value={webLinks}
+                onChange={e => setWebLinks(e.target.value)}
+                rows={2}
+                placeholder="🔗 补充网页链接（选填，每行一个，最多 5 个）：抓取网页内容与 BP 合并分析，仅链接也可解读"
+                className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-xl text-[11px] focus:ring-2 focus:ring-primary-400"
+              />
+              {webLinks.trim() && (
+                <p className="text-[10px] text-gray-400">
+                  已输入 {webLinks.trim().split(/[\s,，]+/).filter(Boolean).length} 个链接（每行一个，最多抓取 5 个）
+                </p>
+              )}
               {error && <p className="mt-2 text-[11px] text-red-500">{error}</p>}
 
               {/* 同时上传访谈纪要（可选）：#0686AD 底色 + 3D 按压效果 */}
               <div className="mt-3 pt-3 border-t border-gray-100">
                 <p className="text-[11px] font-bold text-gray-600">
                   同时上传访谈纪要 <span className="text-gray-400 font-normal">（可选，自动完成全部分析）</span>
+                </p>
+                <p className="text-[10px] text-gray-400 mt-0.5">
+                  🎙️ 音频（mp3/m4a/wav 等）自动转写成文字参与校验，无需手动填写纪要
                 </p>
                 <div
                   onClick={() => ivInputRef.current?.click()}
@@ -566,7 +626,7 @@ export default function ProjectInterpretationPanel() {
                   value={ivText}
                   onChange={e => setIvText(e.target.value)}
                   rows={3}
-                  placeholder="或粘贴访谈纪要全文。与 BP 一起提交后自动：解读 → 问题清单 → 校对 → 结论。"
+                  placeholder="或粘贴访谈纪要全文。与文档一起提交后自动：解读 → 问题清单 → 校对 → 结论。"
                   className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-xl text-[11px] focus:ring-2 focus:ring-primary-300"
                 />
               </div>
@@ -592,7 +652,7 @@ export default function ProjectInterpretationPanel() {
               <div className="mt-3 pt-3 border-t border-gray-100">
                 <button
                   onClick={handleSubmit}
-                  disabled={busy || pasteBusy || (!bpFile && pastedText.trim().length < 100)}
+                  disabled={busy || pasteBusy || (!bpFiles.length && !webLinks.trim() && pastedText.trim().length < 100)}
                   className="w-full px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-500/25 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 >
                   {(busy || pasteBusy)
@@ -604,9 +664,9 @@ export default function ProjectInterpretationPanel() {
                 <p className="mt-1.5 text-[10px] text-gray-400 text-center">
                   {(ivFile || ivText.trim())
                     ? '已附纪要：自动执行 解读 → 问题清单 → 校对 → 结论'
-                    : bpFile || pastedText.trim().length >= 100
-                      ? '仅上传 BP：进入项目页手动执行各步骤'
-                      : '请先选择 BP 文档（或粘贴项目文本）'}
+                    : bpFiles.length || webLinks.trim() || pastedText.trim().length >= 100
+                      ? '仅文档/链接：进入项目页手动执行各步骤'
+                      : '请先选择文档、填写网页链接（或粘贴项目文本）'}
                 </p>
               </div>
             </div>

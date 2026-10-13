@@ -47,6 +47,7 @@ export async function POST(
     let interviewText = ''
     let interviewFileName = record.interviewFileName
     let interviewFileUrl = record.interviewFileUrl
+    let autoTranscribed = false
 
     if (contentType.includes('multipart/form-data')) {
       const formData = await request.formData()
@@ -60,16 +61,21 @@ export async function POST(
           return NextResponse.json({ error: parsed.error }, { status: 400 })
         }
         if (parsed.needTranscript) {
-          // 音频已留档但缺转写：保存文件引用并提示
+          // 音频已留档但自动转写不可用（未配置 ASR/超限/转写失败）：保存文件引用并提示
           await prisma.projectInterpretation.update({
             where: { id: record.id },
             data: { interviewFileName: parsed.fileName, interviewFileUrl: parsed.fileUrl },
           })
           return NextResponse.json(
-            { error: '音频文件已保存。系统暂不支持自动转写，请粘贴访谈纪要文字后再次提交校验。', needTranscript: true },
+            {
+              error: '音频文件已保存，但自动转写不可用（服务器未配置语音转写服务或转写失败）。请粘贴访谈纪要文字后再次提交校验。',
+              needTranscript: true,
+            },
             { status: 400 }
           )
         }
+        // 音频自动转写成功（interviewText 已是转写文本，校验直接可用）
+        autoTranscribed = !!parsed.autoTranscribed
         // 请求内容与已存全文合并（新内容在前，保留完整记录）
         interviewText = parsed.text
         if (parsed.fileName) {
@@ -208,6 +214,8 @@ export async function POST(
         coveredCount: covered.length,
         uncoveredCount: record.questions.length - covered.length,
         conclusionGenerated,
+        autoTranscribed,
+        transcribedLength: autoTranscribed ? interviewText.length : 0,
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : '访谈校验失败'

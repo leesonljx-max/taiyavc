@@ -58,5 +58,7 @@ next-env.d.ts
 !/public/research-docs/.gitkeep
 /public/interpretation-docs/*
 !/public/interpretation-docs/.gitkeep
+/public/interpretation-images/*
+!/public/interpretation-images/.gitkeep
 /public/post-investment-docs/*
 !/public/post-investment-docs/.gitkeep

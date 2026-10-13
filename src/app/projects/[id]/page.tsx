@@ -121,6 +121,8 @@ interface Project {
   createdAt: string
   updatedAt: string
   aiCardJson: string | null
+  // 解读时抓取的网页资料（JSON：[{url,title,content}]，来自项目解读创建）
+  webLinksJson: string | null
   canEdit: boolean
   canDelete: boolean
   // 维护人与保护期
@@ -159,6 +161,11 @@ function isContentEmpty(content: string | null): boolean {
   return !textOnly && !trimmed.includes('<img')
 }
 
+/** 提取网址域名（解析失败回退原始链接） */
+function linkDomain(url: string): string {
+  try { return new URL(url).hostname } catch { return url }
+}
+
 export default function ProjectDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -181,6 +188,25 @@ export default function ProjectDetailPage() {
   const [uploadingDoc, setUploadingDoc] = useState(false)
   const [docError, setDocError] = useState('')
   const [previewDoc, setPreviewDoc] = useState<{ fileName: string; fileUrl: string; fileType: string } | null>(null)
+  // 网页资料（解读带入的网页链接内容；点击卡片弹窗查看全文）
+  const [previewLink, setPreviewLink] = useState<{ url: string; title: string; content: string } | null>(null)
+  // 网页资料弹窗：ESC 关闭
+  useEffect(() => {
+    if (!previewLink) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPreviewLink(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [previewLink])
+  // 网页资料列表（webLinksJson 解析；异常/为空时返回空数组不渲染卡片）
+  const webLinks: Array<{ url: string; title: string; content: string }> = (() => {
+    if (!project?.webLinksJson) return []
+    try {
+      const arr = JSON.parse(project.webLinksJson)
+      return Array.isArray(arr)
+        ? arr.filter((w: any) => w && typeof w.url === 'string' && typeof w.content === 'string')
+        : []
+    } catch { return [] }
+  })()
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null)
 
   // 合伙人评价
@@ -1455,6 +1481,44 @@ export default function ProjectDetailPage() {
             )}
           </div>
 
+          {/* 网页资料（项目解读时抓取的网页链接内容，点击卡片弹窗查看全文） */}
+          {webLinks.length > 0 && (
+            <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                  </svg>
+                  网页资料 ({webLinks.length})
+                </h2>
+                <span className="text-xs text-gray-400">来自项目解读 · 点击卡片查看全文</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {webLinks.map((w, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setPreviewLink(w)}
+                    className="text-left bg-white/70 rounded-xl p-4 border border-primary-50 hover:border-primary-200 hover:shadow-sm transition-all-smooth"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="w-7 h-7 rounded-lg bg-sky-50 text-sky-600 text-sm flex items-center justify-center flex-shrink-0">🌐</span>
+                      <p className="font-medium text-gray-900 text-sm truncate" title={w.title}>{w.title || linkDomain(w.url)}</p>
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500 leading-relaxed line-clamp-3">
+                      {w.content.slice(0, 150)}{w.content.length > 150 ? '…' : ''}
+                    </p>
+                    <div className="mt-2 flex items-center gap-2 text-[11px] text-gray-400">
+                      <span className="truncate">{linkDomain(w.url)}</span>
+                      <span>·</span>
+                      <span>{w.content.length} 字</span>
+                      <span className="ml-auto text-primary-600">查看全文 →</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* 竞争态势分析 */}
           <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
             <div className="flex items-center justify-between mb-4">
@@ -1986,6 +2050,55 @@ export default function ProjectDetailPage() {
         fileUrl={previewDoc?.fileUrl || ''}
         fileType={previewDoc?.fileType || ''}
       />
+
+      {/* 网页资料全文弹窗（80vw × 80vh，最大 1200px；ESC/点击背景关闭） */}
+      {previewLink && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" onClick={() => setPreviewLink(null)}>
+          <div
+            className="bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+            style={{ width: '80vw', height: '80vh', maxWidth: 1200 }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-gray-100 flex-shrink-0">
+              <div className="min-w-0">
+                <h3 className="font-semibold text-gray-900 text-base truncate" title={previewLink.title}>
+                  🌐 {previewLink.title || linkDomain(previewLink.url)}
+                </h3>
+                <a
+                  href={previewLink.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-primary-600 hover:underline truncate block mt-0.5"
+                >
+                  {previewLink.url}
+                </a>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <a
+                  href={previewLink.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 text-xs font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 rounded-xl transition-colors"
+                >
+                  原网页打开
+                </a>
+                <button
+                  onClick={() => setPreviewLink(null)}
+                  className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="关闭 (ESC)"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              <p className="text-sm text-gray-700 leading-7 whitespace-pre-wrap break-words">{previewLink.content}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   )
 }

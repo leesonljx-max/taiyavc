@@ -86,7 +86,7 @@ test('POST 上传：不支持格式 400；空文本/内容过少 400', async () 
 
   const empty = await UPLOAD(uploadRequest('empty.txt', '太短'))
   assert.equal(empty.status, 400)
-  assert.match((await empty.json()).error, /无法从文档提取/)
+  assert.match((await empty.json()).error, /无法从上传文档提取/)
 })
 
 test('POST 粘贴文本通道：无文件时用 text 创建记录；过短 400', async () => {

@@ -50,6 +50,8 @@ model Project {
   postInvestAmount    Float?    // 投资金额（万元）
   postInvestDate      String?   // 投资日期（YYYY-MM，精确到月）
   postInvestConfirmed Boolean @default(false)  // 确认后锁定不可修改
+  // 网页资料（项目解读创建时带入的网页链接内容；JSON：[{url,title,content}]，详情页卡片展示+弹窗全文）
+  webLinksJson        String?
   investments      Investment[]
   investors        Investor[] @relation("InvestorProjects")
   members          ProjectMember[]
@@ -714,6 +716,8 @@ model ProjectInterpretation {
   interviewText      String?  // 本次校验使用的访谈全文（文档提取/音频转写粘贴）
   // 闭环创建：校验结论生成后创建到项目库的关联项目（防重复创建/重复弹窗）
   linkedProjectId    String?
+  // 随 BP 上传的网页链接内容（JSON：[{url,title,content}]，解读合并分析；创建项目时复制到 Project.webLinksJson）
+  linksJson          String?
   error              String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt

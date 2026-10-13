@@ -93,7 +93,8 @@ export async function POST(
         const rendered = await extractBpPageImages(bpBuffer, record.fileName, allPages, record.id)
         const byPage = new Map(rendered.map(r => [r.page, r]))
         for (const [field, pages] of Object.entries(draft.keyPages)) {
-          const imgs = pages
+          // 按页去重（同一页只截取一次，防 AI 输出重复页码）
+          const imgs = [...new Set(pages)]
             .map(p => byPage.get(p))
             .filter((x): x is { page: number; url: string } => !!x)
           if (imgs.length > 0) bpImages[field] = imgs
@@ -134,11 +135,11 @@ export async function POST(
       )
     }
 
-    // 初聊日期默认取解读上传日期（表单可改）
+    // 初聊日期默认取创建当时的日期（表单可改）
     return NextResponse.json({
       draft,
       bpImages: Object.keys(bpImages).length > 0 ? bpImages : {},
-      defaultTargetDate: record.createdAt.toISOString().split('T')[0],
+      defaultTargetDate: new Date().toISOString().split('T')[0],
     })
   } catch (error) {
     console.error('Draft extraction error:', error)
