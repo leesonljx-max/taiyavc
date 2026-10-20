@@ -72,7 +72,7 @@ export default function ResearchDetailPage() {
       <DashboardLayout title="项目尽调">
         <div className="py-20 text-center">
           <p className="text-danger-600 mb-4">{error || '项目不存在'}</p>
-          <button onClick={() => router.push('/research')} className="px-4 py-2 bg-primary-500 text-white rounded-lg">
+          <button onClick={() => router.push('/research')} className="btn-primary">
             返回尽调列表
           </button>
         </div>
@@ -95,13 +95,13 @@ export default function ResearchDetailPage() {
           <SkillPanelLauncher scene="dd-workbench" />
           <button
             onClick={() => router.push(`/projects/${params.projectId}`)}
-            className="px-3 py-1.5 bg-white border border-primary-200 text-primary-700 text-sm rounded-lg hover:bg-primary-50 font-medium"
+            className="btn-secondary"
           >
             项目详情
           </button>
           <button
             onClick={() => router.back()}
-            className="px-3 py-1.5 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200"
+            className="btn-secondary"
           >
             ← 返回
           </button>

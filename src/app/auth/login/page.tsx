@@ -50,15 +50,15 @@ function LoginContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-primary flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+    <div className="min-h-screen bg-canvas flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
       {/* 背景装饰 */}
-      <div className="absolute top-0 left-0 w-96 h-96 bg-primary-200/40 rounded-full -ml-48 -mt-48 blur-3xl"></div>
-      <div className="absolute bottom-0 right-0 w-96 h-96 bg-primary-300/30 rounded-full -mr-48 -mb-48 blur-3xl"></div>
+      <div className="absolute top-0 left-0 w-96 h-96 bg-primary-100/40 rounded-full -ml-48 -mt-48 blur-3xl"></div>
+      <div className="absolute bottom-0 right-0 w-96 h-96 bg-primary-100/40 rounded-full -mr-48 -mb-48 blur-3xl"></div>
 
       <div className="relative max-w-md w-full">
         {/* Logo 和标题 */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl overflow-hidden flex items-center justify-center shadow-lg shadow-primary-500/40 bg-gradient-to-br from-primary-500 to-primary-700">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl overflow-hidden flex items-center justify-center bg-primary-600 shadow-soft-green">
             {/* 登录/注册页专用 logo：将图片命名为 logo-auth.png 放到 public 目录 */}
             <Image
               src="/logo-auth.png"
@@ -69,21 +69,21 @@ function LoginContent() {
               priority
             />
           </div>
-          <h2 className="text-3xl font-bold text-gray-900">欢迎登录</h2>
-          <p className="mt-2 text-sm text-gray-500">
+          <h2 className="text-3xl font-bold tracking-tight text-ink">欢迎登录</h2>
+          <p className="mt-2 text-sm text-ink-muted">
             投资项目管理平台
           </p>
         </div>
 
         {/* 登录卡片 */}
-        <div className="bg-gradient-card rounded-2xl shadow-xl p-8 border border-white/60">
+        <div className="bg-surface rounded-2xl shadow-soft-lg p-8">
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="email" className="block text-sm font-medium text-ink-muted mb-2">
                 账户名或邮箱
               </label>
               <div className="relative">
-                <svg className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-ink-faint absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
                 <input
@@ -93,18 +93,18 @@ function LoginContent() {
                   autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth placeholder-gray-400"
+                  className="input-field !pl-10"
                   placeholder="请输入账户名或邮箱"
                 />
               </div>
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="password" className="block text-sm font-medium text-ink-muted mb-2">
                 密码
               </label>
               <div className="relative">
-                <svg className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-ink-faint absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
                 <input
@@ -114,7 +114,7 @@ function LoginContent() {
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth placeholder-gray-400"
+                  className="input-field !pl-10"
                   placeholder="请输入密码"
                 />
               </div>
@@ -122,7 +122,7 @@ function LoginContent() {
 
             {error && (
               <div className="flex items-center gap-3 px-4 py-3 bg-danger-50 border border-danger-200 rounded-xl">
-                <svg className="w-5 h-5 text-danger-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-danger-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
                 <span className="text-sm text-danger-700">{error}</span>
@@ -132,7 +132,7 @@ function LoginContent() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-primary-500 to-primary-600 text-white font-semibold rounded-xl shadow-lg shadow-primary-500/30 hover:from-primary-600 hover:to-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-400 transition-all-smooth disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary w-full justify-center disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
@@ -155,7 +155,7 @@ function LoginContent() {
         </div>
 
         <div className="text-center mt-6">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-ink-muted">
             还没有账号？{' '}
             <Link href="/auth/register" className="font-medium text-primary-600 hover:text-primary-700 transition-colors">
               立即注册
@@ -169,7 +169,7 @@ function LoginContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-gradient-primary flex items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-canvas flex items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div></div>}>
       <LoginContent />
     </Suspense>
   )

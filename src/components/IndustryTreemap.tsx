@@ -2,22 +2,22 @@
 
 import { useRef, useEffect } from 'react'
 import * as echarts from 'echarts/core'
-import { TreemapChart, type TreemapSeriesOption } from 'echarts/charts'
-import { TooltipComponent, type TooltipComponentOption } from 'echarts/components'
+import { CustomChart, type CustomSeriesOption } from 'echarts/charts'
+import { GridComponent, TooltipComponent, type GridComponentOption, type TooltipComponentOption } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { ComposeOption } from 'echarts/core'
 
 // 按需注册（tree-shaking，仅约 110KB gzip，只进入 /statistics 路由 chunk）
-echarts.use([TreemapChart, TooltipComponent, CanvasRenderer])
+echarts.use([CustomChart, GridComponent, TooltipComponent, CanvasRenderer])
 
-type ECOption = ComposeOption<TreemapSeriesOption | TooltipComponentOption>
+type ECOption = ComposeOption<CustomSeriesOption | GridComponentOption | TooltipComponentOption>
 
 export interface TreemapDatum {
   industry: string
   count: number
 }
 
-/** 点击方块时回传方块中心坐标（相对图谱容器，用于喷射动画起点） */
+/** 点击柱体时回传柱体中心坐标（相对图谱容器，用于喷射动画起点） */
 export interface TreemapOrigin {
   x: number
   y: number
@@ -25,31 +25,34 @@ export interface TreemapOrigin {
 
 interface IndustryTreemapProps {
   industries: TreemapDatum[]
-  /** 当前选中行业（点击块 toggle） */
+  /** 当前选中行业（点击柱体 toggle） */
   selected: string | null
   onSelect: (industry: string | null, origin?: TreemapOrigin) => void
 }
 
-/**
- * 单蓝色系磨砂玻璃配色：按数量占比连续插值（数量多 → 深蓝，数量少 → 浅蓝）
- * 返回 [填充色 rgba, 文字色]
- */
-function frostBlue(ratio: number): { fill: string; text: string; border: string } {
-  const lerp = (a: number, b: number, t: number) => Math.round(a + (b - a) * t)
-  // 深蓝 blue-900 (30,58,138) → 浅蓝 blue-200 (191,219,254)
-  const c1 = [30, 58, 138]
-  const c2 = [191, 219, 254]
-  const t = 1 - Math.min(1, Math.max(0, ratio)) // ratio 高 → t 低 → 深色
-  const rgb = c1.map((v, i) => lerp(v, c2[i], t))
-  return {
-    // 半透明填充叠在浅色渐变底上形成磨砂玻璃质感
-    fill: `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.82)`,
-    text: t < 0.55 ? '#ffffff' : '#1e3a8a', // 深块白字，浅块深蓝字
-    border: 'rgba(255,255,255,0.65)',
-  }
+/** 柱体配色：浅薰衣草 → 品牌紫罗兰（数量多 → 更深） */
+const RAMP: number[][] = [
+  [221, 214, 254], // #DDD6FE
+  [196, 181, 253], // #C4B5FD
+  [167, 139, 250], // #A78BFA
+  [139, 92, 246],  // #8B5CF6
+]
+
+function mix(a: number[], b: number[], t: number): string {
+  const c = a.map((v, k) => Math.round(v + (b[k] - v) * t))
+  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`
 }
 
-/** 前十行业在块上显示排名前缀 */
+/** 按数量占比在柔和区间内插值取底色 */
+function barColor(ratio: number): number[] {
+  const t = Math.min(1, Math.max(0, ratio))
+  const scaled = t * (RAMP.length - 1)
+  const i = Math.min(RAMP.length - 2, Math.floor(scaled))
+  const f = scaled - i
+  return RAMP[i].map((v, k) => Math.round(v + (RAMP[i + 1][k] - v) * f))
+}
+
+/** 前十行业在类目标签上显示排名前缀 */
 const TOP_N_BADGE = 10
 
 export default function IndustryTreemap({ industries, selected, onSelect }: IndustryTreemapProps) {
@@ -57,8 +60,10 @@ export default function IndustryTreemap({ industries, selected, onSelect }: Indu
   const chartRef = useRef<echarts.ECharts | null>(null)
   const onSelectRef = useRef(onSelect)
   const selectedRef = useRef<string | null>(selected)
+  const dataRef = useRef<TreemapDatum[]>(industries)
   onSelectRef.current = onSelect
   selectedRef.current = selected
+  dataRef.current = industries
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -66,15 +71,17 @@ export default function IndustryTreemap({ industries, selected, onSelect }: Indu
     const chart = echarts.init(containerRef.current)
     chartRef.current = chart
 
-    // 点击行业块：toggle 选中，并把方块中心坐标回传（喷射动画起点）
+    // 点击柱体：toggle 选中，并把柱体中心坐标回传（喷射动画起点）
     chart.on('click', params => {
-      if (params.seriesType !== 'treemap' || typeof params.name !== 'string') return
+      if (params.seriesType !== 'custom') return
+      const item = dataRef.current[params.dataIndex]
+      if (!item) return
       const ev = params.event as { offsetX?: number; offsetY?: number } | undefined
       const origin =
         typeof ev?.offsetX === 'number' && typeof ev?.offsetY === 'number'
           ? { x: ev.offsetX, y: ev.offsetY }
           : undefined
-      onSelectRef.current(selectedRef.current === params.name ? null : params.name, origin)
+      onSelectRef.current(selectedRef.current === item.industry ? null : item.industry, origin)
     })
 
     const observer = new ResizeObserver(() => chart.resize())
@@ -93,71 +100,160 @@ export default function IndustryTreemap({ industries, selected, onSelect }: Indu
     if (!chart) return
 
     const maxCount = industries[0]?.count || 1
+    const total = industries.reduce((sum, i) => sum + i.count, 0)
+    // 类目轴统一用序号（dim 0），避免中文长名称映射问题；名称仅在标签显示
+    const names = industries.map(i => i.industry)
+
     const option: ECOption = {
       tooltip: {
         confine: true,
+        backgroundColor: '#111111',
+        borderWidth: 0,
+        borderRadius: 12,
+        padding: [8, 12],
+        textStyle: { color: '#FFFFFF', fontSize: 12 },
         formatter: params => {
-          const p = params as { name: string; value: number; treePathInfo?: Array<{ value: number }> }
-          const total = p.treePathInfo?.[0]?.value || 0
-          const percent = total > 0 ? Math.round((p.value / total) * 100) : 0
-          return `<b>${p.name}</b><br/>项目数：${p.value}（占比 ${percent}%）`
+          const item = industries[(params as { dataIndex: number }).dataIndex]
+          if (!item) return ''
+          const percent = total > 0 ? Math.round((item.count / total) * 100) : 0
+          return `<b>${item.industry}</b><br/>项目数：${item.count}（占比 ${percent}%）`
         },
+      },
+      grid: { left: 8, right: 20, top: 44, bottom: 8, containLabel: true },
+      xAxis: {
+        type: 'category',
+        data: names.map((_, idx) => String(idx)),
+        axisLine: { lineStyle: { color: '#E9DFCE' } },
+        axisTick: { show: false },
+        axisLabel: {
+          interval: 0,
+          rotate: 40,
+          fontSize: 10,
+          color: '#6B7589',
+          formatter: (value: string) => {
+            const idx = Number(value)
+            const name = names[idx] ?? ''
+            const short = name.length > 5 ? `${name.slice(0, 5)}…` : name
+            const badge = idx < TOP_N_BADGE ? `${idx + 1}. ` : ''
+            return `${badge}${short}`
+          },
+        },
+      },
+      yAxis: {
+        type: 'value',
+        minInterval: 1,
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: { color: '#9AA2B1', fontSize: 11 },
+        splitLine: { lineStyle: { color: 'rgba(233,223,206,0.7)' } },
       },
       series: [
         {
-          type: 'treemap',
-          nodeClick: false,
-          breadcrumb: { show: false },
-          roam: false,
-          left: 0,
-          top: 0,
-          right: 0,
-          bottom: 0,
-          // 磨砂玻璃质感：半透明填充 + 白色半透明描边 + 圆角 + 柔和阴影
-          itemStyle: { borderWidth: 2, borderColor: 'rgba(255,255,255,0.65)', gapWidth: 3, borderRadius: 10 },
-          label: {
-            show: true,
-            formatter: p => {
-              const idx = (p.dataIndex as number) ?? 0
-              const badge = idx < TOP_N_BADGE ? `${idx + 1}. ` : ''
-              return `${badge}${p.name}\n${p.value} 个项目`
-            },
-            fontSize: 13,
-            fontWeight: 'bold',
-            lineHeight: 18,
-            overflow: 'truncate',
-          },
-          upperLabel: { show: false },
-          data: industries.map((item, idx) => {
-            const ratio = item.count / maxCount
-            const color = frostBlue(ratio)
-            const isSelected = selected === item.industry
-            return {
-              name: item.industry,
-              value: item.count,
-              label: { color: color.text },
-              itemStyle: {
-                color: color.fill,
-                borderColor: isSelected ? '#1e3a8a' : color.border,
-                borderWidth: isSelected ? 4 : 2,
-                shadowBlur: isSelected ? 16 : 6,
-                shadowColor: 'rgba(30,58,138,0.25)',
+          type: 'custom',
+          coordinateSystem: 'cartesian2d',
+          encode: { x: 0, y: 1 },
+          data: industries.map((item, idx) => [idx, item.count]),
+          // 等距三面棱柱：正面 / 右侧面 / 顶面
+          renderItem: (params, api) => {
+            const catIdx = api.value(0)
+            const value = api.value(1)
+            const base = api.coord([catIdx, 0]) as number[]
+            const top = api.coord([catIdx, value]) as number[]
+            const bandW = api.size?.([1, 0]) as number[] | undefined
+            const sizeW = bandW?.[0] || 24
+
+            const w = Math.max(6, Math.min(sizeW * 0.52, 42))
+            const d = w * 0.34 // 立体深度（等距右上偏移）
+            const cx = base[0]
+            const y0 = base[1] // 基线
+            const y1 = top[1]  // 柱顶
+            const left = cx - w / 2
+            const right = cx + w / 2
+
+            const idx = params.dataIndex
+            const ratio = industries[idx] ? industries[idx].count / maxCount : 0
+            const rgb = barColor(ratio)
+            const frontFill = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`
+            const topFill = mix(rgb, [255, 255, 255], 0.34)
+            const sideFill = mix(rgb, [0, 0, 0], 0.22)
+            const isSelected = selected === industries[idx]?.industry
+            const stroke = isSelected ? '#8B5CF6' : 'rgba(255,255,255,0.85)'
+            const strokeWidth = isSelected ? 2 : 1
+
+            const shapes: unknown[] = [
+              // 右侧面
+              {
+                type: 'polygon',
+                shape: {
+                  points: [
+                    [right, y1],
+                    [right + d, y1 - d],
+                    [right + d, y0 - d],
+                    [right, y0],
+                  ],
+                },
+                style: { fill: sideFill, stroke, lineWidth: strokeWidth },
               },
-              emphasis: { itemStyle: { shadowBlur: 14, shadowColor: 'rgba(30,58,138,0.4)' } },
-            }
-          }),
+              // 顶面
+              {
+                type: 'polygon',
+                shape: {
+                  points: [
+                    [left, y1],
+                    [left + d, y1 - d],
+                    [right + d, y1 - d],
+                    [right, y1],
+                  ],
+                },
+                style: { fill: topFill, stroke, lineWidth: strokeWidth },
+              },
+              // 正面（最后画，压在最上层）
+              {
+                type: 'polygon',
+                shape: {
+                  points: [
+                    [left, y1],
+                    [right, y1],
+                    [right, y0],
+                    [left, y0],
+                  ],
+                },
+                style: { fill: frontFill, stroke, lineWidth: strokeWidth },
+              },
+              // 数值标签（柱顶上方）
+              {
+                type: 'text',
+                style: {
+                  text: String(industries[idx]?.count ?? ''),
+                  x: cx + d / 2,
+                  y: y1 - d - 8,
+                  fill: isSelected ? '#6D28D9' : '#3B4664',
+                  font: `bold ${industries.length > 14 ? 10 : 12}px sans-serif`,
+                  textAlign: 'center',
+                  textVerticalAlign: 'bottom',
+                },
+                emphasisDisabled: true,
+              },
+            ]
+
+            return {
+              type: 'group',
+              children: shapes,
+              // 悬停时轻微提亮
+              emphasis: { disabled: false },
+            } as unknown as ReturnType<NonNullable<CustomSeriesOption['renderItem']>>
+          },
         },
       ],
     }
-    chart.setOption(option, { replaceMerge: ['series'] })
+    chart.setOption(option, { replaceMerge: ['series', 'xAxis', 'yAxis', 'grid'] })
   }, [industries, selected])
 
   return (
-    // 浅蓝渐变底衬托半透明色块，形成磨砂玻璃质感
     <div
       ref={containerRef}
-      className="w-full rounded-2xl bg-gradient-to-br from-blue-50 via-indigo-50/60 to-sky-50"
-      style={{ height: `${Math.max(300, Math.min(460, industries.length * 36 + 160))}px` }}
+      className="w-full rounded-2xl bg-surface"
+      style={{ height: `${Math.max(320, Math.min(480, industries.length * 36 + 180))}px` }}
     />
   )
 }

@@ -153,7 +153,7 @@ export default function RichTextEditor({
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         data-placeholder={placeholder}
-        className="w-full px-4 py-2.5 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth prose prose-sm max-w-none overflow-auto"
+        className="w-full input-field prose prose-sm max-w-none overflow-auto transition-all-smooth"
         style={{ minHeight }}
         suppressContentEditableWarning
       />
@@ -169,7 +169,7 @@ export default function RichTextEditor({
       <style jsx>{`
         [contenteditable][data-placeholder]:empty::before {
           content: attr(data-placeholder);
-          color: #9ca3af;
+          color: #9E9E9E;
           pointer-events: none;
         }
         [contenteditable] img {

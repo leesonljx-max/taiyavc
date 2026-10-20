@@ -114,15 +114,15 @@ const stageIcons: Record<FollowStage | 'all', JSX.Element> = {
 }
 
 const stageCardStyles: Record<FollowStage | 'all', string> = {
-  all: 'from-primary-500 to-primary-700',
-  INITIAL_TALK: 'from-gray-400 to-gray-500',
-  PRE_DD: 'from-blue-400 to-blue-500',
-  PROJECT_INITIATION: 'from-purple-400 to-purple-500',
-  DUE_DILIGENCE: 'from-amber-400 to-amber-500',
-  AGREEMENT: 'from-teal-400 to-teal-500',
-  CLOSING: 'from-emerald-400 to-emerald-500',
-  POST_INVESTMENT: 'from-indigo-400 to-indigo-500',
-  REJECTED: 'from-red-400 to-red-500',
+  all: 'bg-primary-600',
+  INITIAL_TALK: 'bg-gray-400',
+  PRE_DD: 'bg-gray-500',
+  PROJECT_INITIATION: 'bg-primary-400',
+  DUE_DILIGENCE: 'bg-warning-400',
+  AGREEMENT: 'bg-primary-500',
+  CLOSING: 'bg-primary-600',
+  POST_INVESTMENT: 'bg-emerald-500',
+  REJECTED: 'bg-danger-500',
 }
 
 type TabKey = 'library' | 'mine' | 'leads' | 'ai-leads'
@@ -409,7 +409,7 @@ export default function ProjectListPage() {
         tab === 'leads' ? (
           <button
             onClick={openCreateLead}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl hover:from-primary-600 hover:to-primary-700 transition-all-smooth shadow-md shadow-primary-500/30 font-medium text-sm"
+            className="btn-primary"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -422,7 +422,7 @@ export default function ProjectListPage() {
         ) : (
           <Link
             href="/projects/new"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl hover:from-primary-600 hover:to-primary-700 transition-all-smooth shadow-md shadow-primary-500/30 font-medium text-sm"
+            className="btn-primary"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -433,13 +433,13 @@ export default function ProjectListPage() {
       }
     >
       {/* Tab 切换：项目库 / 我的项目 / 项目线索 */}
-      <div className="bg-gradient-card rounded-2xl shadow-sm p-1.5 mb-6 border border-primary-100 inline-flex">
+      <div className="bg-surface rounded-full shadow-soft p-1.5 mb-6 inline-flex">
         <button
           onClick={() => setTab('library')}
-          className={`px-5 py-2 rounded-xl text-sm font-medium transition-all-smooth ${
+          className={`px-5 py-2 rounded-full text-sm font-medium transition-all-smooth ${
             tab === 'library'
-              ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md shadow-primary-500/30'
-              : 'text-gray-600 hover:bg-primary-50 hover:text-primary-700'
+              ? 'bg-primary-600 text-white shadow-soft-green'
+              : 'text-ink-muted hover:bg-gray-50 hover:text-primary-700'
           }`}
         >
           <span className="inline-flex items-center gap-1.5">
@@ -451,10 +451,10 @@ export default function ProjectListPage() {
         </button>
         <button
           onClick={() => setTab('mine')}
-          className={`px-5 py-2 rounded-xl text-sm font-medium transition-all-smooth ${
+          className={`px-5 py-2 rounded-full text-sm font-medium transition-all-smooth ${
             tab === 'mine'
-              ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md shadow-primary-500/30'
-              : 'text-gray-600 hover:bg-primary-50 hover:text-primary-700'
+              ? 'bg-primary-600 text-white shadow-soft-green'
+              : 'text-ink-muted hover:bg-gray-50 hover:text-primary-700'
           }`}
         >
           <span className="inline-flex items-center gap-1.5">
@@ -466,10 +466,10 @@ export default function ProjectListPage() {
         </button>
         <button
           onClick={() => setTab('leads')}
-          className={`px-5 py-2 rounded-xl text-sm font-medium transition-all-smooth ${
+          className={`px-5 py-2 rounded-full text-sm font-medium transition-all-smooth ${
             tab === 'leads'
-              ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md shadow-primary-500/30'
-              : 'text-gray-600 hover:bg-primary-50 hover:text-primary-700'
+              ? 'bg-primary-600 text-white shadow-soft-green'
+              : 'text-ink-muted hover:bg-gray-50 hover:text-primary-700'
           }`}
         >
           <span className="inline-flex items-center gap-1.5">
@@ -481,10 +481,10 @@ export default function ProjectListPage() {
         </button>
         <button
           onClick={() => setTab('ai-leads')}
-          className={`px-5 py-2 rounded-xl text-sm font-medium transition-all-smooth ${
+          className={`px-5 py-2 rounded-full text-sm font-medium transition-all-smooth ${
             tab === 'ai-leads'
-              ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-md shadow-purple-500/30'
-              : 'text-gray-600 hover:bg-purple-50 hover:text-purple-700'
+              ? 'bg-primary-600 text-white shadow-soft-green'
+              : 'text-ink-muted hover:bg-gray-50 hover:text-primary-700'
           }`}
         >
           <span className="inline-flex items-center gap-1.5">
@@ -500,16 +500,16 @@ export default function ProjectListPage() {
       {tab === 'leads' && (
         <>
           {/* 项目线索说明 + 搜索 */}
-          <div className="bg-gradient-card rounded-2xl shadow-sm p-4 mb-6 border border-primary-100">
+          <div className="bg-surface rounded-2xl shadow-soft p-4 mb-6">
             <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <svg className="w-5 h-5 text-primary-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-center gap-2 text-sm text-ink-muted">
+                <svg className="w-5 h-5 text-primary-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <span>项目线索用于记录潜在项目信息，新建项目时若名称高度重合将自动合并并删除线索</span>
               </div>
               <div className="flex-1 md:max-w-xs relative w-full">
-                <svg className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-ink-faint absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
                 <input
@@ -517,7 +517,7 @@ export default function ProjectListPage() {
                   placeholder="搜索项目线索..."
                   value={leadSearchTerm}
                   onChange={(e) => setLeadSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth placeholder-gray-400"
+                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-hairline rounded-full text-ink outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100 transition-all-smooth placeholder:text-ink-faint"
                 />
               </div>
             </div>
@@ -529,14 +529,14 @@ export default function ProjectListPage() {
               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
             </div>
           ) : leads.length === 0 && totalLeads === 0 ? (
-            <div className="bg-gradient-card rounded-2xl shadow-sm p-16 text-center border border-primary-100">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-primary-50 flex items-center justify-center">
-                <svg className="w-8 h-8 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="bg-surface rounded-2xl shadow-soft p-16 text-center">
+              <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-gray-50 flex items-center justify-center">
+                <svg className="w-7 h-7 text-ink-faint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">暂无项目线索</h3>
-              <p className="text-gray-500">点击右上角按钮新增项目线索</p>
+              <h3 className="text-lg font-bold text-ink mb-2">暂无项目线索</h3>
+              <p className="text-ink-muted">点击右上角按钮新增项目线索</p>
             </div>
           ) : (
             <>
@@ -554,15 +554,15 @@ export default function ProjectListPage() {
                 <button
                   key={lead.id}
                   onClick={() => setViewingLead(lead)}
-                  className="text-left bg-gradient-card rounded-2xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all-smooth border border-primary-100 overflow-hidden group"
+                  className="text-left bg-surface rounded-2xl shadow-soft hover-lift overflow-hidden group"
                 >
                   <div className="p-5">
                     <div className="flex items-center gap-2 mb-3 flex-wrap">
-                      <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-700 transition-colors truncate">
+                      <h3 className="text-base font-bold text-ink group-hover:text-primary-700 transition-colors truncate">
                         {lead.name}
                       </h3>
-                      <span className="inline-flex items-center gap-1 text-xs text-gray-500 whitespace-nowrap">
-                        <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <span className="inline-flex items-center gap-1 text-xs text-ink-muted whitespace-nowrap">
+                        <svg className="w-3.5 h-3.5 text-ink-faint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                         </svg>
                         {lead.createdBy?.name || '未分配'}
@@ -571,26 +571,26 @@ export default function ProjectListPage() {
                     <div className="space-y-1.5 text-sm">
                       {lead.industry && (
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-gray-400 text-xs flex-shrink-0">行业/赛道</span>
-                          <span className="text-gray-900 truncate text-right">{lead.industry}</span>
+                          <span className="text-ink-faint text-xs flex-shrink-0">行业/赛道</span>
+                          <span className="text-ink truncate text-right">{lead.industry}</span>
                         </div>
                       )}
                       {lead.companyPosition && (
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-gray-400 text-xs flex-shrink-0">公司定位</span>
-                          <span className="text-gray-900 truncate text-right">{lead.companyPosition}</span>
+                          <span className="text-ink-faint text-xs flex-shrink-0">公司定位</span>
+                          <span className="text-ink truncate text-right">{lead.companyPosition}</span>
                         </div>
                       )}
                       {lead.mainProducts && (
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-gray-400 text-xs flex-shrink-0">主要产品</span>
-                          <span className="text-gray-900 truncate text-right">{lead.mainProducts}</span>
+                          <span className="text-ink-faint text-xs flex-shrink-0">主要产品</span>
+                          <span className="text-ink truncate text-right">{lead.mainProducts}</span>
                         </div>
                       )}
                       {lead.financingHistory && (
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-gray-400 text-xs flex-shrink-0">融资经历</span>
-                          <span className="text-gray-900 truncate text-right">{lead.financingHistory}</span>
+                          <span className="text-ink-faint text-xs flex-shrink-0">融资经历</span>
+                          <span className="text-ink truncate text-right">{lead.financingHistory}</span>
                         </div>
                       )}
                     </div>
@@ -610,21 +610,21 @@ export default function ProjectListPage() {
       {tab !== 'leads' && tab !== 'ai-leads' && (
         <>
           {/* 统计卡片区域 - 项目库 + 7个阶段 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-6">
+          <div className="stat-3d-row grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-6">
             {/* 项目总数卡片（服务端 facets 统计，不随分页截断；随行业/年份筛选联动） */}
             <button
               onClick={() => setSelectedStage('all')}
-              className={`bg-gradient-card rounded-2xl p-5 shadow-sm border transition-all-smooth text-left ${
-                selectedStage === 'all' ? 'border-primary-400 ring-2 ring-primary-200' : 'border-primary-100 hover:border-primary-200'
+              className={`bg-surface rounded-2xl p-5 shadow-soft transition-all-smooth text-left ${
+                selectedStage === 'all' ? 'ring-2 ring-primary-200' : 'hover:shadow-soft-lg'
               }`}
             >
               <div className="flex items-center gap-3">
-                <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${stageCardStyles.all} flex items-center justify-center shadow-md shadow-primary-500/30 flex-shrink-0`}>
+                <div className={`icon-3d-tile w-11 h-11 rounded-full ${stageCardStyles.all} flex items-center justify-center flex-shrink-0`}>
                   {stageIcons.all}
                 </div>
                 <div className="min-w-0">
-                  <div className="text-2xl font-bold text-gray-900">{facets.totalCount}</div>
-                  <div className="text-xs text-gray-500">项目总数</div>
+                  <div className="text-2xl font-bold text-ink tracking-tight">{facets.totalCount}</div>
+                  <div className="text-xs text-ink-muted">项目总数</div>
                 </div>
               </div>
             </button>
@@ -634,17 +634,17 @@ export default function ProjectListPage() {
               <button
                 key={stage}
                 onClick={() => setSelectedStage(selectedStage === stage ? 'all' : stage)}
-                className={`bg-gradient-card rounded-2xl p-5 shadow-sm border transition-all-smooth text-left ${
-                  selectedStage === stage ? 'border-primary-400 ring-2 ring-primary-200' : 'border-primary-100 hover:border-primary-200'
+                className={`bg-surface rounded-2xl p-5 shadow-soft transition-all-smooth text-left ${
+                  selectedStage === stage ? 'ring-2 ring-primary-200' : 'hover:shadow-soft-lg'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${stageCardStyles[stage]} flex items-center justify-center shadow-sm flex-shrink-0`}>
+                  <div className={`icon-3d-tile w-11 h-11 rounded-full ${stageCardStyles[stage]} flex items-center justify-center flex-shrink-0`}>
                     {stageIcons[stage]}
                   </div>
                   <div className="min-w-0">
-                    <div className="text-2xl font-bold text-gray-900">{stageCount(stage)}</div>
-                    <div className="text-xs text-gray-500 truncate">{followStageLabels[stage]}</div>
+                    <div className="text-2xl font-bold text-ink tracking-tight">{stageCount(stage)}</div>
+                    <div className="text-xs text-ink-muted truncate">{followStageLabels[stage]}</div>
                   </div>
                 </div>
               </button>
@@ -653,17 +653,17 @@ export default function ProjectListPage() {
 
           {/* 年份筛选（与阶段卡片同行级，按钮样式） */}
           <div className="flex items-center gap-2 mb-6">
-            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-ink-faint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            <span className="text-sm font-medium text-gray-700">年份筛选</span>
-            <div className="flex items-center gap-1 bg-gradient-card rounded-xl p-1 border border-primary-100">
+            <span className="text-sm font-medium text-ink-muted">年份筛选</span>
+            <div className="flex items-center gap-1 bg-surface rounded-full p-1 shadow-soft">
               <button
                 onClick={() => setSelectedYear('all')}
-                className={`px-3 py-1 rounded-lg text-sm font-medium transition-all-smooth ${
+                className={`px-3 py-1 rounded-full text-sm font-medium transition-all-smooth ${
                   selectedYear === 'all'
-                    ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md shadow-primary-500/30'
-                    : 'text-gray-600 hover:bg-primary-50 hover:text-primary-700'
+                    ? 'bg-primary-600 text-white shadow-soft-green'
+                    : 'text-ink-muted hover:bg-gray-50 hover:text-primary-700'
                 }`}
               >
                 全部
@@ -672,10 +672,10 @@ export default function ProjectListPage() {
                 <button
                   key={y}
                   onClick={() => setSelectedYear(y)}
-                  className={`px-3 py-1 rounded-lg text-sm font-medium transition-all-smooth ${
+                  className={`px-3 py-1 rounded-full text-sm font-medium transition-all-smooth ${
                     selectedYear === y
-                      ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md shadow-primary-500/30'
-                      : 'text-gray-600 hover:bg-primary-50 hover:text-primary-700'
+                      ? 'bg-primary-600 text-white shadow-soft-green'
+                      : 'text-ink-muted hover:bg-gray-50 hover:text-primary-700'
                   }`}
                 >
                   {y}
@@ -685,10 +685,10 @@ export default function ProjectListPage() {
           </div>
 
           {/* 搜索、行业筛选 */}
-          <div className="bg-gradient-card rounded-2xl shadow-sm p-4 mb-6 border border-primary-100">
+          <div className="bg-surface rounded-2xl shadow-soft p-4 mb-6">
             <div className="flex flex-col md:flex-row gap-4">
               <div className="flex-1 relative">
-                <svg className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-ink-faint absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
                 <input
@@ -696,13 +696,13 @@ export default function ProjectListPage() {
                   placeholder="搜索项目名称或公司全称..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth placeholder-gray-400"
+                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-hairline rounded-full text-ink outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100 transition-all-smooth placeholder:text-ink-faint"
                 />
               </div>
               <select
                 value={selectedIndustry}
                 onChange={(e) => setSelectedIndustry(e.target.value)}
-                className="px-4 py-2.5 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth text-gray-700 min-w-[140px]"
+                className="px-4 py-2.5 bg-gray-50 border border-hairline rounded-full focus:ring-2 focus:ring-primary-100 focus:border-primary-400 transition-all-smooth text-ink min-w-[140px]"
               >
                 <option value="all">所有行业/赛道</option>
                 {industries.map(industry => (
@@ -718,14 +718,14 @@ export default function ProjectListPage() {
               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
             </div>
           ) : projects.length === 0 && totalProjects === 0 ? (
-            <div className="bg-gradient-card rounded-2xl shadow-sm p-16 text-center border border-primary-100">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-primary-50 flex items-center justify-center">
-                <svg className="w-8 h-8 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="bg-surface rounded-2xl shadow-soft p-16 text-center">
+              <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-gray-50 flex items-center justify-center">
+                <svg className="w-7 h-7 text-ink-faint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">暂无项目</h3>
-              <p className="text-gray-500">点击右上角按钮创建第一个投资项目</p>
+              <h3 className="text-lg font-bold text-ink mb-2">暂无项目</h3>
+              <p className="text-ink-muted">点击右上角按钮创建第一个投资项目</p>
             </div>
           ) : (
             <>
@@ -744,25 +744,25 @@ export default function ProjectListPage() {
                   <Link
                     key={project.id}
                     href={`/projects/${project.id}`}
-                    className="block bg-gradient-card rounded-2xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all-smooth border border-primary-100 overflow-hidden group"
+                    className="block bg-surface rounded-2xl shadow-soft hover-lift overflow-hidden group"
                   >
                     <div className="p-5">
                       {/* 第一行：项目名称 + 维护人 + 阶段 + 公司定位（小号字体） */}
                       <div className="flex items-center gap-2 mb-3 flex-wrap">
-                        <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-700 transition-colors truncate">
+                        <h3 className="text-base font-bold text-ink group-hover:text-primary-700 transition-colors truncate">
                           {project.name}
                         </h3>
-                        <span className="inline-flex items-center gap-1 text-xs text-gray-500 whitespace-nowrap">
-                          <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <span className="inline-flex items-center gap-1 text-xs text-ink-muted whitespace-nowrap">
+                          <svg className="w-3.5 h-3.5 text-ink-faint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                           </svg>
                           {project.createdBy?.name || '未分配'}
                         </span>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${followStageColors[project.followStage]}`}>
+                        <span className={`pill whitespace-nowrap ${followStageColors[project.followStage]}`}>
                           {followStageLabels[project.followStage]}
                         </span>
                         {project.companyPosition && (
-                          <span className="text-xs text-gray-500 truncate flex-1 min-w-0">
+                          <span className="text-xs text-ink-muted truncate flex-1 min-w-0">
                             {project.companyPosition}
                           </span>
                         )}
@@ -771,26 +771,26 @@ export default function ProjectListPage() {
                       {/* 第二行：5项关键信息 */}
                       <div className="space-y-1.5 text-sm">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-gray-400 text-xs flex-shrink-0">公司全称</span>
-                          <span className="text-gray-900 truncate text-right">{project.companyFullName || '-'}</span>
+                          <span className="text-ink-faint text-xs flex-shrink-0">公司全称</span>
+                          <span className="text-ink truncate text-right">{project.companyFullName || '-'}</span>
                         </div>
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-gray-400 text-xs flex-shrink-0">行业/赛道</span>
-                          <span className="text-gray-900 truncate text-right">{project.industry || '-'}</span>
+                          <span className="text-ink-faint text-xs flex-shrink-0">行业/赛道</span>
+                          <span className="text-ink truncate text-right">{project.industry || '-'}</span>
                         </div>
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-gray-400 text-xs flex-shrink-0">融资轮次</span>
-                          <span className="text-gray-900 truncate text-right">{project.financingRound || '-'}</span>
+                          <span className="text-ink-faint text-xs flex-shrink-0">融资轮次</span>
+                          <span className="text-ink truncate text-right">{project.financingRound || '-'}</span>
                         </div>
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-gray-400 text-xs flex-shrink-0">融资金额</span>
+                          <span className="text-ink-faint text-xs flex-shrink-0">融资金额</span>
                           <span className="text-primary-700 font-medium text-right">
                             {project.totalAmount ? project.totalAmount : '-'}
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-gray-400 text-xs flex-shrink-0">历史累计融资</span>
-                          <span className="text-gray-900 text-right">
+                          <span className="text-ink-faint text-xs flex-shrink-0">历史累计融资</span>
+                          <span className="text-ink text-right">
                             {project.raisedAmount || '-'}
                           </span>
                         </div>
@@ -808,14 +808,14 @@ export default function ProjectListPage() {
       {/* ════════════ 项目线索 新增/编辑 弹窗 ════════════ */}
       {showLeadModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-primary-100">
-              <h2 className="text-lg font-bold text-gray-900">
+          <div className="bg-surface rounded-2xl shadow-soft-lg w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
+              <h2 className="text-lg font-bold text-ink">
                 {editingLead ? '编辑项目线索' : '新增项目线索'}
               </h2>
               <button
                 onClick={() => setShowLeadModal(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="w-9 h-9 rounded-full flex items-center justify-center text-ink-faint hover:text-ink hover:bg-gray-50 transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -824,96 +824,96 @@ export default function ProjectListPage() {
             </div>
             <form onSubmit={handleLeadSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
               {leadError && (
-                <div className="flex items-center gap-3 px-4 py-3 bg-danger-50 border border-danger-200 rounded-xl">
+                <div className="flex items-center gap-3 px-4 py-3 bg-danger-50 border border-danger-200 rounded-2xl">
                   <span className="text-sm text-danger-700">{leadError}</span>
                 </div>
               )}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-ink mb-2">
                   项目名称 <span className="text-danger-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={leadForm.name}
                   onChange={(e) => setLeadForm(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full px-4 py-2.5 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth placeholder-gray-400"
+                  className="input-field"
                   placeholder="请输入项目名称"
                 />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">行业/赛道</label>
+                  <label className="block text-sm font-medium text-ink mb-2">行业/赛道</label>
                   <input
                     type="text"
                     value={leadForm.industry}
                     onChange={(e) => setLeadForm(prev => ({ ...prev, industry: e.target.value }))}
-                    className="w-full px-4 py-2.5 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth placeholder-gray-400"
+                    className="input-field"
                     placeholder="如 AI/Agent、半导体"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">公司定位</label>
+                  <label className="block text-sm font-medium text-ink mb-2">公司定位</label>
                   <input
                     type="text"
                     value={leadForm.companyPosition}
                     onChange={(e) => setLeadForm(prev => ({ ...prev, companyPosition: e.target.value }))}
-                    className="w-full px-4 py-2.5 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth placeholder-gray-400"
+                    className="input-field"
                     placeholder="请输入公司定位"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">主要产品</label>
+                <label className="block text-sm font-medium text-ink mb-2">主要产品</label>
                 <textarea
                   value={leadForm.mainProducts}
                   onChange={(e) => setLeadForm(prev => ({ ...prev, mainProducts: e.target.value }))}
                   rows={2}
-                  className="w-full px-4 py-2.5 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth placeholder-gray-400 resize-none"
+                  className="input-field resize-none"
                   placeholder="请输入主要产品"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">融资经历</label>
+                <label className="block text-sm font-medium text-ink mb-2">融资经历</label>
                 <textarea
                   value={leadForm.financingHistory}
                   onChange={(e) => setLeadForm(prev => ({ ...prev, financingHistory: e.target.value }))}
                   rows={2}
-                  className="w-full px-4 py-2.5 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth placeholder-gray-400 resize-none"
+                  className="input-field resize-none"
                   placeholder="如 2024年A轮5000万、2025年B轮1亿"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">联系方式</label>
+                <label className="block text-sm font-medium text-ink mb-2">联系方式</label>
                 <input
                   type="text"
                   value={leadForm.contactInfo}
                   onChange={(e) => setLeadForm(prev => ({ ...prev, contactInfo: e.target.value }))}
-                  className="w-full px-4 py-2.5 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth placeholder-gray-400"
+                  className="input-field"
                   placeholder="联系人/电话/邮箱"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">备注</label>
+                <label className="block text-sm font-medium text-ink mb-2">备注</label>
                 <textarea
                   value={leadForm.description}
                   onChange={(e) => setLeadForm(prev => ({ ...prev, description: e.target.value }))}
                   rows={2}
-                  className="w-full px-4 py-2.5 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth placeholder-gray-400 resize-none"
+                  className="input-field resize-none"
                   placeholder="其他备注信息"
                 />
               </div>
             </form>
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-primary-100">
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-hairline">
               <button
                 onClick={() => setShowLeadModal(false)}
-                className="px-5 py-2.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all-smooth text-sm font-medium"
+                className="btn-secondary"
               >
                 取消
               </button>
               <button
                 onClick={handleLeadSubmit}
                 disabled={leadSaving}
-                className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl hover:from-primary-600 hover:to-primary-700 transition-all-smooth disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-primary-500/30 text-sm font-medium"
+                className="btn-primary"
               >
                 {leadSaving ? '保存中...' : (editingLead ? '保存修改' : '创建线索')}
               </button>
@@ -925,12 +925,12 @@ export default function ProjectListPage() {
       {/* ════════════ 项目线索 详情弹窗 ════════════ */}
       {viewingLead && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-primary-100">
-              <h2 className="text-lg font-bold text-gray-900 truncate">{viewingLead.name}</h2>
+          <div className="bg-surface rounded-2xl shadow-soft-lg w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
+              <h2 className="text-lg font-bold text-ink truncate">{viewingLead.name}</h2>
               <button
                 onClick={() => setViewingLead(null)}
-                className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0 ml-2"
+                className="w-9 h-9 rounded-full flex items-center justify-center text-ink-faint hover:text-ink hover:bg-gray-50 transition-colors flex-shrink-0 ml-2"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -938,8 +938,8 @@ export default function ProjectListPage() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-center gap-2 text-sm text-ink-muted">
+                <svg className="w-4 h-4 text-ink-faint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
                 <span>维护人：{viewingLead.createdBy?.name || '未分配'}</span>
@@ -955,31 +955,31 @@ export default function ProjectListPage() {
                 { label: '联系方式', value: viewingLead.contactInfo },
                 { label: '备注', value: viewingLead.description },
               ].map(item => (
-                <div key={item.label} className="border-b border-primary-50 pb-3">
-                  <div className="text-xs text-gray-400 mb-1">{item.label}</div>
-                  <div className="text-sm text-gray-900 whitespace-pre-wrap">
-                    {item.value || <span className="text-gray-300">未填写</span>}
+                <div key={item.label} className="border-b border-hairline pb-3">
+                  <div className="text-xs text-ink-faint mb-1">{item.label}</div>
+                  <div className="text-sm text-ink whitespace-pre-wrap">
+                    {item.value || <span className="text-ink-faint">未填写</span>}
                   </div>
                 </div>
               ))}
             </div>
-            <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-primary-100">
+            <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-hairline">
               <button
                 onClick={() => handleDeleteLead(viewingLead)}
-                className="px-4 py-2 text-danger-600 hover:bg-danger-50 rounded-xl transition-all-smooth text-sm font-medium"
+                className="px-4 py-2 text-danger-600 hover:bg-danger-50 rounded-full transition-all-smooth text-sm font-medium"
               >
                 删除线索
               </button>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setViewingLead(null)}
-                  className="px-5 py-2.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all-smooth text-sm font-medium"
+                  className="btn-secondary"
                 >
                   关闭
                 </button>
                 <button
                   onClick={() => openEditLead(viewingLead)}
-                  className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl hover:from-primary-600 hover:to-primary-700 transition-all-smooth shadow-md shadow-primary-500/30 text-sm font-medium"
+                  className="btn-primary"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />

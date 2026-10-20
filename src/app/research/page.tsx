@@ -148,32 +148,32 @@ export default function ResearchPage() {
       subtitle="尽调阶段项目的尽调报告与模块资料管理"
     >
       {/* ── 四概览卡（尽调项目 / 进行中批次 / 已完成尽调项目 / 待决问题） ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div className="stat-3d-row grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {/* 尽调项目（可点击 → 项目列表） */}
         <button
           onClick={() => { setShowProjects(true); setShowPending(false); setShowCompleted(false) }}
-          className={`text-left rounded-xl border p-4 transition-all hover:shadow-sm ${
-            showProjects ? 'bg-blue-50/40 border-blue-300 ring-2 ring-blue-100' : 'bg-white border-gray-100 hover:border-blue-200'
+          className={`text-left rounded-2xl bg-surface p-4 shadow-soft hover-lift ${
+            showProjects ? 'ring-2 ring-primary-200' : ''
           }`}
         >
-          <p className="text-[11px] text-gray-400 font-medium">尽调项目</p>
+          <p className="text-[11px] text-ink-faint font-medium">尽调项目</p>
           <p className="mt-1">
-            <span className="text-2xl font-bold text-gray-900">{stats?.myProjects ?? '—'}</span>
-            <span className="text-xs text-gray-400 ml-1">深度验证中</span>
+            <span className="text-3xl font-bold tracking-tight text-ink">{stats?.myProjects ?? '—'}</span>
+            <span className="text-xs text-ink-faint ml-1">深度验证中</span>
           </p>
-          <p className="mt-1.5 text-[10px] text-gray-400">点击查看尽调项目队列</p>
+          <p className="mt-1.5 text-[10px] text-ink-faint">点击查看尽调项目队列</p>
         </button>
 
         {/* 进行中批次 */}
-        <div className="rounded-xl border border-gray-100 bg-white p-4">
-          <p className="text-[11px] text-gray-400 font-medium">进行中批次</p>
+        <div className="rounded-2xl bg-surface p-4 shadow-soft">
+          <p className="text-[11px] text-ink-faint font-medium">进行中批次</p>
           <p className="mt-1">
-            <span className="text-2xl font-bold text-gray-900">
+            <span className="text-3xl font-bold tracking-tight text-ink">
               {projects.filter(p => p.ddWorkbench).length}
             </span>
-            <span className="text-xs text-gray-400 ml-1">个批次</span>
+            <span className="text-xs text-ink-faint ml-1">个批次</span>
           </p>
-          <p className="mt-1.5 text-[10px] text-gray-400">
+          <p className="mt-1.5 text-[10px] text-ink-faint">
             累计红旗 {projects.reduce((s, p) => s + (p.ddWorkbench?.redFlags || 0), 0)} 个待关闭
           </p>
         </div>
@@ -181,72 +181,76 @@ export default function ResearchPage() {
         {/* 已完成尽调项目（可点击 → 已完成列表；含已变更到协议/已否等阶段的项目） */}
         <button
           onClick={() => { setShowCompleted(true); setShowProjects(false); setShowPending(false) }}
-          className={`text-left rounded-xl border p-4 transition-all hover:shadow-sm ${
-            showCompleted ? 'bg-emerald-50/40 border-emerald-300 ring-2 ring-emerald-100' : 'bg-white border-gray-100 hover:border-emerald-200'
+          className={`text-left rounded-2xl bg-surface p-4 shadow-soft hover-lift ${
+            showCompleted ? 'ring-2 ring-emerald-200' : ''
           }`}
         >
-          <p className="text-[11px] text-gray-400 font-medium">已完成尽调项目</p>
+          <p className="text-[11px] text-ink-faint font-medium">已完成尽调项目</p>
           <p className="mt-1">
-            <span className={`text-2xl font-bold ${(stats?.completedDdProjects ?? 0) > 0 ? 'text-emerald-600' : 'text-gray-900'}`}>
+            <span className={`text-3xl font-bold tracking-tight ${(stats?.completedDdProjects ?? 0) > 0 ? 'text-emerald-600' : 'text-ink'}`}>
               {stats?.completedDdProjects ?? '—'}
             </span>
-            <span className="text-xs text-gray-400 ml-1">已生成尽调报告</span>
+            <span className="text-xs text-ink-faint ml-1">已生成尽调报告</span>
           </p>
-          <p className="mt-1.5 text-[10px] text-gray-400">含已变更到协议/已否等阶段 · 点击查看</p>
+          <p className="mt-1.5 text-[10px] text-ink-faint">含已变更到协议/已否等阶段 · 点击查看</p>
         </button>
 
         {/* 待决问题（可点击 → 待办面板） */}
         <button
           onClick={() => { setShowPending(true); setShowProjects(false); setShowCompleted(false) }}
-          className={`text-left rounded-xl border p-4 transition-all hover:shadow-sm ${
-            showPending ? 'bg-amber-50/50 border-amber-300 ring-2 ring-amber-100' : 'bg-white border-gray-100 hover:border-amber-200'
+          className={`text-left rounded-2xl bg-surface p-4 shadow-soft hover-lift ${
+            showPending ? 'ring-2 ring-warning-200' : ''
           }`}
         >
-          <p className="text-[11px] text-gray-400 font-medium">待决问题</p>
+          <p className="text-[11px] text-ink-faint font-medium">待决问题</p>
           <p className="mt-1">
-            <span className={`text-2xl font-bold ${(stats?.pendingItems.length ?? 0) > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+            <span className={`text-3xl font-bold tracking-tight ${(stats?.pendingItems.length ?? 0) > 0 ? 'text-warning-600' : 'text-emerald-600'}`}>
               {stats?.pendingItems.length ?? 0}
             </span>
-            <span className="text-xs text-gray-400 ml-1">会前关闭</span>
+            <span className="text-xs text-ink-faint ml-1">会前关闭</span>
           </p>
-          <p className="mt-1.5 text-[10px] text-gray-400">各项目需补充的资料缺口</p>
+          <p className="mt-1.5 text-[10px] text-ink-faint">各项目需补充的资料缺口</p>
         </button>
       </div>
 
       {/* ── 待办事项面板（点击统计卡展开） ── */}
       {showPending && (
-        <div className="dd-card rounded-2xl shadow-sm border p-6 mb-6">
-          <h2 className="text-base font-bold text-gray-900 mb-4">待办事项 · 各项目需补充的资料</h2>
+        <div className="dd-card rounded-2xl p-6 mb-6">
+          <h2 className="text-lg font-bold text-ink mb-4">待办事项 · 各项目需补充的资料</h2>
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#8d84e0]"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
             </div>
           ) : !stats || stats.pendingItems.length === 0 ? (
             <div className="py-8 text-center">
-              <div className="text-gray-300 text-4xl mb-2">🎉</div>
-              <p className="text-sm text-gray-500">所有项目资料齐全，暂无待办事项</p>
+              <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-gray-50 flex items-center justify-center">
+                <svg className="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p className="text-sm text-ink-muted">所有项目资料齐全，暂无待办事项</p>
             </div>
           ) : (
             <div className="space-y-4">
               {Object.entries(pendingByProject).map(([projectName, items]) => (
-                <div key={projectName} className="rounded-xl border border-amber-100 bg-amber-50/40 overflow-hidden">
-                  <div className="px-4 py-2.5 bg-amber-100/60 border-b border-amber-100 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-amber-800">{projectName}</span>
-                    <span className="text-xs text-amber-600">{items.length} 项待补充</span>
+                <div key={projectName} className="rounded-2xl bg-warning-50 overflow-hidden">
+                  <div className="px-4 py-2.5 bg-warning-100/60 flex items-center justify-between">
+                    <span className="text-sm font-semibold text-warning-800">{projectName}</span>
+                    <span className="text-xs text-warning-600">{items.length} 项待补充</span>
                   </div>
-                  <div className="divide-y divide-amber-50">
+                  <div className="divide-y divide-warning-100">
                     {items.map((item, i) => (
                       <button
                         key={`${item.projectId}-${i}`}
                         onClick={() => handleCardClick(item.projectId)}
-                        className="w-full text-left px-4 py-2.5 hover:bg-amber-50/60 transition-colors flex items-start gap-3"
+                        className="w-full text-left px-4 py-2.5 hover:bg-warning-100/60 transition-colors flex items-start gap-3"
                       >
-                        <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded flex-shrink-0 mt-0.5">
+                        <span className="pill bg-warning-100 text-warning-700 flex-shrink-0 mt-0.5">
                           {item.moduleName}
                         </span>
-                        <span className="text-sm text-gray-600 flex-1 line-clamp-2">{item.missing}</span>
-                        <svg className="w-4 h-4 text-gray-300 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        <span className="text-sm text-ink-muted flex-1 line-clamp-2">{item.missing}</span>
+                        <svg className="w-4 h-4 text-ink-faint flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 5l7 7-7 7" />
                         </svg>
                       </button>
                     ))}
@@ -262,26 +266,26 @@ export default function ResearchPage() {
       {showCompleted && (
         <div>
           <div className="flex items-center justify-between mb-3 px-1">
-            <h2 className="text-base font-bold text-gray-900">
+            <h2 className="text-lg font-bold text-ink">
               已完成尽调项目
-              <span className="text-sm font-normal text-gray-400 ml-2">{completedProjects.length} 个</span>
+              <span className="text-sm font-normal text-ink-faint ml-2">{completedProjects.length} 个</span>
             </h2>
-            <span className="text-xs text-gray-400">进入尽调阶段且已生成尽调报告 · 点击查看完整资料</span>
+            <span className="text-xs text-ink-faint">进入尽调阶段且已生成尽调报告 · 点击查看完整资料</span>
           </div>
 
           {loading ? (
             <div className="flex items-center justify-center py-16">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#8d84e0]"></div>
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
             </div>
           ) : completedProjects.length === 0 ? (
-            <div className="dd-card rounded-2xl shadow-sm p-16 text-center border">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[#efedfb] flex items-center justify-center">
-                <svg className="w-8 h-8 text-[#8d84e0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <div className="dd-card rounded-2xl p-16 text-center">
+              <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-gray-50 flex items-center justify-center">
+                <svg className="w-7 h-7 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">暂无已完成尽调的项目</h3>
-              <p className="text-gray-500">尽调工作台九大模块资料完整并生成尽调报告后，项目会进入此列表（变更到其他阶段后仍保留）</p>
+              <h3 className="text-lg font-bold text-ink mb-2">暂无已完成尽调的项目</h3>
+              <p className="text-ink-muted">尽调工作台九大模块资料完整并生成尽调报告后，项目会进入此列表（变更到其他阶段后仍保留）</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -291,41 +295,44 @@ export default function ResearchPage() {
                   <button
                     key={project.id}
                     onClick={() => handleCardClick(project.id)}
-                    className="w-full text-left dd-card rounded-xl shadow-sm hover:shadow-md transition-all-smooth border border-gray-100 px-4 py-3.5 group focus:outline-none focus:ring-2 focus:ring-emerald-200 hover:border-emerald-200"
+                    className="w-full text-left dd-card rounded-2xl card-hover px-4 py-3.5 group focus:outline-none focus:ring-2 focus:ring-primary-200"
                   >
                     {/* 第一行：报告徽标 + 项目名 + 定位 | 阶段 + 金额 + 估值 */}
                     <div className="flex items-center gap-3">
-                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-emerald-500 shadow-sm shadow-emerald-300" title="已生成尽调报告" />
-                      <h3 className="text-sm font-bold text-gray-900 group-hover:text-emerald-600 transition-colors truncate flex-shrink-0">
+                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-emerald-500" title="已生成尽调报告" />
+                      <h3 className="text-sm font-bold text-ink group-hover:text-primary-600 transition-colors truncate flex-shrink-0">
                         {project.name}
                       </h3>
                       {project.companyPosition && (
-                        <span className="text-xs text-gray-500 truncate hidden md:block">
+                        <span className="text-xs text-ink-muted truncate hidden md:block">
                           {project.companyPosition}
                         </span>
                       )}
                       {project.industry && (
-                        <span className="px-1.5 py-0.5 bg-slate-50 text-gray-500 text-[10px] rounded whitespace-nowrap flex-shrink-0 hidden lg:inline">
+                        <span className="pill bg-gray-50 text-ink-muted whitespace-nowrap flex-shrink-0 hidden lg:inline">
                           {project.industry}
                         </span>
                       )}
                       <div className="flex-1"></div>
-                      <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded whitespace-nowrap flex-shrink-0 ${followStageColors[stage] || 'bg-gray-100 text-gray-600'}`}>
+                      <span className={`pill whitespace-nowrap flex-shrink-0 ${followStageColors[stage] || 'bg-gray-100 text-ink-muted'}`}>
                         {followStageLabels[stage] || project.followStage}
                       </span>
-                      <span className="text-sm font-bold text-blue-600 whitespace-nowrap">
+                      <span className="text-sm font-bold text-ink whitespace-nowrap">
                         {project.totalAmount || '-'}
                       </span>
-                      <span className="text-sm font-bold text-indigo-600 whitespace-nowrap">
+                      <span className="text-sm font-bold text-ink-muted whitespace-nowrap">
                         估值 {fmtValuation(project.investmentValuation)}
                       </span>
                     </div>
                     {/* 第二行：完成说明 */}
                     <div className="mt-2 flex items-center gap-3">
-                      <span className="px-2 py-0.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-[10px] font-bold whitespace-nowrap flex-shrink-0">
-                        ✓ 九大模块尽调报告已生成
+                      <span className="pill bg-emerald-50 text-emerald-700 whitespace-nowrap flex-shrink-0">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M5 13l4 4L19 7" />
+                        </svg>
+                        九大模块尽调报告已生成
                       </span>
-                      <span className="text-[10px] text-gray-400 whitespace-nowrap">
+                      <span className="text-[10px] text-ink-faint whitespace-nowrap">
                         尽调完成于 {new Date(project.updatedAt).toLocaleDateString('zh-CN')} · 点击查看完整资料
                       </span>
                     </div>
@@ -341,32 +348,32 @@ export default function ResearchPage() {
       {showProjects && (
         <div>
           <div className="flex items-center justify-between mb-3 px-1">
-            <h2 className="text-base font-bold text-gray-900">
+            <h2 className="text-lg font-bold text-ink">
               我的尽调项目
-              <span className="text-sm font-normal text-gray-400 ml-2">{projects.length} 个</span>
+              <span className="text-sm font-normal text-ink-faint ml-2">{projects.length} 个</span>
             </h2>
-            <span className="text-xs text-gray-400">点击卡片进入尽调工作台</span>
+            <span className="text-xs text-ink-faint">点击卡片进入尽调工作台</span>
           </div>
 
           {loading ? (
             <div className="flex items-center justify-center py-16">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#8d84e0]"></div>
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
             </div>
           ) : error ? (
-            <div className="bg-red-50 rounded-2xl p-8 text-center border border-red-100">
-              <p className="text-red-600 mb-2">{error}</p>
-              <p className="text-sm text-gray-500">请刷新页面或重新登录后重试</p>
+            <div className="bg-danger-50 rounded-2xl p-8 text-center">
+              <p className="text-danger-600 mb-2">{error}</p>
+              <p className="text-sm text-ink-muted">请刷新页面或重新登录后重试</p>
             </div>
           ) : projects.length === 0 ? (
-            <div className="dd-card rounded-2xl shadow-sm p-16 text-center border">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[#efedfb] flex items-center justify-center">
-                <svg className="w-8 h-8 text-[#8d84e0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            <div className="dd-card rounded-2xl p-16 text-center">
+              <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-gray-50 flex items-center justify-center">
+                <svg className="w-7 h-7 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">暂无尽调阶段项目</h3>
-              <p className="text-gray-500 mb-2">项目进入尽调阶段后将自动显示在此列表</p>
-              <p className="text-xs text-gray-400">权限说明：投资合伙人可见所有尽调项目，其他角色仅可见自己维护的项目</p>
+              <h3 className="text-lg font-bold text-ink mb-2">暂无尽调阶段项目</h3>
+              <p className="text-ink-muted mb-2">项目进入尽调阶段后将自动显示在此列表</p>
+              <p className="text-xs text-ink-faint">权限说明：投资合伙人可见所有尽调项目，其他角色仅可见自己维护的项目</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -377,8 +384,8 @@ export default function ResearchPage() {
                   ? {
                       label: `${wb.status === 'IN_REVIEW' ? '复核中' : '尽调'}${wb.round ? ` · ${wb.round}` : ''} ${wb.done}/${wb.total}`,
                       cls: wb.status === 'IN_REVIEW'
-                        ? 'bg-amber-50 text-amber-700 border-amber-200'
-                        : 'bg-blue-50 text-blue-700 border-blue-200',
+                        ? 'bg-warning-50 text-warning-700 border-warning-200'
+                        : 'bg-primary-50 text-primary-700 border-primary-200',
                       title: `尽调批次${wb.round ? `（${wb.round}）` : ''}：${wb.done}/${wb.total} 模块完成${wb.redFlags > 0 ? ` · ${wb.redFlags} 个红旗` : ''}`,
                     }
                   : project.frozenBatchCount > 0
@@ -392,18 +399,18 @@ export default function ResearchPage() {
                   <button
                     key={project.id}
                     onClick={() => handleCardClick(project.id)}
-                    className="w-full text-left dd-card rounded-xl shadow-sm hover:shadow-md transition-all-smooth border border-gray-100 px-4 py-3.5 group focus:outline-none focus:ring-2 focus:ring-blue-200 hover:border-blue-200"
+                    className="w-full text-left dd-card rounded-2xl card-hover px-4 py-3.5 group focus:outline-none focus:ring-2 focus:ring-primary-200"
                   >
                     {/* 第一行：状态灯 + 项目名 + 定位 | 金额 + 估值 + 待补 */}
                     <div className="flex items-center gap-3">
                       <span
                         className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
                           project.hasCompletedReport || project.reportReady
-                            ? 'bg-emerald-500 shadow-sm shadow-emerald-300'
+                            ? 'bg-emerald-500'
                             : project.ddReportStatus === 'RUNNING'
-                              ? 'bg-blue-500 animate-pulse'
+                              ? 'bg-primary-500 animate-pulse'
                               : project.pendingCount > 0
-                                ? 'bg-amber-500 shadow-sm shadow-amber-300'
+                                ? 'bg-warning-500'
                                 : 'bg-gray-300'
                         }`}
                         title={
@@ -413,28 +420,28 @@ export default function ResearchPage() {
                             : '未生成报告'
                         }
                       />
-                      <h3 className="text-sm font-bold text-gray-900 group-hover:text-blue-600 transition-colors truncate flex-shrink-0">
+                      <h3 className="text-sm font-bold text-ink group-hover:text-primary-600 transition-colors truncate flex-shrink-0">
                         {project.name}
                       </h3>
                       {project.companyPosition && (
-                        <span className="text-xs text-gray-500 truncate hidden md:block">
+                        <span className="text-xs text-ink-muted truncate hidden md:block">
                           {project.companyPosition}
                         </span>
                       )}
                       {project.industry && (
-                        <span className="px-1.5 py-0.5 bg-slate-50 text-gray-500 text-[10px] rounded whitespace-nowrap flex-shrink-0 hidden lg:inline">
+                        <span className="pill bg-gray-50 text-ink-muted whitespace-nowrap flex-shrink-0 hidden lg:inline">
                           {project.industry}
                         </span>
                       )}
                       <div className="flex-1"></div>
-                      <span className="text-sm font-bold text-blue-600 whitespace-nowrap">
+                      <span className="text-sm font-bold text-ink whitespace-nowrap">
                         {project.totalAmount || '-'}
                       </span>
-                      <span className="text-sm font-bold text-indigo-600 whitespace-nowrap">
+                      <span className="text-sm font-bold text-ink-muted whitespace-nowrap">
                         估值 {fmtValuation(project.investmentValuation)}
                       </span>
                       {project.pendingCount > 0 && (
-                        <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full whitespace-nowrap">
+                        <span className="pill bg-warning-100 text-warning-700 whitespace-nowrap">
                           {project.pendingCount}项待补
                         </span>
                       )}
@@ -444,12 +451,12 @@ export default function ResearchPage() {
                     <div className="mt-2.5 flex items-center gap-3">
                       {batchBadge ? (
                         <span
-                          className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold whitespace-nowrap flex-shrink-0 ${batchBadge.cls}`}
+                          className={`pill border whitespace-nowrap flex-shrink-0 ${batchBadge.cls}`}
                           title={batchBadge.title}
                         >
                           {batchBadge.label}
                           {wb && wb.redFlags > 0 && (
-                            <span className="text-red-500 ml-1">⚑{wb.redFlags}</span>
+                            <span className="text-danger-500 ml-1">⚑{wb.redFlags}</span>
                           )}
                         </span>
                       ) : null}
@@ -460,11 +467,11 @@ export default function ResearchPage() {
                           title={`资料完善 ${project.resourceCompleteCount}/9 模块 · 平均完整度 ${project.resourceProgressPct}%`}
                         >
                           <div
-                            className="h-full bg-gradient-to-r from-[#b6b1ee] to-[#8d84e0] rounded-full transition-all"
+                            className="h-full bg-primary-600 rounded-full transition-all"
                             style={{ width: `${project.resourceProgressPct}%` }}
                           />
                         </div>
-                        <span className="text-[10px] text-gray-400 whitespace-nowrap flex-shrink-0">
+                        <span className="text-[10px] text-ink-faint whitespace-nowrap flex-shrink-0">
                           资料完善 {project.resourceCompleteCount}/9 模块
                         </span>
                       </div>

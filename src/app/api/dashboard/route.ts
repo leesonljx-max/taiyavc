@@ -69,7 +69,7 @@ export async function GET() {
         targetDate: true,
         stageChangedAt: true,
         createdById: true,
-        createdBy: { select: { name: true } },
+        createdBy: { select: { name: true, avatar: true } },
       },
     })
     const visibleProjects = lightRows
@@ -151,6 +151,7 @@ export async function GET() {
         createdAt: detail?.createdAt || null,
         aiCard,
         maintainerName: p.createdBy?.name || '未分配',
+        maintainerAvatar: p.createdBy?.avatar || null,
       }
     })
 
@@ -160,6 +161,7 @@ export async function GET() {
     const maintainerMap = new Map<string, {
       userId: string
       userName: string
+      userAvatar: string | null
       stageCounts: Record<string, number>
       projects: Array<{
         id: string
@@ -179,10 +181,12 @@ export async function GET() {
     for (const userId of allUserIds) {
       const sampleProject = weeklyNewProjects.find(p => p.createdById === userId)
       const userName = sampleProject?.createdBy?.name || '未分配'
+      const userAvatar = sampleProject?.createdBy?.avatar || null
 
       maintainerMap.set(userId, {
         userId,
         userName,
+        userAvatar,
         stageCounts: {
           INITIAL_TALK: 0,
           PRE_DD: 0,

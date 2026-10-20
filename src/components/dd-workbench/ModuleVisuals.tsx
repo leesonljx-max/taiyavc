@@ -35,8 +35,8 @@ const STATE_CHIP: Record<string, { label: string; cls: string; dot: string }> = 
   conflict: { label: '存在冲突', cls: 'bg-red-50 text-red-600 border-red-200', dot: 'bg-red-500' },
 }
 
-const BLUE = '#2563eb'
-const GRAY_LINE = '#cbd5e1'
+const BLUE = '#2563EB'
+const GRAY_LINE = '#E2E8F0'
 
 /** 通用小节点卡片 */
 function VNode({
@@ -52,14 +52,14 @@ function VNode({
 }) {
   const chip =
     state === 'done'
-      ? { label: '已冻结', cls: 'bg-indigo-50 text-indigo-600 border-indigo-200', dot: 'bg-indigo-500' }
+      ? { label: '已冻结', cls: 'bg-primary-50 text-primary-600 border-primary-200', dot: 'bg-primary-500' }
       : state
         ? STATE_CHIP[state]
         : null
   return (
     <div
-      className={`px-3 py-2 rounded-xl bg-white border shadow-sm text-center ${
-        highlight ? 'border-blue-400 ring-2 ring-blue-100' : 'border-gray-200'
+      className={`px-3 py-2 rounded-xl bg-surface border shadow-soft text-center ${
+        highlight ? 'border-primary-400 ring-2 ring-primary-100' : 'border-hairline'
       }`}
     >
       <div className="text-xs font-bold text-gray-800 whitespace-nowrap">{title}</div>
@@ -77,7 +77,7 @@ function VNode({
 /** 视觉容器（统一高度与背景网格） */
 function VisualFrame({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-gray-100 bg-gradient-to-br from-slate-50 to-blue-50/40 p-4 overflow-x-auto">
+    <div className="rounded-2xl bg-gray-50 p-4 overflow-x-auto">
       <p className="text-[11px] text-gray-400 mb-3 font-medium">{title}</p>
       <div className="min-w-[420px]">{children}</div>
     </div>
@@ -97,8 +97,8 @@ function EntityStructure({ task, projectName }: ModuleVisualProps) {
           <line x1="210" y1="105" x2="350" y2="170" stroke={GRAY_LINE} strokeWidth="1.5" />
         </svg>
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          <div className="px-4 py-3 rounded-2xl bg-white border-2 border-blue-500 shadow-lg shadow-blue-100 text-center">
-            <div className="text-xs font-bold text-blue-700">{projectName}</div>
+          <div className="px-4 py-3 rounded-2xl bg-surface border-2 border-primary-500 shadow-soft text-center">
+            <div className="text-xs font-bold text-primary-700">{projectName}</div>
             <div className="text-[10px] text-gray-400 mt-0.5">项目主体 · 关键事实</div>
           </div>
         </div>
@@ -129,8 +129,8 @@ function TechMap({ task }: ModuleVisualProps) {
             <div
               className="flex-1 rounded-xl border px-4 py-3 flex items-center justify-between"
               style={{
-                borderColor: i === 1 ? BLUE : '#e2e8f0',
-                background: i === 1 ? 'rgba(37,99,235,0.06)' : '#fff',
+                borderColor: i === 1 ? BLUE : '#E6E6E6',
+                background: i === 1 ? 'rgba(37,99,235,0.08)' : '#fff',
               }}
             >
               <div>
@@ -209,12 +209,12 @@ function MarketFunnel({ task }: ModuleVisualProps) {
             key={lv.label}
             className={`${lv.w} py-2.5 rounded-lg text-center border-2 ${
               lv.s === 'confirmed'
-                ? 'bg-blue-500/90 border-blue-400 text-white'
-                : 'bg-white border-dashed border-blue-200 text-blue-500'
+                ? 'bg-primary-500 border-primary-400 text-white'
+                : 'bg-surface border-dashed border-primary-200 text-primary-500'
             }`}
           >
             <span className="text-xs font-bold">{lv.label}</span>
-            <span className={`ml-2 text-[10px] ${lv.s === 'confirmed' ? 'text-blue-100' : 'text-amber-500'}`}>
+            <span className={`ml-2 text-[10px] ${lv.s === 'confirmed' ? 'text-primary-100' : 'text-amber-500'}`}>
               {lv.s === 'confirmed' ? '有证据支撑' : '待核验'}
             </span>
           </div>
@@ -245,7 +245,7 @@ function RevenueBridge({ task }: ModuleVisualProps) {
           return (
             <div key={s.label} className="flex flex-col items-center gap-1.5 flex-1">
               <div
-                className={`w-full rounded-t-lg transition-all ${filled ? 'bg-gradient-to-t from-blue-600 to-blue-400' : 'bg-gray-200 border border-dashed border-gray-300 border-b-0'}`}
+                className={`w-full rounded-t-lg transition-all ${filled ? 'bg-primary-500' : 'bg-gray-200 border border-dashed border-gray-300 border-b-0'}`}
                 style={{ height: `${s.base + (filled ? 25 : 0)}px` }}
               />
               <span className="text-[10px] font-bold text-gray-600 whitespace-nowrap">{s.label}</span>
@@ -278,8 +278,8 @@ function CompetitionMatrix({ task }: ModuleVisualProps) {
         <span className="absolute -bottom-4 right-0 text-[9px] text-gray-400">商业化进度 →</span>
         {/* 本项目（高亮位置） */}
         <div className="absolute left-[68%] top-[22%] -translate-x-1/2 -translate-y-1/2 text-center">
-          <div className={`w-4 h-4 rounded-full mx-auto border-2 ${st === 'confirmed' ? 'bg-blue-500 border-blue-300' : 'bg-white border-blue-400'}`} />
-          <span className="text-[9px] font-bold text-blue-600">本项目</span>
+          <div className={`w-4 h-4 rounded-full mx-auto border-2 ${st === 'confirmed' ? 'bg-primary-500 border-primary-300' : 'bg-surface border-primary-400'}`} />
+          <span className="text-[9px] font-bold text-primary-600">本项目</span>
         </div>
         {/* 竞品占位（证据状态驱动） */}
         {[
@@ -318,15 +318,15 @@ function FinanceTrend({ task }: ModuleVisualProps) {
         {confirmed ? (
           <path d="M50 105 L130 88 L210 70 L290 48 L370 30" stroke={BLUE} strokeWidth="2.5" fill="none" strokeLinecap="round" />
         ) : (
-          <path d="M50 105 L130 95 L210 82 L290 66 L370 55" stroke="#94a3b8" strokeWidth="2" strokeDasharray="5 4" fill="none" />
+          <path d="M50 105 L130 95 L210 82 L290 66 L370 55" stroke="#9E9E9E" strokeWidth="2" strokeDasharray="5 4" fill="none" />
         )}
         {/* 毛利带 */}
-        <path d="M50 110 L130 100 L210 90 L290 76 L370 62 L370 78 L290 90 L210 102 L130 110 L50 115 Z" fill="rgba(37,99,235,0.08)" />
+        <path d="M50 110 L130 100 L210 90 L290 76 L370 62 L370 78 L290 90 L210 102 L130 110 L50 115 Z" fill="rgba(37,99,235,0.10)" />
         {[50, 130, 210, 290, 370].map((x, i) => (
-          <circle key={x} cx={x} cy={confirmed ? [105, 88, 70, 48, 30][i] : [105, 95, 82, 66, 55][i]} r="3" fill={confirmed ? BLUE : '#94a3b8'} />
+          <circle key={x} cx={x} cy={confirmed ? [105, 88, 70, 48, 30][i] : [105, 95, 82, 66, 55][i]} r="3" fill={confirmed ? BLUE : '#9E9E9E'} />
         ))}
-        <text x="46" y="132" fontSize="9" fill="#94a3b8">期初</text>
-        <text x="358" y="132" fontSize="9" fill="#94a3b8">本期</text>
+        <text x="46" y="132" fontSize="9" fill="#9E9E9E">期初</text>
+        <text x="358" y="132" fontSize="9" fill="#9E9E9E">本期</text>
       </svg>
       <div className="flex items-center gap-3 mt-1">
         <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${STATE_CHIP[st].cls}`}>
@@ -412,7 +412,7 @@ function ValuationTree({ task }: ModuleVisualProps) {
         <span className="text-[10px] text-gray-400">回报测算与决策建议：</span>
         <span
           className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${
-            task.status === 'DONE' ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : STATE_CHIP.pending.cls
+            task.status === 'DONE' ? 'bg-primary-50 text-primary-600 border-primary-200' : STATE_CHIP.pending.cls
           }`}
         >
           {task.status === 'DONE' ? '结论已冻结' : '待投委会决策'}

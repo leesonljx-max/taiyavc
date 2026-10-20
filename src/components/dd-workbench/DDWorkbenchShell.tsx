@@ -221,8 +221,8 @@ export default function DDWorkbenchShell({
 
   if (loading) {
     return (
-      <div className="dd-card rounded-2xl shadow-sm border p-10 flex justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#8d84e0]"></div>
+      <div className="dd-card rounded-2xl p-10 flex justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
       </div>
     )
   }
@@ -245,7 +245,7 @@ export default function DDWorkbenchShell({
           <div className="flex items-start justify-between gap-3 flex-wrap mb-5">
             <div>
               <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#b6b1ee] to-[#8d84e0] flex items-center justify-center text-white">
+                <span className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center text-white">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" /></svg>
                 </span>
                 尽调工作台 · {projectName}
@@ -256,7 +256,7 @@ export default function DDWorkbenchShell({
               {reportReady && (
                 <button
                   onClick={() => setShowFullReport(true)}
-                  className="px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-xl shadow-md shadow-emerald-500/25 hover:bg-emerald-700"
+                  className="btn-primary"
                   title="查看九大模块汇总的完整尽调报告"
                 >
                   📄 查看尽调报告
@@ -265,10 +265,10 @@ export default function DDWorkbenchShell({
               <button
                 onClick={handleGenerateReport}
                 disabled={generating || !canEdit}
-                className={`px-4 py-2 text-sm font-bold rounded-xl shadow-md transition-all ${
+                className={`px-4 py-2 text-sm font-bold rounded-full transition-all ${
                   allComplete && canEdit && !generating
-                    ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-500/25'
-                    : 'bg-gray-200 text-gray-500 cursor-not-allowed shadow-none'
+                    ? 'bg-primary-600 text-white hover:bg-primary-700'
+                    : 'bg-gray-200 text-gray-500 cursor-not-allowed'
                 }`}
                 title={!allComplete ? '九大模块资料完整后变为蓝色可点击' : '按九大模块生成尽调报告'}
               >
@@ -276,7 +276,7 @@ export default function DDWorkbenchShell({
               </button>
               <button
                 onClick={() => setFlipped(true)}
-                className="px-4 py-2 bg-gradient-to-r from-[#b6b1ee] to-[#8d84e0] text-white text-sm font-bold rounded-xl shadow-md shadow-[#b6b1ee]/40 hover:from-[#a8a2e8] hover:to-[#7d73d8]"
+                className="btn-primary"
               >
                 📂 资料中心
               </button>
@@ -284,14 +284,14 @@ export default function DDWorkbenchShell({
           </div>
 
           {reportMsg && (
-            <div className={`mb-4 p-3 rounded-xl text-xs border ${allComplete ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>{reportMsg}</div>
+            <div className={`mb-4 p-3 rounded-xl text-xs border ${allComplete ? 'bg-primary-50 text-primary-700 border-primary-100' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>{reportMsg}</div>
           )}
           {error && <div className="mb-4 p-3 rounded-xl text-xs bg-red-50 text-red-600 border border-red-100">{error}</div>}
 
           {/* 资料完整进度条 */}
           <div className="mb-4 flex items-center gap-3">
-            <div className="flex-1 h-2 bg-[#efedfb] rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-[#b6b1ee] to-[#8d84e0] rounded-full transition-all" style={{ width: `${resources.length ? (completedCount / resources.length) * 100 : 0}%` }} />
+            <div className="flex-1 h-2 bg-primary-50 rounded-full overflow-hidden">
+              <div className="h-full bg-primary-500 rounded-full transition-all" style={{ width: `${resources.length ? (completedCount / resources.length) * 100 : 0}%` }} />
             </div>
             <span className="text-xs text-gray-500 flex-shrink-0">资料完整 {completedCount}/{resources.length} 模块</span>
           </div>
@@ -308,21 +308,21 @@ export default function DDWorkbenchShell({
                 <button
                   key={res.moduleKey}
                   onClick={() => setSelectedKey(active ? null : res.moduleKey)}
-                  className={`text-left p-3.5 rounded-xl border transition-all ${
+                  className={`text-left p-3.5 rounded-2xl border transition-all ${
                     active
-                      ? 'border-[#8d84e0] bg-gradient-to-br from-[#efedfb] to-[#f7f5fd] shadow-md ring-2 ring-[#b6b1ee]/40'
+                      ? 'border-primary-500 bg-primary-50 shadow-soft ring-2 ring-primary-200/40'
                       : complete
-                        ? 'border-[#ddd7f2] bg-white hover:border-[#b6b1ee] hover:shadow-sm'
-                        : 'border-dashed border-gray-300 bg-gray-50/50 hover:border-[#b6b1ee]'
+                        ? 'border-hairline bg-white hover:border-primary-300 hover:shadow-sm'
+                        : 'border-dashed border-gray-300 bg-gray-50/50 hover:border-primary-300'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] font-black text-[#8d84e0]">{String(i + 1).padStart(2, '0')}</span>
+                    <span className="text-[10px] font-black text-primary-500">{String(i + 1).padStart(2, '0')}</span>
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
                       res.moduleKey === 'TEAM_GOVERNANCE' && res.teamEvaluationConfirmed !== true
                         ? 'bg-amber-50 text-amber-600'
                         : analyzed
-                          ? 'bg-blue-50 text-blue-600'
+                          ? 'bg-primary-50 text-primary-600'
                           : complete
                             ? 'bg-amber-50 text-amber-600'
                             : 'bg-gray-100 text-gray-400'
@@ -344,14 +344,14 @@ export default function DDWorkbenchShell({
                       <span>资料完整度</span>
                       <span className="font-bold">{progress}%</span>
                     </div>
-                    <div className="h-1.5 bg-[#efedfb] rounded-full overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-[#b6b1ee] to-[#8d84e0] rounded-full transition-all" style={{ width: `${progress}%` }} />
+                    <div className="h-1.5 bg-primary-50 rounded-full overflow-hidden">
+                      <div className="h-full bg-primary-500 rounded-full transition-all" style={{ width: `${progress}%` }} />
                     </div>
                   </div>
                   <div className="mt-1.5 flex items-center gap-1.5 text-[10px] flex-wrap">
-                    {c.docs > 0 && <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded">📄 {c.docs}</span>}
-                    {c.texts > 0 && <span className="px-1.5 py-0.5 bg-teal-50 text-teal-600 rounded">📝 {c.texts}</span>}
-                    {c.shots > 0 && <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded">🖼 {c.shots}</span>}
+                    {c.docs > 0 && <span className="px-1.5 py-0.5 bg-primary-50 text-primary-600 rounded">📄 {c.docs}</span>}
+                    {c.texts > 0 && <span className="px-1.5 py-0.5 bg-primary-50 text-primary-600 rounded">📝 {c.texts}</span>}
+                    {c.shots > 0 && <span className="px-1.5 py-0.5 bg-primary-50 text-primary-600 rounded">🖼 {c.shots}</span>}
                     {res.report && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded">📊 报告</span>}
                     {c.docs + c.texts + c.shots === 0 && <span className="text-gray-300">待补充</span>}
                   </div>
@@ -362,10 +362,10 @@ export default function DDWorkbenchShell({
             {reportReady && decision && (
               <button
                 onClick={() => setSelectedKey(selectedKey === DECISION_KEY ? null : DECISION_KEY)}
-                className={`text-left p-3.5 rounded-xl border-2 transition-all ${
+                className={`text-left p-3.5 rounded-2xl border-2 transition-all ${
                   selectedKey === DECISION_KEY
-                    ? 'border-amber-400 bg-gradient-to-br from-amber-50 to-yellow-50/50 shadow-md ring-2 ring-amber-300/40'
-                    : 'border-amber-200 bg-gradient-to-br from-amber-50 to-yellow-50/30 hover:shadow-sm hover:border-amber-400'
+                    ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-300/40'
+                    : 'border-amber-200 bg-amber-50 hover:border-amber-400'
                 }`}
               >
                 <div className="flex items-center justify-between mb-1.5">
@@ -420,14 +420,14 @@ export default function DDWorkbenchShell({
           <div className="flex items-center justify-between gap-3 flex-wrap mb-5">
             <div>
               <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#8d84e0] to-[#6f63c9] flex items-center justify-center text-white">
+                <span className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center text-white">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
                 </span>
                 资料中心 · {projectName}
               </h2>
               <p className="text-xs text-gray-400 mt-1">九大模块的文档与文本都在这里管理（文本框支持直接粘贴截图） · 上传后前台模块与报告自动汇总</p>
             </div>
-            <button onClick={() => setFlipped(false)} className="px-4 py-2 bg-white border border-[#ddd7f2] text-[#6f63c9] text-sm font-bold rounded-xl hover:bg-[#efedfb]">
+            <button onClick={() => setFlipped(false)} className="px-4 py-2 bg-surface border border-hairline text-primary-600 text-sm font-bold rounded-full hover:bg-primary-50">
               ← 返回工作台
             </button>
           </div>
@@ -483,17 +483,17 @@ function DDFullReportModal({
     .reduce((a, b) => Math.max(a, b), 0)
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50" onClick={onClose}>
       <div
-        className="bg-white rounded-2xl shadow-2xl flex flex-col"
+        className="bg-surface rounded-2xl shadow-soft-lg flex flex-col"
         style={{ width: '86vw', height: '88vh', maxWidth: '1100px' }}
         onClick={e => e.stopPropagation()}
       >
         {/* 头部 */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-hairline flex-shrink-0">
           <div>
             <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#b6b1ee] to-[#8d84e0] flex items-center justify-center text-white">
+              <span className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center text-white">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
               </span>
               尽调报告 · {projectName}
@@ -504,7 +504,7 @@ function DDFullReportModal({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
             aria-label="关闭"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -518,7 +518,7 @@ function DDFullReportModal({
           {modules.map((r, i) => (
             <section key={r.moduleKey} className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
               <div className="flex items-center gap-2.5 mb-1">
-                <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#b6b1ee] to-[#8d84e0] text-white text-xs font-black flex items-center justify-center flex-shrink-0">
+                <span className="w-7 h-7 rounded-full bg-primary-600 text-white text-xs font-black flex items-center justify-center flex-shrink-0">
                   {String(i + 1).padStart(2, '0')}
                 </span>
                 <h4 className="text-base font-bold text-gray-900">{r.moduleName}</h4>
@@ -530,8 +530,8 @@ function DDFullReportModal({
               />
               {r.report!.teamEvaluation && <ReportTeamEvaluationTable te={r.report!.teamEvaluation} />}
               {r.verification && r.verification.claims.length > 0 && (
-                <div className="mt-3 px-3 py-2 rounded-xl bg-sky-50/60 border border-sky-100 flex items-center gap-2 flex-wrap">
-                  <span className="text-[11px] font-bold text-sky-700">🔍 外部校验</span>
+                <div className="mt-3 px-3 py-2 rounded-xl bg-primary-50/60 border border-primary-100 flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-bold text-primary-700">🔍 外部校验</span>
                   <span className="text-[11px] text-gray-600">{r.verification.summary}</span>
                   {r.verification.claims
                     .filter(c => c.verdict === 'EXAGGERATED' || c.verdict === 'CONTRADICTED')
@@ -593,8 +593,8 @@ const IC_QUESTION_HINTS: Record<string, string> = {
 /** 证据等级徽章样式 */
 const gradeStyles: Record<string, string> = {
   A: 'bg-emerald-100 text-emerald-700',
-  B: 'bg-blue-100 text-blue-700',
-  C: 'bg-indigo-100 text-indigo-700',
+  B: 'bg-primary-100 text-primary-700',
+  C: 'bg-primary-100 text-primary-700',
   D: 'bg-gray-200 text-gray-600',
 }
 /** 事实状态徽章样式 */
@@ -755,16 +755,16 @@ function FrontModuleDetail({
   }
 
   return (
-    <div className="mt-5 pt-5 border-t border-[#efedfb]">
+    <div className="mt-5 pt-5 border-t border-hairline">
       {/* ── 详情头部：模块定位 + 前后切换 + 视图切换 ── */}
-      <div className="flex items-center justify-between flex-wrap gap-2 px-4 py-3 rounded-t-2xl bg-slate-50/80 border border-gray-100 border-b-0">
+      <div className="flex items-center justify-between flex-wrap gap-2 px-4 py-3 rounded-t-2xl bg-gray-50/80 border border-gray-100 border-b-0">
         <div className="flex items-center gap-3 flex-wrap">
-          <span className="px-2 py-0.5 rounded-lg bg-blue-600 text-white text-[10px] font-black">
+          <span className="px-2 py-0.5 rounded-full bg-primary-600 text-white text-[10px] font-black">
             模块 {String(moduleIdx + 1).padStart(2, '0')}
           </span>
-          <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border ${
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
             module.analysis
-              ? 'bg-blue-50 text-blue-700 border-blue-200'
+              ? 'bg-primary-50 text-primary-700 border-primary-200'
               : isComplete(module)
                 ? 'bg-amber-50 text-amber-700 border-amber-200'
                 : 'bg-white text-gray-400 border-gray-200'
@@ -778,7 +778,7 @@ function FrontModuleDetail({
             <button
               onClick={() => moduleIdx > 0 && onSelectModule(modules[moduleIdx - 1].moduleKey)}
               disabled={moduleIdx === 0}
-              className="px-1.5 py-0.5 text-gray-400 hover:text-blue-600 disabled:opacity-30"
+              className="px-1.5 py-0.5 text-gray-400 hover:text-primary-600 disabled:opacity-30"
               title="上一模块"
             >
               ←
@@ -786,7 +786,7 @@ function FrontModuleDetail({
             <button
               onClick={() => moduleIdx < modules.length - 1 && onSelectModule(modules[moduleIdx + 1].moduleKey)}
               disabled={moduleIdx >= modules.length - 1}
-              className="px-1.5 py-0.5 text-gray-400 hover:text-blue-600 disabled:opacity-30"
+              className="px-1.5 py-0.5 text-gray-400 hover:text-primary-600 disabled:opacity-30"
               title="下一模块"
             >
               →
@@ -794,7 +794,7 @@ function FrontModuleDetail({
           </div>
         </div>
         {/* 视图切换：专属视觉 | 事实卡 */}
-        <div className="flex items-center bg-white border border-gray-200 rounded-xl p-0.5 gap-0.5">
+        <div className="flex items-center bg-surface border border-hairline rounded-full p-0.5 gap-0.5">
           {([
             { key: 'visual' as const, label: `${visualLabel}图` },
             { key: 'facts' as const, label: '事实卡' },
@@ -802,8 +802,8 @@ function FrontModuleDetail({
             <button
               key={v.key}
               onClick={() => setView(v.key)}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                view === v.key ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                view === v.key ? 'bg-primary-600 text-white' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               {v.label}
@@ -823,11 +823,11 @@ function FrontModuleDetail({
                 else if (s.key === 'extract') setView('facts')
                 else document.getElementById('dd-conclusion-editor')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
               }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
                 i === currentStep
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25'
+                  ? 'bg-primary-600 text-white'
                   : s.done
-                    ? 'bg-blue-50 text-blue-600 border border-blue-100'
+                    ? 'bg-primary-50 text-primary-600 border border-primary-100'
                     : 'bg-gray-50 text-gray-400 border border-gray-100 hover:text-gray-600'
               }`}
             >
@@ -836,13 +836,13 @@ function FrontModuleDetail({
           </div>
         ))}
         {factStats.conflict > 0 && (
-          <span className="ml-3 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-red-100 text-red-600 flex-shrink-0">
+          <span className="ml-3 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-600 flex-shrink-0">
             ⚑ {factStats.conflict} 条事实冲突待人工裁决
           </span>
         )}
       </div>
 
-      {opMsg && <div className="mb-4 p-3 rounded-xl text-xs bg-blue-50 text-blue-700 border border-blue-100">{opMsg}</div>}
+      {opMsg && <div className="mb-4 p-3 rounded-xl text-xs bg-primary-50 text-primary-700 border border-primary-100">{opMsg}</div>}
       {opErr && <div className="mb-4 p-3 rounded-xl text-xs bg-red-50 text-red-600 border border-red-100">{opErr}</div>}
 
       {/* ── 主区：双列（主视觉/事实卡/结论 | 证据与行动 + 投委会问答） ── */}
@@ -855,10 +855,10 @@ function FrontModuleDetail({
               <button
                 onClick={runAnalyze}
                 disabled={analyzing || !isComplete(module)}
-                className={`px-4 py-2 text-sm font-bold rounded-xl shadow-md transition-all ${
+                className={`px-4 py-2 text-sm font-bold rounded-full transition-all ${
                   isComplete(module) && !analyzing
-                    ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-500/25'
-                    : 'bg-gray-200 text-gray-500 cursor-not-allowed shadow-none'
+                    ? 'bg-primary-600 text-white hover:bg-primary-700'
+                    : 'bg-gray-200 text-gray-500 cursor-not-allowed'
                 }`}
               >
                 {analyzing ? '⏳ AI 分析中...' : module.analysis ? '🔄 重新分析' : '▶ 开始分析'}
@@ -867,7 +867,7 @@ function FrontModuleDetail({
                 <span className="text-[10px] text-gray-400">上次分析：{new Date(module.analysis.analyzedAt).toLocaleString('zh-CN')}</span>
               )}
               {!isComplete(module) && (
-                <button onClick={onOpenResourceCenter} className="text-[11px] text-[#6f63c9] hover:underline">
+                <button onClick={onOpenResourceCenter} className="text-[11px] text-primary-600 hover:underline">
                   请先到资料中心上传该模块资料 →
                 </button>
               )}
@@ -891,7 +891,7 @@ function FrontModuleDetail({
                 <button
                   onClick={saveConclusion}
                   disabled={savingConclusion || conclusion === (module.conclusion || '')}
-                  className="text-xs px-3 py-1 bg-blue-50 text-blue-700 rounded-lg font-bold hover:bg-blue-100 disabled:opacity-40"
+                  className="text-xs px-3 py-1 bg-primary-50 text-primary-700 rounded-full font-bold hover:bg-primary-100 disabled:opacity-40"
                 >
                   {savingConclusion ? '保存中...' : '保存结论'}
                 </button>
@@ -903,7 +903,7 @@ function FrontModuleDetail({
               disabled={!canEdit}
               rows={4}
               placeholder={`回答核心问题「${module.coreQuestion}」：判断 + 关键依据 + 下一步动作`}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-300 focus:border-blue-300 disabled:bg-gray-50 disabled:text-gray-500 resize-y"
+              className="w-full input-field disabled:bg-gray-50 disabled:text-gray-500 resize-y"
             />
           </div>
 
@@ -918,8 +918,8 @@ function FrontModuleDetail({
           )}
 
           {/* 模块资料（折叠）：文档 / 文本 / 截图 + 模块报告 */}
-          <details className="rounded-xl border border-[#efedfb] bg-white">
-            <summary className="cursor-pointer px-4 py-2.5 text-xs font-bold text-[#6f63c9] select-none">
+          <details className="rounded-2xl bg-surface shadow-soft">
+            <summary className="cursor-pointer px-4 py-2.5 text-xs font-bold text-primary-600 select-none">
               📎 模块资料（📄 {c.docs} · 📝 {c.texts} · 🖼 {c.shots}）{module.report ? ' · 📊 含报告' : ''}
               <span className="ml-2 font-normal text-gray-400">点击展开查看</span>
             </summary>
@@ -935,9 +935,9 @@ function FrontModuleDetail({
                       <button
                         key={doc.id}
                         onClick={() => setPreviewDoc({ fileName: doc.fileName, fileUrl: doc.fileUrl, fileType: doc.fileType })}
-                        className="w-full flex items-center gap-2 p-2 bg-[#faf9fe] border border-[#efedfb] rounded-lg text-left hover:border-[#b6b1ee] text-xs"
+                        className="w-full flex items-center gap-2 p-2 bg-gray-50 border border-hairline rounded-lg text-left hover:border-primary-300 text-xs"
                       >
-                        <span className="text-[#8d84e0] font-bold flex-shrink-0">{doc.fileType.includes('pdf') ? 'PDF' : doc.fileType.includes('word') ? 'DOC' : doc.fileType.includes('sheet') ? 'XLS' : doc.fileType.includes('text') ? 'TXT' : 'PPT'}</span>
+                        <span className="text-primary-500 font-bold flex-shrink-0">{doc.fileType.includes('pdf') ? 'PDF' : doc.fileType.includes('word') ? 'DOC' : doc.fileType.includes('sheet') ? 'XLS' : doc.fileType.includes('text') ? 'TXT' : 'PPT'}</span>
                         <span className="flex-1 truncate text-gray-700">{doc.fileName}</span>
                         <span className="text-gray-400 flex-shrink-0">{(doc.fileSize / 1024 / 1024).toFixed(1)}MB</span>
                       </button>
@@ -952,7 +952,7 @@ function FrontModuleDetail({
                     {module.textBlocks.filter(t => t.content.trim()).map(t => (
                       <div
                         key={t.id}
-                        className="p-2.5 bg-[#faf9fe] border border-[#efedfb] rounded-lg text-xs text-gray-700 leading-relaxed [&_img]:max-w-full [&_img]:rounded-lg"
+                        className="p-2.5 bg-gray-50 border border-hairline rounded-lg text-xs text-gray-700 leading-relaxed [&_img]:max-w-full [&_img]:rounded-lg"
                         dangerouslySetInnerHTML={{ __html: sanitizeRichText(t.content) }}
                       />
                     ))}
@@ -965,7 +965,7 @@ function FrontModuleDetail({
                   <div className="flex flex-wrap gap-2">
                     {module.screenshots.map(s => (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img key={s.id} src={s.url} alt={s.fileName} className="w-20 h-20 object-cover rounded-lg border border-[#ddd7f2] cursor-pointer hover:opacity-80" onClick={() => window.open(s.url, '_blank')} />
+                      <img key={s.id} src={s.url} alt={s.fileName} className="w-20 h-20 object-cover rounded-lg border border-hairline cursor-pointer hover:opacity-80" onClick={() => window.open(s.url, '_blank')} />
                     ))}
                   </div>
                 </div>
@@ -986,7 +986,7 @@ function FrontModuleDetail({
         {/* 右列 */}
         <div className="lg:col-span-2 space-y-4">
           {/* 证据与行动 */}
-          <div className="rounded-xl border border-gray-100 bg-white p-4">
+          <div className="rounded-2xl bg-surface shadow-soft p-4">
             <span className="text-xs font-bold text-gray-600">
               证据与行动 <span className="text-gray-300 font-normal">· {facts.length} 条事实</span>
             </span>
@@ -1046,7 +1046,7 @@ function FactsCard({
   onUpdateFact: (factId: string, status: string) => Promise<void>
 }) {
   return (
-    <div className="rounded-2xl border border-gray-100 bg-gradient-to-br from-slate-50 to-blue-50/40 p-4">
+    <div className="rounded-2xl bg-gray-50 p-4">
       <p className="text-[11px] text-gray-400 mb-3 font-medium">事实卡 · 证据明细（按确认状态分级）</p>
       {facts.length === 0 ? (
         <div className="py-10 text-center">
@@ -1164,13 +1164,13 @@ function ModuleQA({
   }
 
   return (
-    <div className="rounded-xl bg-slate-50 border border-gray-100 p-4">
+    <div className="rounded-2xl bg-gray-50 p-4">
       <div className="flex items-center justify-between gap-2 mb-1">
         <span className="text-xs font-bold text-gray-500">
           投委会问答 <span className="text-gray-300 font-normal">· {questions.length} 个问题</span>
         </span>
         {isPartner && (
-          <button onClick={() => setAskOpen(!askOpen)} className="text-xs px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg font-bold hover:bg-blue-100">
+          <button onClick={() => setAskOpen(!askOpen)} className="text-xs px-2.5 py-1 bg-primary-50 text-primary-700 rounded-full font-bold hover:bg-primary-100">
             {askOpen ? '收起' : '+ 发布问题'}
           </button>
         )}
@@ -1179,16 +1179,16 @@ function ModuleQA({
 
       {/* 合伙人提问输入框 */}
       {askOpen && isPartner && (
-        <div className="mb-3 p-3 bg-white rounded-lg border border-gray-100 space-y-2">
+        <div className="mb-3 p-3 rounded-2xl bg-surface shadow-soft space-y-2">
           <textarea
             value={qText}
             onChange={e => setQText(e.target.value)}
             rows={2}
             maxLength={1000}
             placeholder="向项目维护人发布追问（如：该数据与审计报告口径是否一致？）"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-300 focus:border-blue-300 resize-y"
+            className="w-full input-field text-xs resize-y"
           />
-          <button onClick={ask} disabled={submitting || !qText.trim()} className="px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg disabled:opacity-40">
+          <button onClick={ask} disabled={submitting || !qText.trim()} className="px-3 py-1.5 bg-primary-600 text-white text-xs font-bold rounded-full disabled:opacity-40">
             {submitting ? '发布中...' : '发布问题'}
           </button>
         </div>
@@ -1202,9 +1202,9 @@ function ModuleQA({
       ) : (
         <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-1">
           {questions.map(q => (
-            <div key={q.id} className="px-3 py-2.5 bg-white rounded-xl border border-gray-100">
+            <div key={q.id} className="px-3 py-2.5 rounded-2xl bg-surface shadow-soft">
               <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
-                <span className="w-5 h-5 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-[10px]">{(q.questionerName || '?').slice(0, 1)}</span>
+                <span className="w-5 h-5 rounded-full bg-primary-50 text-primary-600 flex items-center justify-center font-bold text-[10px]">{(q.questionerName || '?').slice(0, 1)}</span>
                 <span className="font-bold text-gray-600">{q.questionerName}</span>
                 <span>· 投委会 · {new Date(q.createdAt).toLocaleDateString('zh-CN')}</span>
               </div>
@@ -1227,9 +1227,9 @@ function ModuleQA({
                     onKeyDown={e => { if (e.key === 'Enter') answer(q.id) }}
                     maxLength={2000}
                     placeholder="回答该问题..."
-                    className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+                    className="flex-1 input-field text-xs"
                   />
-                  <button onClick={() => answer(q.id)} disabled={submitting || !(answerDrafts[q.id] || '').trim()} className="px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-bold hover:bg-emerald-100 disabled:opacity-40">
+                  <button onClick={() => answer(q.id)} disabled={submitting || !(answerDrafts[q.id] || '').trim()} className="px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-bold hover:bg-emerald-100 disabled:opacity-40">
                     回答
                   </button>
                 </div>
@@ -1272,7 +1272,7 @@ function renderReportHtml(summary: string, images?: Array<{ marker: string; src:
 /** 报告正文富文本容器样式（分段 / 加粗提亮 / 插图） */
 const REPORT_RICH_TEXT_CLS =
   '[&_p]:my-1.5 [&_p]:leading-relaxed [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 ' +
-  '[&_strong]:font-bold [&_strong]:text-[#5b4fb5] ' +
+  '[&_strong]:font-bold [&_strong]:text-primary-700 ' +
   '[&_img]:max-w-full [&_img]:rounded-xl [&_img]:my-2.5 [&_img]:border [&_img]:border-gray-100 [&_img]:shadow-sm'
 
 /** 单行富文本（机会/风险条目）：**加粗** 渲染（条目内不会出现插图标记） */
@@ -1285,9 +1285,9 @@ function renderInlineRich(text: string): string {
 /** 报告内嵌团队评分表（团队与治理模块报告专用） */
 function ReportTeamEvaluationTable({ te }: { te: NonNullable<DDModuleReport['teamEvaluation']> }) {
   return (
-    <div className="mt-3 rounded-xl border border-[#ddd7f2] bg-white overflow-hidden">
-      <div className="px-3 py-2 bg-[#efedfb] flex items-center justify-between gap-2 flex-wrap">
-        <span className="text-[11px] font-bold text-[#6f63c9]">
+    <div className="mt-3 rounded-2xl bg-surface shadow-soft overflow-hidden">
+      <div className="px-3 py-2 bg-primary-50 flex items-center justify-between gap-2 flex-wrap">
+        <span className="text-[11px] font-bold text-primary-600">
           📋 团队评分表{te.confirmedAt ? `（确认于 ${new Date(te.confirmedAt).toLocaleDateString('zh-CN')}）` : ''}
         </span>
         <span className="text-[11px] font-black text-gray-700">最终 {te.finalScore.toFixed(2)} / 10 分</span>
@@ -1295,7 +1295,7 @@ function ReportTeamEvaluationTable({ te }: { te: NonNullable<DDModuleReport['tea
       <div className="overflow-x-auto">
         <table className="w-full text-[11px]">
           <thead>
-            <tr className="text-gray-400 text-[10px] bg-slate-50/60">
+            <tr className="text-gray-400 text-[10px] bg-gray-50/60">
               <th className="text-left font-bold px-3 py-1.5">成员</th>
               <th className="text-left font-bold px-2 py-1.5">身份</th>
               <th className="text-right font-bold px-3 py-1.5">得分</th>
@@ -1306,10 +1306,10 @@ function ReportTeamEvaluationTable({ te }: { te: NonNullable<DDModuleReport['tea
               <tr key={i} className="border-t border-gray-50">
                 <td className="px-3 py-1.5 font-bold text-gray-700">{m.name}</td>
                 <td className="px-2 py-1.5 text-gray-500">{m.identity}</td>
-                <td className="px-3 py-1.5 text-right font-bold text-[#6f63c9]">{m.score?.toFixed(2) ?? '—'}</td>
+                <td className="px-3 py-1.5 text-right font-bold text-primary-600">{m.score?.toFixed(2) ?? '—'}</td>
               </tr>
             ))}
-            <tr className="border-t border-gray-100 bg-slate-50/40">
+            <tr className="border-t border-gray-100 bg-gray-50/40">
               <td className="px-3 py-1.5 text-gray-500" colSpan={2}>
                 构成：CEO {te.ceoScore.toFixed(2)} + 高管平均 {te.execAvg.toFixed(2)} + 团队整体 {te.teamScore.toFixed(2)}
               </td>
@@ -1319,8 +1319,8 @@ function ReportTeamEvaluationTable({ te }: { te: NonNullable<DDModuleReport['tea
         </table>
       </div>
       {te.aiReview && (
-        <div className="px-3 py-2 border-t border-[#efedfb] bg-indigo-50/40">
-          <span className="text-[10px] font-bold text-indigo-700">🤖 AI 审评分 {te.aiReview.rating.toFixed(1)} / 10（校验打分与简历一致性）</span>
+        <div className="px-3 py-2 border-t border-hairline bg-primary-50/40">
+          <span className="text-[10px] font-bold text-primary-700">🤖 AI 审评分 {te.aiReview.rating.toFixed(1)} / 10（校验打分与简历一致性）</span>
           <p className="mt-0.5 text-[10px] text-gray-600 leading-relaxed">{te.aiReview.analysis}</p>
         </div>
       )}
@@ -1331,8 +1331,8 @@ function ReportTeamEvaluationTable({ te }: { te: NonNullable<DDModuleReport['tea
 /** 模块尽调报告卡（分段条理分析 + 核心加粗 + 插图 + 评分表） */
 function ModuleReportCard({ report }: { report: DDModuleReport }) {
   return (
-    <div className="p-3.5 rounded-xl bg-gradient-to-br from-[#efedfb] to-white border border-[#ddd7f2]">
-      <p className="text-[11px] font-bold text-[#6f63c9] mb-2">📊 模块尽调报告</p>
+    <div className="p-3.5 rounded-2xl bg-primary-50 shadow-soft">
+      <p className="text-[11px] font-bold text-primary-600 mb-2">📊 模块尽调报告</p>
       <div
         className={`text-xs text-gray-700 ${REPORT_RICH_TEXT_CLS}`}
         dangerouslySetInnerHTML={{ __html: renderReportHtml(report.summary, report.images) }}
@@ -1381,15 +1381,15 @@ function ReportVerificationCard({
   onVerify: () => void
 }) {
   return (
-    <div className="p-3.5 rounded-xl bg-white border border-sky-100">
+    <div className="p-3.5 rounded-2xl bg-surface shadow-soft">
       <div className="flex items-center justify-between gap-2 flex-wrap mb-1.5">
-        <p className="text-[11px] font-bold text-sky-700">
+        <p className="text-[11px] font-bold text-primary-700">
           🔍 外部校验 <span className="font-normal text-gray-400">· 互联网交叉核验报告关键声明</span>
         </p>
         {canEdit && !verifying && (
           <button
             onClick={onVerify}
-            className="text-[10px] px-2.5 py-1 bg-sky-50 text-sky-700 rounded-lg font-bold hover:bg-sky-100 border border-sky-100"
+            className="text-[10px] px-2.5 py-1 bg-primary-50 text-primary-700 rounded-full font-bold hover:bg-primary-100 border border-primary-100"
           >
             {verification ? '🔄 重新校验' : '🔍 开始外部校验'}
           </button>
@@ -1397,8 +1397,8 @@ function ReportVerificationCard({
       </div>
 
       {verifying ? (
-        <p className="text-[11px] text-sky-700 py-1.5 flex items-center gap-2">
-          <span className="inline-block w-3 h-3 rounded-full border-2 border-sky-300 border-t-sky-600 animate-spin" />
+        <p className="text-[11px] text-primary-700 py-1.5 flex items-center gap-2">
+          <span className="inline-block w-3 h-3 rounded-full border-2 border-primary-300 border-t-primary-600 animate-spin" />
           正在联网检索并交叉核验关键声明（约 30-60 秒）...
         </p>
       ) : !verification ? (
@@ -1418,7 +1418,7 @@ function ReportVerificationCard({
           ) : (
             <div className="space-y-2">
               {verification.claims.map((c, i) => (
-                <div key={i} className="p-2.5 rounded-lg bg-slate-50/70 border border-slate-100">
+                <div key={i} className="p-2.5 rounded-lg bg-gray-50/70 border border-hairline">
                   <div className="flex items-start justify-between gap-2 flex-wrap">
                     <p className="text-[11px] text-gray-700 leading-relaxed flex-1 min-w-[200px]">{c.claim}</p>
                     <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex-shrink-0 ${VERDICT_BADGES[c.verdict].cls}`}>
@@ -1434,7 +1434,7 @@ function ReportVerificationCard({
                           href={e.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[10px] text-sky-600 hover:underline truncate"
+                          className="text-[10px] text-primary-600 hover:underline truncate"
                           title={`${e.title}\n${e.snippet}`}
                         >
                           🔗 {e.title || e.url}
@@ -1498,7 +1498,7 @@ function DecisionPanel({ projectId, decision, onRefresh }: { projectId: string; 
   const isPartner = decision.canDecide
 
   return (
-    <div className="mt-5 pt-5 border-t border-[#efedfb]">
+    <div className="mt-5 pt-5 border-t border-hairline">
       <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
         <h3 className="text-base font-bold text-gray-900">投资决策 · 第 10 模块</h3>
         <span className="text-xs text-gray-400">规则：至少 {decision.minPartners} 位合伙人确认；任一不投资/纠结 → 最终不投资</span>
@@ -1549,7 +1549,7 @@ function DecisionPanel({ projectId, decision, onRefresh }: { projectId: string; 
 
       {/* 合伙人决策表单（可修改） */}
       {isPartner ? (
-        <div className="p-4 rounded-xl bg-white border border-[#ddd7f2] space-y-3">
+        <div className="p-4 rounded-2xl bg-surface shadow-soft space-y-3">
           <p className="text-xs font-bold text-gray-600">{decision.myDecision ? '我的决策（可修改后重新确认）' : '提交我的决策'}</p>
           <div className="flex items-center gap-2 flex-wrap">
             {(['INVEST', 'NO_INVEST', 'UNDECIDED'] as const).map(d => (
@@ -1559,7 +1559,7 @@ function DecisionPanel({ projectId, decision, onRefresh }: { projectId: string; 
                 className={`px-4 py-2 text-sm font-bold rounded-xl border-2 transition-all ${
                   form.decision === d
                     ? d === 'INVEST' ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : d === 'NO_INVEST' ? 'border-red-400 bg-red-50 text-red-600' : 'border-amber-400 bg-amber-50 text-amber-700'
-                    : 'border-gray-200 text-gray-500 hover:border-[#b6b1ee]'
+                    : 'border-hairline text-ink-muted hover:border-primary-300'
                 }`}
               >
                 {DECISION_LABELS[d]}
@@ -1576,7 +1576,7 @@ function DecisionPanel({ projectId, decision, onRefresh }: { projectId: string; 
                   value={form.amount}
                   onChange={e => setForm({ ...form, amount: e.target.value })}
                   placeholder="如 500"
-                  className="w-full px-3 py-2 text-sm border border-[#ddd7f2] rounded-xl focus:outline-none focus:border-[#b6b1ee]"
+                  className="w-full input-field"
                 />
               </div>
               <div>
@@ -1586,7 +1586,7 @@ function DecisionPanel({ projectId, decision, onRefresh }: { projectId: string; 
                   onChange={e => setForm({ ...form, reason: e.target.value })}
                   rows={2}
                   placeholder="投资理由..."
-                  className="w-full px-3 py-2 text-sm border border-[#ddd7f2] rounded-xl focus:outline-none focus:border-[#b6b1ee] resize-y"
+                  className="w-full input-field resize-y"
                 />
               </div>
             </div>
@@ -1600,7 +1600,7 @@ function DecisionPanel({ projectId, decision, onRefresh }: { projectId: string; 
                 onChange={e => setForm({ ...form, reason: e.target.value })}
                 rows={3}
                 placeholder={form.decision === 'NO_INVEST' ? '不投资理由...' : '纠结理由（还需补充哪些信息）...'}
-                className="w-full px-3 py-2 text-sm border border-[#ddd7f2] rounded-xl focus:outline-none focus:border-[#b6b1ee] resize-y"
+                className="w-full input-field resize-y"
               />
             </div>
           ) : null}
@@ -1609,7 +1609,7 @@ function DecisionPanel({ projectId, decision, onRefresh }: { projectId: string; 
             <button
               onClick={submit}
               disabled={submitting || !form.decision}
-              className="px-5 py-2 bg-gradient-to-r from-[#6f63c9] to-[#8d84e0] text-white text-sm font-bold rounded-xl shadow-md disabled:opacity-40"
+              className="btn-primary disabled:opacity-40"
             >
               {submitting ? '提交中...' : decision.myDecision ? '修改决策' : '确认决策'}
             </button>
@@ -1702,9 +1702,9 @@ function ResourceCenterModule({
   }
 
   return (
-    <div className={`rounded-xl border transition-all ${complete ? 'border-[#ddd7f2] bg-white' : 'border-dashed border-gray-300 bg-gray-50/40'}`}>
+    <div className={`rounded-xl border transition-all ${complete ? 'border-hairline bg-white' : 'border-dashed border-gray-300 bg-gray-50/40'}`}>
       <button onClick={onToggle} className="w-full flex items-center gap-3 px-4 py-3 text-left">
-        <span className={`text-xs font-black flex-shrink-0 ${complete ? 'text-[#8d84e0]' : 'text-gray-300'}`}>{String(index + 1).padStart(2, '0')}</span>
+        <span className={`text-xs font-black flex-shrink-0 ${complete ? 'text-primary-500' : 'text-gray-300'}`}>{String(index + 1).padStart(2, '0')}</span>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-gray-800">{module.moduleName}</p>
           <div className="flex items-center gap-1.5 text-[10px] text-gray-400 mt-0.5 flex-wrap">
@@ -1719,7 +1719,7 @@ function ResourceCenterModule({
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4 pt-1 border-t border-[#efedfb] space-y-4">
+        <div className="px-4 pb-4 pt-1 border-t border-hairline space-y-4">
           {opErr && <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{opErr}</p>}
 
           {/* 文档 */}
@@ -1727,7 +1727,7 @@ function ResourceCenterModule({
             <div className="flex items-center justify-between mb-2">
               <span className="text-[11px] font-bold text-gray-500">上传文档（PDF/Word/Excel/PPT/txt，自动提取全文供报告使用）</span>
               {canEdit && (
-                <label className={`px-2.5 py-1 bg-[#efedfb] text-[#6f63c9] text-xs font-bold rounded-lg cursor-pointer hover:bg-[#e2ddf8] ${uploadingDoc ? 'opacity-50 pointer-events-none' : ''}`}>
+                <label className={`px-2.5 py-1 bg-primary-50 text-primary-600 text-xs font-bold rounded-full cursor-pointer hover:bg-primary-100 ${uploadingDoc ? 'opacity-50 pointer-events-none' : ''}`}>
                   {uploadingDoc ? '上传中...' : '+ 上传文档'}
                   <input
                     ref={docInputRef}
@@ -1746,9 +1746,9 @@ function ResourceCenterModule({
             {module.documents.length > 0 ? (
               <div className="space-y-1.5">
                 {module.documents.map(doc => (
-                  <div key={doc.id} className="flex items-center gap-2 p-2 bg-[#faf9fe] border border-[#efedfb] rounded-lg text-xs">
-                    <span className="text-[#8d84e0] font-bold flex-shrink-0">{doc.fileType.includes('pdf') ? 'PDF' : doc.fileType.includes('word') ? 'DOC' : doc.fileType.includes('sheet') ? 'XLS' : doc.fileType.includes('text') ? 'TXT' : 'PPT'}</span>
-                    <button onClick={() => setPreviewDoc({ fileName: doc.fileName, fileUrl: doc.fileUrl, fileType: doc.fileType })} className="flex-1 truncate text-left text-gray-700 hover:text-[#6f63c9]">
+                  <div key={doc.id} className="flex items-center gap-2 p-2 bg-gray-50 border border-hairline rounded-lg text-xs">
+                    <span className="text-primary-500 font-bold flex-shrink-0">{doc.fileType.includes('pdf') ? 'PDF' : doc.fileType.includes('word') ? 'DOC' : doc.fileType.includes('sheet') ? 'XLS' : doc.fileType.includes('text') ? 'TXT' : 'PPT'}</span>
+                    <button onClick={() => setPreviewDoc({ fileName: doc.fileName, fileUrl: doc.fileUrl, fileType: doc.fileType })} className="flex-1 truncate text-left text-gray-700 hover:text-primary-600">
                       {doc.fileName}
                     </button>
                     <span className="text-gray-400 flex-shrink-0">{(doc.fileSize / 1024 / 1024).toFixed(1)}MB</span>
@@ -1768,7 +1768,7 @@ function ResourceCenterModule({
               <div className="flex items-center gap-2">
                 {textSaved && <span className="text-[10px] text-emerald-600">已保存 ✓</span>}
                 {canEdit && (
-                  <button onClick={() => { setTexts([...texts, '']); setTextSaved(false) }} className="px-2 py-1 bg-[#efedfb] text-[#6f63c9] text-xs font-bold rounded-lg hover:bg-[#e2ddf8]">
+                  <button onClick={() => { setTexts([...texts, '']); setTextSaved(false) }} className="px-2 py-1 bg-primary-50 text-primary-600 text-xs font-bold rounded-full hover:bg-primary-100">
                     + 添加文本框
                   </button>
                 )}
@@ -1776,7 +1776,7 @@ function ResourceCenterModule({
             </div>
             <div className="space-y-2">
               {texts.length === 0 && canEdit && (
-                <button onClick={() => { setTexts(['']); setTextSaved(false) }} className="w-full py-3 border-2 border-dashed border-[#ddd7f2] rounded-xl text-xs text-[#8d84e0] hover:border-[#b6b1ee]">
+                <button onClick={() => { setTexts(['']); setTextSaved(false) }} className="w-full py-3 border-2 border-dashed border-hairline rounded-full text-xs text-primary-500 hover:border-primary-300">
                   + 点击添加第一个文本框
                 </button>
               )}
@@ -1791,7 +1791,7 @@ function ResourceCenterModule({
                     />
                   ) : (
                     <div
-                      className="flex-1 px-3 py-2 text-xs border border-[#ddd7f2] rounded-xl bg-gray-50 text-gray-700 leading-relaxed [&_img]:max-w-full [&_img]:rounded-lg"
+                      className="flex-1 input-field text-gray-700 leading-relaxed [&_img]:max-w-full [&_img]:rounded-lg"
                       dangerouslySetInnerHTML={{ __html: sanitizeRichText(t) }}
                     />
                   )}
@@ -1802,7 +1802,7 @@ function ResourceCenterModule({
               ))}
               {canEdit && texts.length > 0 && (
                 <div className="flex justify-end">
-                  <button onClick={saveTexts} disabled={savingText} className="px-4 py-1.5 bg-[#6f63c9] text-white text-xs font-bold rounded-lg hover:bg-[#5b4fb5] disabled:opacity-50">
+                  <button onClick={saveTexts} disabled={savingText} className="px-4 py-1.5 bg-primary-600 text-white text-xs font-bold rounded-full hover:bg-primary-700 disabled:opacity-50">
                     {savingText ? '保存中...' : '保存文本内容'}
                   </button>
                 </div>

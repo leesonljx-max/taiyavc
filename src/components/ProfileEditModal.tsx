@@ -4,6 +4,7 @@ import { useState, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import Image from 'next/image'
 import AvatarCropper from './AvatarCropper'
+import { invalidateCache } from '@/lib/cache'
 
 interface ProfileEditModalProps {
   open: boolean
@@ -59,6 +60,9 @@ export default function ProfileEditModal({ open, onClose, onUpdate }: ProfileEdi
       setInfoSuccess('姓名修改成功')
       // 通过 updateSession 主动更新 JWT token 中的 name
       await updateSession({ name })
+      // 失效缓存：首页「本周新增项目」与项目列表中的维护人姓名需同步刷新
+      invalidateCache('dashboard')
+      invalidateCache('projects:*')
       onUpdate()
     } catch {
       setInfoError('网络错误')
@@ -144,6 +148,9 @@ export default function ProfileEditModal({ open, onClose, onUpdate }: ProfileEdi
       // 关键修复：通过 updateSession 主动更新 JWT token 中的 avatar
       // JWT 策略下，updateSession() 默认不会从 DB 重新加载，需要显式传值
       await updateSession({ avatar: data.avatar })
+      // 失效缓存：首页「本周新增项目」与项目详情中的维护人头像需同步刷新
+      invalidateCache('dashboard')
+      invalidateCache('projects:*')
       onUpdate()
     } catch {
       setAvatarError('网络错误')
@@ -156,14 +163,14 @@ export default function ProfileEditModal({ open, onClose, onUpdate }: ProfileEdi
   const displayName = session?.user?.name || '用户'
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50" onClick={onClose}>
       <div
-        className="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto"
+        className="bg-surface rounded-2xl shadow-soft-lg max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 头部 */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900">个人设置</h3>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
+          <h3 className="text-lg font-bold text-ink">个人设置</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -172,7 +179,7 @@ export default function ProfileEditModal({ open, onClose, onUpdate }: ProfileEdi
         </div>
 
         {/* Tab 切换 */}
-        <div className="flex border-b border-gray-100 px-6">
+        <div className="flex border-b border-hairline px-6">
           {([
             { key: 'info', label: '修改姓名' },
             { key: 'password', label: '修改密码' },
@@ -212,7 +219,7 @@ export default function ProfileEditModal({ open, onClose, onUpdate }: ProfileEdi
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:ring-2 focus:ring-primary-400 focus:border-primary-400"
+                  className="input-field"
                   placeholder="请输入姓名"
                 />
               </div>
@@ -221,7 +228,7 @@ export default function ProfileEditModal({ open, onClose, onUpdate }: ProfileEdi
               <button
                 onClick={handleSaveInfo}
                 disabled={infoLoading || !name.trim()}
-                className="w-full px-4 py-2.5 bg-primary-500 text-white text-sm font-medium rounded-xl hover:bg-primary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full btn-primary justify-center disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {infoLoading ? '保存中...' : '保存'}
               </button>
@@ -237,7 +244,7 @@ export default function ProfileEditModal({ open, onClose, onUpdate }: ProfileEdi
                   type="password"
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:ring-2 focus:ring-primary-400 focus:border-primary-400"
+                  className="input-field"
                   placeholder="请输入当前密码"
                 />
               </div>
@@ -247,7 +254,7 @@ export default function ProfileEditModal({ open, onClose, onUpdate }: ProfileEdi
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:ring-2 focus:ring-primary-400 focus:border-primary-400"
+                  className="input-field"
                   placeholder="至少 6 位"
                 />
               </div>
@@ -257,7 +264,7 @@ export default function ProfileEditModal({ open, onClose, onUpdate }: ProfileEdi
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:ring-2 focus:ring-primary-400 focus:border-primary-400"
+                  className="input-field"
                   placeholder="请再次输入新密码"
                 />
               </div>
@@ -266,7 +273,7 @@ export default function ProfileEditModal({ open, onClose, onUpdate }: ProfileEdi
               <button
                 onClick={handleChangePassword}
                 disabled={pwdLoading || !currentPassword || !newPassword || !confirmPassword}
-                className="w-full px-4 py-2.5 bg-primary-500 text-white text-sm font-medium rounded-xl hover:bg-primary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full btn-primary justify-center disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {pwdLoading ? '修改中...' : '修改密码'}
               </button>
@@ -278,7 +285,7 @@ export default function ProfileEditModal({ open, onClose, onUpdate }: ProfileEdi
             <div className="space-y-4">
               <div className="flex flex-col items-center gap-4">
                 {/* 当前/预览头像 */}
-                <div className="w-24 h-24 rounded-full overflow-hidden bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-3xl">
+                <div className="w-24 h-24 rounded-full overflow-hidden bg-primary-600 flex items-center justify-center text-white font-bold text-3xl">
                   {avatarPreview ? (
                     <img src={avatarPreview} alt="预览" className="w-full h-full object-cover" />
                   ) : currentAvatar ? (
@@ -299,14 +306,14 @@ export default function ProfileEditModal({ open, onClose, onUpdate }: ProfileEdi
                 <div className="flex gap-3 flex-wrap justify-center">
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200 transition-colors"
+                    className="btn-secondary"
                   >
                     选择图片
                   </button>
                   {avatarFile && rawFile && (
                     <button
                       onClick={() => { setAvatarFile(null); setAvatarPreview(null); setShowCropper(true) }}
-                      className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200 transition-colors"
+                      className="btn-secondary"
                     >
                       重新裁剪
                     </button>

@@ -196,12 +196,12 @@ export default function AvatarCropper({ file, onCropComplete, onCancel }: Avatar
   const containerCenter = CONTAINER_SIZE / 2
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]" onClick={onCancel}>
+    <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-[60]" onClick={onCancel}>
       <div
-        className="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 p-6"
+        className="bg-surface rounded-2xl shadow-soft-lg max-w-md w-full mx-4 p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-lg font-semibold text-gray-900 mb-4 text-center">裁剪头像</h3>
+        <h3 className="text-lg font-bold text-ink mb-4 text-center">裁剪头像</h3>
 
         {/* 裁剪区域 */}
         <div className="flex justify-center mb-4">
@@ -234,7 +234,7 @@ export default function AvatarCropper({ file, onCropComplete, onCancel }: Avatar
 
         {/* 缩放滑块 */}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">缩放</label>
+          <label className="block text-sm font-medium text-ink-muted mb-2">缩放</label>
           <input
             type="range"
             min={Math.max(CONTAINER_SIZE / imageSize.width, CONTAINER_SIZE / imageSize.height)}
@@ -246,7 +246,7 @@ export default function AvatarCropper({ file, onCropComplete, onCancel }: Avatar
           />
         </div>
 
-        <p className="text-xs text-gray-400 text-center mb-4">
+        <p className="text-xs text-ink-faint text-center mb-4">
           拖动图片调整位置，使用滑块缩放，裁剪框为正方形
         </p>
 
@@ -255,14 +255,14 @@ export default function AvatarCropper({ file, onCropComplete, onCancel }: Avatar
           <button
             onClick={onCancel}
             disabled={cropping}
-            className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200 transition-colors disabled:opacity-50"
+            className="flex-1 btn-secondary justify-center disabled:opacity-50"
           >
             取消
           </button>
           <button
             onClick={handleCrop}
             disabled={cropping}
-            className="flex-1 px-4 py-2.5 bg-primary-500 text-white text-sm font-medium rounded-xl hover:bg-primary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 btn-primary justify-center disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {cropping ? '裁剪中...' : '确认裁剪'}
           </button>

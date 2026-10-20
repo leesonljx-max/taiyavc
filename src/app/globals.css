@@ -2,22 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Base styles */
+/* ═══════════════════════════════════════════
+   设计系统基础（奶油底 · 白色卡片 · 玻璃点缀）
+   画布 #ECE3D5 / 卡片 #FFFFFF / 主色 #8B5CF6
+   ═══════════════════════════════════════════ */
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #e7f1ec;
+  background: #ece3d5;
+  color: #2f3a55;
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar（暖色） */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -28,12 +32,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #b9d8cf;
+  background: rgba(120, 105, 85, 0.28);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #97c2b5;
+  background: rgba(120, 105, 85, 0.45);
 }
 
 /* Smooth transitions */
@@ -41,149 +45,241 @@ body {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Glass effect */
-.glass {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+/* ═══════════════════════════════════════════
+   Hover 交互（除侧边栏外）：卡片不放大，只在卡片底下泛起彩虹亮光
+   ═══════════════════════════════════════════ */
+.hover-lift,
+.card,
+.card-hover,
+.card-float,
+.dd-card,
+.glass-card,
+.btn-primary,
+.btn-secondary {
+  transition: box-shadow 0.3s ease-in-out, border-color 0.3s ease-in-out, background 0.3s ease-in-out;
+}
+.hover-lift:hover,
+.card:hover,
+.card-hover:hover,
+.card-float:hover,
+.dd-card:hover,
+.glass-card:hover,
+.btn-primary:hover,
+.btn-secondary:hover {
+  box-shadow:
+    0 4px 14px -2px rgba(249, 168, 212, 0.75),
+    0 8px 22px -6px rgba(129, 140, 248, 0.70),
+    0 12px 28px -8px rgba(94, 234, 212, 0.60),
+    0 16px 34px -10px rgba(253, 186, 116, 0.55);
+  border-color: rgba(249, 168, 212, 0.65);
 }
 
 /* ═══════════════════════════════════════════
-   侧边栏 3D 栏目框（导航项）
+   通用组件类（页面与子组件统一复用）
+   ═══════════════════════════════════════════ */
+
+/* 卡片：白底 + 大圆角 + 暖色柔和阴影 */
+.card,
+.glass-card,
+.dd-card {
+  background: #ffffff;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(233, 223, 206, 0.9);
+  box-shadow: 0 4px 16px rgba(74, 60, 40, 0.08);
+}
+
+/* 内嵌凹槽面板（浅色新拟态） */
+.panel-inset {
+  background: #f5eee2;
+  box-shadow: inset 0 2px 4px rgba(74, 60, 40, 0.10);
+  border-radius: 1.25rem;
+}
+
+/* 主按钮：胶囊形 + 紫罗兰 */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  border-radius: 9999px;
+  background: #8b5cf6;
+  color: #ffffff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  box-shadow: 0 8px 22px rgba(124, 58, 237, 0.24);
+}
+.btn-primary:hover {
+  background: #7c3aed;
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* 次按钮：白底描边胶囊 */
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  border-radius: 9999px;
+  background: #ffffff;
+  color: #2f3a55;
+  border: 1px solid #e9dfce;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.btn-secondary:hover {
+  background: #fdf9f3;
+  border-color: #d9cdb8;
+}
+
+/* 标签胶囊（百分比 / 阶段 Tag） */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1875rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* 表单控件：浅底 + 大圆角，聚焦时紫罗兰描边 */
+.input-field {
+  width: 100%;
+  padding: 0.625rem 1rem;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  border: 1px solid #e9dfce;
+  color: #2f3a55;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+}
+.input-field::placeholder {
+  color: #9aa2b1;
+}
+.input-field:focus {
+  outline: none;
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.14);
+}
+
+/* 分组小标题（MENU 式） */
+.eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #9aa2b1;
+}
+
+/* 斜线纹理块（弱化/未激活数据） */
+.hatch {
+  background-image: repeating-linear-gradient(
+    45deg,
+    #e9dfce 0 5px,
+    #f5eee2 5px 11px
+  );
+}
+
+/* Glass（顶栏）：奶油微透明 + 毛玻璃 */
+.glass {
+  background: rgba(255, 252, 247, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* ═══════════════════════════════════════════
+   侧边栏导航（图标 + 文字；透明底色，保留 Hover 浮起放大）
    ═══════════════════════════════════════════ */
 .nav-block {
   position: relative;
-  /* 参考图未选中底色：浅灰蓝 */
-  background: #e8edf4;
-  border: 1px solid rgba(168, 186, 212, 0.45);
-  color: #475467;
-  box-shadow:
-    0 1px 2px rgba(100, 120, 150, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.55);
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-  will-change: transform, box-shadow, background;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #3b4664;
+  font-weight: 500;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
 }
 
-/* 悬停：3D 玻璃效果（半透明磨砂 + 高光，非全白） */
 .nav-block:hover {
-  color: #1559e1;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.62) 0%,
-    rgba(235, 247, 253, 0.38) 100%
-  );
-  backdrop-filter: blur(12px) saturate(1.6);
-  -webkit-backdrop-filter: blur(12px) saturate(1.6);
-  border-color: rgba(120, 180, 250, 0.8);
-  transform: translateY(-2px);
+  color: #2f3a55;
+  transform: translateY(-0.25rem) scale(1.1);
+  z-index: 10;
   box-shadow:
-    0 5px 0 -1px rgba(26, 111, 245, 0.1),
-    0 12px 20px -8px rgba(26, 111, 245, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.4);
+    0 4px 14px -2px rgba(249, 168, 212, 0.75),
+    0 8px 22px -6px rgba(129, 140, 248, 0.70),
+    0 12px 28px -8px rgba(94, 234, 212, 0.60);
+}
+.nav-block svg {
+  color: #6b7589;
+  transition: color 0.2s ease;
+}
+.nav-block:hover svg {
+  color: #6d28d9;
 }
 
-/* 按下：凹陷 */
-.nav-block:active {
-  transform: translateY(1px);
-  box-shadow:
-    0 1px 1px rgba(26, 111, 245, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+/* 选中态：更饱和的马卡龙紫 + 白字 */
+.nav-block-active,
+.nav-list .nav-block-active.nav-block {
+  background-color: #a78bfa !important;
+  background-image: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+  color: #ffffff !important;
+  font-weight: 700;
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.32);
 }
-
-/* 激活态：蓝色渐变 + 抬升 + 厚阴影（3D） */
-.nav-block-active {
-  color: #ffffff;
-  background: linear-gradient(135deg, #4d9bff 0%, #1a6ff5 55%, #1559e1 100%);
-  border-color: rgba(24, 72, 182, 0.55);
-  transform: translateY(-2px);
-  box-shadow:
-    0 5px 0 -1px rgba(24, 72, 182, 0.4),
-    0 12px 22px -6px rgba(26, 111, 245, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3);
-  animation: nav-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
 .nav-block-active:hover {
   color: #ffffff;
-  transform: translateY(-3px);
+}
+.nav-block-active svg {
+  color: #ffffff !important;
+}
+
+/* 左侧紫色小竖条（贴在侧边栏最左边缘） */
+.nav-rail {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 22px;
+  border-radius: 0 9999px 9999px 0;
+  background: #8b5cf6;
+}
+
+/* 卡片浮起（沿用旧类名，统一为浅色阴影语言） */
+.card-float {
+  box-shadow: 0 4px 16px rgba(74, 60, 40, 0.08);
+}
+
+/* Wiggle 卡片 Hover：统一为彩虹亮光（不再抖动/位移） */
+.card-float-wiggle:hover {
   box-shadow:
-    0 6px 0 -1px rgba(24, 72, 182, 0.4),
-    0 14px 26px -6px rgba(26, 111, 245, 0.6),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    0 4px 14px -2px rgba(249, 168, 212, 0.75),
+    0 8px 22px -6px rgba(129, 140, 248, 0.70),
+    0 12px 28px -8px rgba(94, 234, 212, 0.60),
+    0 16px 34px -10px rgba(253, 186, 116, 0.55);
 }
 
-.nav-block-active:active {
-  transform: translateY(0);
-}
-
-/* 切换导航时的弹跳动画 */
-@keyframes nav-pop {
-  0% {
-    transform: translateY(0) scale(0.94);
-    box-shadow: 0 1px 2px rgba(26, 111, 245, 0.1);
-  }
-  55% {
-    transform: translateY(-4px) scale(1.03);
-  }
-  100% {
-    transform: translateY(-2px) scale(1);
-  }
-}
-
-/* ═══════════════════════════════════════════
-   项目尽调栏目主题（紫蓝色 B6B1EE）
-   进入该栏目时侧边栏底色与导航项变为紫蓝色
-   ═══════════════════════════════════════════ */
-.dd-theme .nav-block {
-  background: #efedfb;
-  border-color: rgba(182, 177, 238, 0.55);
-  color: #4d4878;
-  box-shadow:
-    0 1px 2px rgba(108, 96, 190, 0.10),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
-}
-
-.dd-theme .nav-block:hover {
-  color: #4a3fb8;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.65) 0%, rgba(238, 235, 250, 0.4) 100%);
-  backdrop-filter: blur(12px) saturate(1.6);
-  -webkit-backdrop-filter: blur(12px) saturate(1.6);
-  border-color: rgba(150, 140, 230, 0.85);
-}
-
-.dd-theme .nav-block-active {
+/* 3D 按压按钮（沿用旧类名，主色改为紫罗兰） */
+.btn-3d {
+  background: #8b5cf6;
   color: #ffffff;
-  background: linear-gradient(135deg, #b6b1ee 0%, #8d84e0 55%, #6f63c9 100%);
-  border-color: rgba(90, 76, 175, 0.55);
-  box-shadow:
-    0 5px 0 -1px rgba(90, 76, 175, 0.4),
-    0 12px 22px -6px rgba(120, 105, 215, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  border: none;
+  box-shadow: 0 4px 0 #6d28d9, 0 8px 18px rgba(124, 58, 237, 0.28);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.2s ease;
 }
-
-.dd-theme .nav-block-active:hover {
-  color: #ffffff;
+.btn-3d:hover {
+  background: #7c3aed;
+  transform: translateY(-1px);
+  box-shadow: 0 5px 0 #6d28d9, 0 10px 22px rgba(124, 58, 237, 0.32);
 }
-
-/* 尽调主题下侧边栏底色（浅紫蓝） */
-.dd-theme-sidebar {
-  background: linear-gradient(180deg, #f3f1fc 0%, #e6e2f7 100%) !important;
-  border-right-color: #d8d2f0 !important;
-}
-
-/* 尽调主题下其他导航项图标色 */
-.dd-theme .nav-block svg {
-  color: #8d84e0;
-}
-.dd-theme .nav-block-active svg {
-  color: #ffffff;
-}
-
-/* 尽调主题卡片（页面内卡片底色） */
-.dd-card {
-  background: linear-gradient(135deg, #ffffff 0%, #f5f3fd 100%);
-  border-color: #ddd7f2;
+.btn-3d:active {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 #6d28d9, 0 2px 6px rgba(124, 58, 237, 0.24);
 }
 
 /* ═══════════════════════════════════════════
@@ -205,57 +301,8 @@ body {
 }
 
 /* ═══════════════════════════════════════════
-   v2.4.0 交互升级：卡片悬浮立体 + 悬停晃动 + 3D 按钮 + 翻转切换
+   翻转卡片（提交中 ⇄ 表单）
    ═══════════════════════════════════════════ */
-
-/* 卡片悬浮立体：多层阴影营造悬浮感，悬停时上浮加深 */
-.card-float {
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
-  box-shadow:
-    0 1px 2px rgba(15, 42, 63, 0.06),
-    0 4px 12px rgba(15, 42, 63, 0.07);
-}
-.card-float:hover {
-  transform: translateY(-3px);
-  box-shadow:
-    0 2px 4px rgba(15, 42, 63, 0.08),
-    0 10px 24px rgba(15, 42, 63, 0.12);
-}
-
-/* 悬停轻微晃动（与 card-float 叠用：hover 触发一次 0.45s） */
-@keyframes card-wiggle {
-  0% { transform: translateY(-3px) rotate(0deg); }
-  25% { transform: translateY(-4px) rotate(0.35deg); }
-  50% { transform: translateY(-4px) rotate(-0.35deg); }
-  75% { transform: translateY(-3.5px) rotate(0.15deg); }
-  100% { transform: translateY(-3px) rotate(0deg); }
-}
-.card-float-wiggle:hover {
-  animation: card-wiggle 0.45s ease-in-out;
-  box-shadow:
-    0 2px 4px rgba(15, 42, 63, 0.08),
-    0 10px 24px rgba(15, 42, 63, 0.12);
-}
-
-/* 3D 按压按钮（#0686AD 底色上传框）：底部实体厚度 + 按下下陷 */
-.btn-3d {
-  background: #0686AD;
-  color: #ffffff;
-  border: none;
-  box-shadow: 0 4px 0 #04607e, 0 6px 12px rgba(6, 134, 173, 0.35);
-  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.2s ease;
-}
-.btn-3d:hover {
-  background: #0796c2;
-  transform: translateY(-1px);
-  box-shadow: 0 5px 0 #04607e, 0 8px 16px rgba(6, 134, 173, 0.4);
-}
-.btn-3d:active {
-  transform: translateY(4px);
-  box-shadow: 0 0 0 #04607e, 0 2px 6px rgba(6, 134, 173, 0.3);
-}
-
-/* 提交后卡片 3D 翻转切换（正面表单 ⇄ 背面提交中） */
 .flip-scene {
   perspective: 1200px;
 }
@@ -279,4 +326,67 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+}
+
+/* ═══════════════════════════════════════════
+   3D 立体玻璃块：数字统计卡片
+   半透明白玻璃渐变 + 白色高光描边 + 底部厚度 + 柔和落地投影
+   注意：
+   1）必须放在本文件末尾，以在同特异度下压过上面的 .card / .glass-card / .dd-card
+   2）box-shadow 前缀保留 --tw-ring-* 变量，避免覆盖选中态 ring-2
+   ═══════════════════════════════════════════ */
+.stat-3d-row > * {
+  position: relative;
+  background-image: linear-gradient(
+    150deg,
+    rgba(255, 255, 255, 0.94) 0%,
+    rgba(252, 246, 238, 0.78) 55%,
+    rgba(245, 237, 225, 0.86) 100%
+  );
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow:
+    var(--tw-ring-offset-shadow, 0 0 #0000),
+    var(--tw-ring-shadow, 0 0 #0000),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -8px 12px -8px rgba(120, 105, 85, 0.18),
+    0 6px 0 -2px rgba(224, 211, 190, 0.85),
+    0 18px 28px -12px rgba(74, 60, 40, 0.28),
+    0 30px 50px -24px rgba(74, 60, 40, 0.22);
+  transition: box-shadow 0.3s ease-in-out, border-color 0.3s ease-in-out;
+}
+/* ═══════════════════════════════════════════
+   3D 图标（侧边栏导航 + 各页数字卡片前置图标）
+   1）纯描边图标：多层偏移投影模拟加厚挤出，形成立体浮雕
+   2）彩色圆角底座：白色高光描边 + 顶部内高光 + 底部内暗 + 落地厚度
+   ═══════════════════════════════════════════ */
+.nav-block svg {
+  filter:
+    drop-shadow(0 1px 0 rgba(139, 92, 246, 0.42))
+    drop-shadow(0 2px 0 rgba(139, 92, 246, 0.26))
+    drop-shadow(0 3px 4px rgba(74, 60, 40, 0.28));
+  transition: filter 0.3s ease-in-out, transform 0.3s ease-in-out;
+}
+.nav-block:hover svg {
+  filter:
+    drop-shadow(0 1px 0 rgba(139, 92, 246, 0.5))
+    drop-shadow(0 3px 0 rgba(139, 92, 246, 0.32))
+    drop-shadow(0 5px 7px rgba(74, 60, 40, 0.32));
+}
+
+.icon-3d-tile {
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow:
+    inset 0 1.5px 1px rgba(255, 255, 255, 0.85),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.3),
+    0 2px 0 rgba(0, 0, 0, 0.18),
+    0 6px 12px -3px rgba(74, 60, 40, 0.42);
+  transition: box-shadow 0.3s ease-in-out;
+}
+.icon-3d-tile svg {
+  filter:
+    drop-shadow(0 1px 0 rgba(0, 0, 0, 0.3))
+    drop-shadow(0 2px 0 rgba(0, 0, 0, 0.2))
+    drop-shadow(0 3px 4px rgba(0, 0, 0, 0.32));
 }

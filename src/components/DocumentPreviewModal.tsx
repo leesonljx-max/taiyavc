@@ -54,21 +54,21 @@ export default function DocumentPreviewModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/20 flex items-center justify-center z-50"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl flex flex-col"
+        className="bg-surface rounded-2xl shadow-soft-lg flex flex-col"
         style={{ width: '80vw', height: '80vh', maxWidth: '1200px' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* 头部 */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 flex-shrink-0">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-hairline flex-shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <svg className="w-5 h-5 text-primary-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
             </svg>
-            <h3 className="text-base font-semibold text-gray-900 truncate" title={fileName}>
+            <h3 className="text-base font-bold text-ink truncate" title={fileName}>
               {fileName}
             </h3>
           </div>
@@ -76,7 +76,7 @@ export default function DocumentPreviewModal({
             <a
               href={fileUrl}
               download={fileName}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-50 text-primary-700 text-sm font-medium rounded-lg hover:bg-primary-100 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-50 text-primary-700 text-sm font-semibold rounded-full hover:bg-primary-100 transition-colors"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -102,15 +102,15 @@ export default function DocumentPreviewModal({
             <div className="bg-white">
               <style>{`
                 .preview-html { padding: 24px 32px; max-width: 100%; }
-                .preview-html h1, .preview-html h2, .preview-html h3 { font-weight: 700; margin: 1em 0 0.5em; color: #111827; }
+                .preview-html h1, .preview-html h2, .preview-html h3 { font-weight: 700; margin: 1em 0 0.5em; color: #0F172A; }
                 .preview-html h1 { font-size: 1.25rem; }
                 .preview-html h2 { font-size: 1.1rem; }
                 .preview-html h3 { font-size: 1rem; }
-                .preview-html p { margin: 0.5em 0; font-size: 0.8125rem; line-height: 1.75; color: #374151; }
+                .preview-html p { margin: 0.5em 0; font-size: 0.8125rem; line-height: 1.75; color: #64748B; }
                 .preview-html ul, .preview-html ol { padding-left: 1.5em; margin: 0.5em 0; }
-                .preview-html li { font-size: 0.8125rem; line-height: 1.6; color: #374151; margin: 0.25em 0; }
+                .preview-html li { font-size: 0.8125rem; line-height: 1.6; color: #64748B; margin: 0.25em 0; }
                 .preview-html table { border-collapse: collapse; margin: 0.75em 0; max-width: 100%; }
-                .preview-html th, .preview-html td { border: 1px solid #e5e7eb; padding: 4px 10px; font-size: 0.75rem; color: #374151; white-space: nowrap; }
+                .preview-html th, .preview-html td { border: 1px solid #E2E8F0; padding: 4px 10px; font-size: 0.75rem; color: #64748B; white-space: nowrap; }
                 .preview-html img { max-width: 100%; }
               `}</style>
               <div className="preview-html" dangerouslySetInnerHTML={{ __html: previewHtml }} />
@@ -143,7 +143,7 @@ export default function DocumentPreviewModal({
               <a
                 href={fileUrl}
                 download={fileName}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-500 text-white text-sm font-medium rounded-xl shadow-md shadow-primary-500/30 hover:bg-primary-600 transition-colors"
+                className="btn-primary"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />

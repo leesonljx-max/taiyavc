@@ -240,14 +240,14 @@ export default function AIResearchPage() {
       <div className="flex gap-4" style={{ height: 'calc(100vh - 210px)' }}>
         {/* ── 左：会话列表 ── */}
         {sidebarOpen && (
-          <div className="w-60 flex-shrink-0 bg-white rounded-2xl shadow-sm border border-primary-100 flex flex-col overflow-hidden">
-            <div className="p-3 border-b border-primary-100">
+          <div className="w-60 flex-shrink-0 bg-surface rounded-2xl shadow-soft flex flex-col overflow-hidden">
+            <div className="p-3 border-b border-hairline">
               <button
                 onClick={handleNewSession}
-                className="w-full px-3 py-2 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl hover:from-primary-600 hover:to-primary-700 transition-all text-sm font-medium flex items-center justify-center gap-1.5"
+                className="btn-primary w-full justify-center"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 4v16m8-8H4" />
                 </svg>
                 新对话
               </button>
@@ -255,32 +255,32 @@ export default function AIResearchPage() {
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
               {loadingSessions ? (
                 <div className="flex items-center justify-center py-8">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-500"></div>
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
                 </div>
               ) : sessions.length === 0 ? (
-                <p className="text-xs text-gray-400 text-center py-8">暂无会话<br />点击"新对话"开始</p>
+                <p className="text-xs text-ink-faint text-center py-8">暂无会话<br />点击"新对话"开始</p>
               ) : sessions.map(s => (
                 <div
                   key={s.id}
-                  className={`group flex items-center gap-1 rounded-lg transition-colors cursor-pointer ${
-                    activeSessionId === s.id ? 'bg-primary-50 border border-primary-200' : 'hover:bg-gray-50 border border-transparent'
+                  className={`group flex items-center gap-1 rounded-2xl transition-colors cursor-pointer ${
+                    activeSessionId === s.id ? 'bg-primary-50' : 'hover:bg-gray-50'
                   }`}
                   onClick={() => setActiveSessionId(s.id)}
                 >
                   <div className="flex-1 min-w-0 px-2.5 py-2">
-                    <p className="text-xs font-medium text-gray-800 truncate">{s.title}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">
+                    <p className="text-xs font-medium text-ink truncate">{s.title}</p>
+                    <p className="text-[10px] text-ink-faint mt-0.5">
                       {new Date(s.updatedAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}
                       {s.messageCount !== undefined && ` · ${s.messageCount}条`}
                     </p>
                   </div>
                   <button
                     onClick={e => { e.stopPropagation(); handleDeleteSession(s.id) }}
-                    className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 pr-2 transition-opacity"
+                    className="opacity-0 group-hover:opacity-100 text-ink-faint hover:text-danger-600 pr-2 transition-opacity"
                     title="删除会话"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
                 </div>
@@ -290,19 +290,19 @@ export default function AIResearchPage() {
         )}
 
         {/* ── 右：聊天区 ── */}
-        <div className="flex-1 bg-white rounded-2xl shadow-sm border border-primary-100 flex flex-col overflow-hidden min-w-0">
+        <div className="flex-1 bg-surface rounded-2xl shadow-soft flex flex-col overflow-hidden min-w-0">
           {/* 顶栏 */}
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-primary-100">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-hairline">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="text-gray-400 hover:text-primary-600 transition-colors"
+              className="w-9 h-9 rounded-full flex items-center justify-center text-ink-muted hover:bg-gray-50 transition-colors"
               title="切换会话列表"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <div className="text-xs text-gray-400">
+            <div className="text-xs text-ink-faint">
               优先检索内部项目库 · 记忆自动沉淀 · 数据【高亮】
             </div>
           </div>
@@ -312,13 +312,13 @@ export default function AIResearchPage() {
             {messages.length === 0 && !sending ? (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center max-w-md">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-lg shadow-primary-500/30">
-                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-gray-50 flex items-center justify-center">
+                    <svg className="w-7 h-7 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900 mb-2">AI行研</h3>
-                  <p className="text-sm text-gray-500 mb-4">
+                  <h3 className="text-lg font-bold text-ink mb-2">AI行研</h3>
+                  <p className="text-sm text-ink-muted mb-4">
                     站在一级市场投资人视角的投研助手：优先检索内部项目库（含投后项目），
                     联网补充行业信息，自动评估融资时间窗口与竞争格局。
                   </p>
@@ -331,7 +331,7 @@ export default function AIResearchPage() {
                       <button
                         key={q}
                         onClick={() => { setInput(q) }}
-                        className="px-3 py-2 bg-gray-50 hover:bg-primary-50 border border-gray-100 hover:border-primary-200 rounded-xl text-xs text-gray-600 hover:text-primary-700 transition-colors"
+                        className="px-3 py-2 bg-gray-50 hover:bg-primary-50 rounded-full text-xs text-ink-muted hover:text-primary-700 transition-colors"
                       >
                         {q}
                       </button>
@@ -344,12 +344,12 @@ export default function AIResearchPage() {
             )}
             {sending && (
               <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center flex-shrink-0">
                   <span className="text-white text-xs font-bold">研</span>
                 </div>
-                <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-400">
+                <div className="bg-gray-50 rounded-2xl px-4 py-3 text-sm text-ink-faint">
                   <span className="inline-flex items-center gap-2">
-                    <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary-500"></span>
+                    <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary-600"></span>
                     检索项目库与联网信息中...
                   </span>
                 </div>
@@ -359,7 +359,7 @@ export default function AIResearchPage() {
           </div>
 
           {/* 输入区 */}
-          <div className="p-3 border-t border-primary-100">
+          <div className="p-3 border-t border-hairline">
             <div className="flex items-end gap-2">
               <textarea
                 value={input}
@@ -372,13 +372,13 @@ export default function AIResearchPage() {
                 }}
                 placeholder="输入投资研究问题（Enter 发送，Shift+Enter 换行）"
                 rows={Math.min(4, Math.max(1, input.split('\n').length))}
-                className="flex-1 px-3 py-2 border border-primary-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-primary-400 focus:border-primary-400 resize-none"
+                className="input-field flex-1 resize-none"
                 disabled={sending}
               />
               <button
                 onClick={handleSend}
                 disabled={sending || !input.trim()}
-                className="px-4 py-2 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl hover:from-primary-600 hover:to-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm font-medium flex-shrink-0"
+                className="btn-primary flex-shrink-0"
               >
                 {sending ? '分析中' : '发送'}
               </button>
@@ -394,10 +394,10 @@ export default function AIResearchPage() {
 
 /** 裁决徽章（数据核验：✅ 一致 / ⚠️ 夸大 / ❌ 矛盾 / ❓ 未证实） */
 const VERIFY_BADGES: Record<string, { label: string; cls: string }> = {
-  SUPPORTED: { label: '✅ 一致', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
-  EXAGGERATED: { label: '⚠️ 夸大', cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
-  CONTRADICTED: { label: '❌ 矛盾', cls: 'bg-red-50 text-red-600 border border-red-200' },
-  UNVERIFIED: { label: '❓ 未证实', cls: 'bg-gray-100 text-gray-500 border border-gray-200' },
+  SUPPORTED: { label: '✅ 一致', cls: 'bg-emerald-50 text-emerald-700' },
+  EXAGGERATED: { label: '⚠️ 夸大', cls: 'bg-warning-50 text-warning-700' },
+  CONTRADICTED: { label: '❌ 矛盾', cls: 'bg-danger-50 text-danger-600' },
+  UNVERIFIED: { label: '❓ 未证实', cls: 'bg-gray-100 text-ink-muted' },
 }
 
 function MessageBubble({
@@ -412,7 +412,7 @@ function MessageBubble({
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[80%] bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl rounded-tr-sm px-4 py-2.5 text-sm whitespace-pre-wrap">
+        <div className="max-w-[80%] bg-primary-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm whitespace-pre-wrap">
           {message.content}
         </div>
       </div>
@@ -423,36 +423,36 @@ function MessageBubble({
 
   return (
     <div className="flex items-start gap-3">
-      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+      <div className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center flex-shrink-0">
         <span className="text-white text-xs font-bold">研</span>
       </div>
       <div className="max-w-[85%] min-w-0">
-        <div className="bg-gray-50 border border-gray-100 rounded-xl rounded-tl-sm px-4 py-3 text-sm text-gray-800 leading-relaxed">
+        <div className="bg-gray-50 rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-ink leading-relaxed">
           <RichContent content={message.content} />
         </div>
 
         {/* 数据核验（联网交叉核验回答中的关键声明，P2.3） */}
         <div className="mt-1.5">
           {verifying ? (
-            <span className="inline-flex items-center gap-1.5 text-[10px] text-sky-600 px-2 py-1">
-              <span className="animate-spin rounded-full h-3 w-3 border-2 border-sky-300 border-t-sky-600" />
+            <span className="inline-flex items-center gap-1.5 text-[10px] text-primary-600 px-2 py-1">
+              <span className="animate-spin rounded-full h-3 w-3 border-2 border-primary-200 border-t-primary-600" />
               正在联网核验关键数据（约 30-60 秒）...
             </span>
           ) : !v ? (
             <button
               onClick={() => onVerify(message.id)}
-              className="text-[10px] px-2 py-1 bg-sky-50 text-sky-600 rounded-lg font-bold hover:bg-sky-100 border border-sky-100 transition-colors"
+              className="pill bg-primary-50 text-primary-700 hover:bg-primary-100 transition-colors"
               title="提取本回答中的关键声明，联网交叉核验"
             >
               🔍 核验数据
             </button>
           ) : (
-            <div className="rounded-xl border border-sky-100 bg-white px-3 py-2.5">
+            <div className="rounded-2xl bg-surface shadow-soft px-3 py-2.5">
               <div className="flex items-center justify-between gap-2 flex-wrap mb-1.5">
-                <span className="text-[10px] font-bold text-sky-700">🔍 数据核验 <span className="font-normal text-gray-400">{v.summary}</span></span>
+                <span className="text-[10px] font-bold text-primary-700">🔍 数据核验 <span className="font-normal text-ink-faint">{v.summary}</span></span>
                 <button
                   onClick={() => onVerify(message.id)}
-                  className="text-[10px] text-gray-400 hover:text-sky-600 font-bold"
+                  className="text-[10px] text-ink-faint hover:text-primary-600 font-bold"
                 >
                   重新核验
                 </button>
@@ -461,11 +461,11 @@ function MessageBubble({
                 <div className="space-y-1.5">
                   {v.claims.map((c, i) => (
                     <div key={i} className="flex items-start justify-between gap-2 flex-wrap">
-                      <p className="text-[10px] text-gray-600 leading-relaxed flex-1 min-w-[180px]">
+                      <p className="text-[10px] text-ink-muted leading-relaxed flex-1 min-w-[180px]">
                         {c.claim}
-                        {c.note && <span className="text-gray-400"> · {c.note}</span>}
+                        {c.note && <span className="text-ink-faint"> · {c.note}</span>}
                       </p>
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0 ${VERIFY_BADGES[c.verdict]?.cls || VERIFY_BADGES.UNVERIFIED.cls}`}>
+                      <span className={`pill flex-shrink-0 ${VERIFY_BADGES[c.verdict]?.cls || VERIFY_BADGES.UNVERIFIED.cls}`}>
                         {VERIFY_BADGES[c.verdict]?.label || c.verdict}
                       </span>
                     </div>
@@ -483,14 +483,14 @@ function MessageBubble({
               <Link
                 key={p.projectId}
                 href={`/projects/${p.projectId}`}
-                className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 border border-blue-100 rounded-lg text-[11px] text-blue-700 hover:bg-blue-100 transition-colors"
+                className="pill bg-primary-50 text-primary-700 hover:bg-primary-100 transition-colors"
                 title="查看内部项目详情"
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                 </svg>
                 {p.projectName}
-                <span className="text-blue-500">（{STAGE_LABELS[p.followStage] || p.followStage}）</span>
+                <span className="text-primary-500">（{STAGE_LABELS[p.followStage] || p.followStage}）</span>
               </Link>
             ))}
           </div>
@@ -498,7 +498,7 @@ function MessageBubble({
         {/* 联网来源 */}
         {message.sources && message.sources.length > 0 && (
           <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 px-1">
-            <span className="text-[10px] text-gray-400">来源：</span>
+            <span className="text-[10px] text-ink-faint">来源：</span>
             {message.sources.map((s, i) => (
               <a
                 key={i}
@@ -570,7 +570,7 @@ function TableBlock({ rows }: { rows: string[][] }) {
         <thead>
           <tr>
             {header.map((cell, i) => (
-              <th key={i} className="border border-gray-200 bg-gray-50 px-2 py-1.5 text-left font-semibold text-gray-700 whitespace-nowrap">
+              <th key={i} className="border border-hairline bg-gray-50 px-2 py-1.5 text-left font-semibold text-ink-muted whitespace-nowrap">
                 {renderInline(cell)}
               </th>
             ))}
@@ -580,7 +580,7 @@ function TableBlock({ rows }: { rows: string[][] }) {
           {body.map((row, ri) => (
             <tr key={ri} className={ri % 2 === 1 ? 'bg-gray-50/50' : ''}>
               {row.map((cell, ci) => (
-                <td key={ci} className="border border-gray-200 px-2 py-1.5 text-gray-700">
+                <td key={ci} className="border border-hairline px-2 py-1.5 text-ink">
                   {renderInline(cell)}
                 </td>
               ))}
@@ -599,7 +599,7 @@ function LineBlock({ line }: { line: string }) {
   if (trimmed.includes('⚠️')) {
     const riskText = trimmed.replace(/^[-•*]\s*/, '') // 去掉可能的列表前缀
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-red-700 font-medium text-xs my-2">
+      <div className="bg-danger-50 rounded-2xl px-3 py-2 text-danger-700 font-medium text-xs my-2">
         {renderInline(riskText)}
       </div>
     )
@@ -609,7 +609,7 @@ function LineBlock({ line }: { line: string }) {
   if (heading) {
     const level = heading[1].length
     const sizeClass = level <= 2 ? 'text-base font-bold mt-3' : 'text-sm font-bold mt-2'
-    return <p className={`${sizeClass} text-gray-900`}>{renderInline(heading[2])}</p>
+    return <p className={`${sizeClass} text-ink`}>{renderInline(heading[2])}</p>
   }
   // 空行
   if (!trimmed) return <div className="h-1.5" />
@@ -650,13 +650,13 @@ function renderInline(text: string) {
     if (match[1] !== undefined) {
       // 【数据】高亮
       parts.push(
-        <span key={`d-${key++}`} className="px-1.5 py-0.5 bg-amber-100 border border-amber-300 rounded font-bold text-amber-800 text-xs">
+        <span key={`d-${key++}`} className="px-1.5 py-0.5 bg-warning-100 rounded-full font-bold text-warning-700 text-xs">
           {match[1]}
         </span>
       )
     } else if (match[2] !== undefined) {
       // **加粗**
-      parts.push(<strong key={`b-${key++}`} className="font-semibold text-gray-900">{match[2]}</strong>)
+      parts.push(<strong key={`b-${key++}`} className="font-semibold text-ink">{match[2]}</strong>)
     }
     last = regex.lastIndex
   }

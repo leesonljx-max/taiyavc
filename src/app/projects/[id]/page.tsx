@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import DashboardLayout from '@/components/DashboardLayout'
@@ -75,6 +76,7 @@ interface ProjectMember {
   name: string | null
   email: string
   username: string | null
+  avatar: string | null
 }
 
 interface TakeoverRequestItem {
@@ -91,6 +93,7 @@ interface AvailableManager {
   name: string | null
   email: string
   username: string | null
+  avatar: string | null
 }
 
 interface Project {
@@ -126,7 +129,7 @@ interface Project {
   canEdit: boolean
   canDelete: boolean
   // 维护人与保护期
-  createdBy: { id: string; name: string | null; email: string | null } | null
+  createdBy: { id: string; name: string | null; email: string | null; avatar: string | null } | null
   createdById: string
   protectionExpiresAt: string | null
   // 辅助维护人列表
@@ -359,7 +362,7 @@ export default function ProjectDetailPage() {
     const name = fileName.toLowerCase()
     if (fileType === 'application/pdf' || name.endsWith('.pdf')) return 'bg-red-100 text-red-600'
     if (name.endsWith('.ppt') || name.endsWith('.pptx')) return 'bg-orange-100 text-orange-600'
-    return 'bg-gray-100 text-gray-600'
+    return 'bg-gray-100 text-ink-muted'
   }
 
   const fetchApproval = async () => {
@@ -693,10 +696,10 @@ export default function ProjectDetailPage() {
           <div className="text-center">
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-danger-50 flex items-center justify-center">
               <svg className="w-8 h-8 text-danger-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">项目不存在或无权访问</h3>
+            <h3 className="text-lg font-semibold text-ink mb-2">项目不存在或无权访问</h3>
             <Link href="/projects" className="text-primary-600 hover:text-primary-700 mt-2 inline-block">
               返回项目列表
             </Link>
@@ -715,7 +718,7 @@ export default function ProjectDetailPage() {
           <button
             onClick={generateAICard}
             disabled={isGeneratingCard}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:from-purple-600 hover:to-pink-600 transition-all-smooth disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-purple-500/30 text-sm font-medium"
+            className="btn-primary disabled:cursor-not-allowed"
           >
             {isGeneratingCard ? (
               <>
@@ -728,7 +731,7 @@ export default function ProjectDetailPage() {
             ) : (
               <>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                 </svg>
                 AI投资分析
               </>
@@ -737,10 +740,10 @@ export default function ProjectDetailPage() {
           {project.canEdit && (
             <Link
               href={`/projects/${project.id}/edit`}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-primary-200 text-gray-700 rounded-xl hover:bg-primary-50 hover:border-primary-300 transition-all-smooth text-sm font-medium"
+              className="btn-secondary"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
               编辑
             </Link>
@@ -748,10 +751,10 @@ export default function ProjectDetailPage() {
           {project.canDelete && (
             <button
               onClick={() => setConfirmDelete(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-danger-200 text-danger-600 rounded-xl hover:bg-danger-50 hover:border-danger-300 transition-all-smooth text-sm font-medium"
+              className="btn-secondary text-danger-600"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
               </svg>
               删除
             </button>
@@ -761,9 +764,9 @@ export default function ProjectDetailPage() {
     >
       {/* 返回链接 */}
       <div className="mb-4">
-        <button onClick={() => router.back()} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-primary-600 transition-colors">
+        <button onClick={() => router.back()} className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-primary-600 transition-colors">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
           </svg>
           返回
         </button>
@@ -775,9 +778,9 @@ export default function ProjectDetailPage() {
           {followStageLabels[project.followStage]}
         </span>
         {stageMsg && (
-          <span className={`text-xs px-2 py-1 rounded-md ${
+          <span className={`text-xs px-2 py-1 rounded-full ${
             stageMsg.type === 'success' ? 'bg-success-50 text-success-700' :
-            stageMsg.type === 'info' ? 'bg-blue-50 text-blue-700' :
+            stageMsg.type === 'info' ? 'bg-primary-50 text-primary-700' :
             'bg-danger-50 text-danger-700'
           }`}>
             {stageMsg.text}
@@ -787,9 +790,9 @@ export default function ProjectDetailPage() {
 
       {/* AI 错误提示 */}
       {aiError && (
-        <div className="mb-6 flex items-center gap-3 px-4 py-3 bg-danger-50 border border-danger-200 rounded-xl">
+        <div className="mb-6 flex items-center gap-3 px-4 py-3 bg-danger-50 border border-danger-200 rounded-2xl">
           <svg className="w-5 h-5 text-danger-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
           <span className="text-sm text-danger-700">{aiError}</span>
         </div>
@@ -797,62 +800,61 @@ export default function ProjectDetailPage() {
 
       {/* AI 投资分析卡片 */}
       {aiCard && (
-        <div className="bg-gradient-to-br from-purple-600 via-indigo-600 to-blue-600 rounded-2xl shadow-xl p-6 mb-6 text-white relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-2xl"></div>
+        <div className="bg-surface rounded-2xl shadow-soft p-6 mb-6">
           <div className="relative">
             <div className="flex items-center gap-2 mb-4">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              <svg className="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
               </svg>
-              <h2 className="text-xl font-bold">AI 投资分析卡片</h2>
+              <h2 className="text-xl font-bold text-ink">AI 投资分析卡片</h2>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
+              <div className="bg-canvas rounded-2xl p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <svg className="w-5 h-5 text-green-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
                   </svg>
-                  <h3 className="font-semibold">投资亮点</h3>
+                  <h3 className="eyebrow">投资亮点</h3>
                 </div>
                 <ul className="space-y-2">
                   {aiCard.highlights.map((highlight, index) => (
                     <li key={index} className="flex items-start gap-2 text-sm">
-                      <span className="w-1.5 h-1.5 bg-green-400 rounded-full mt-2 flex-shrink-0"></span>
+                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mt-2 flex-shrink-0"></span>
                       <span>{highlight}</span>
                     </li>
                   ))}
                 </ul>
               </div>
 
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
+              <div className="bg-canvas rounded-2xl p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <svg className="w-5 h-5 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                   </svg>
-                  <h3 className="font-semibold">核心壁垒</h3>
+                  <h3 className="eyebrow">核心壁垒</h3>
                 </div>
                 <ul className="space-y-2">
                   {aiCard.barriers.map((barrier, index) => (
                     <li key={index} className="flex items-start gap-2 text-sm">
-                      <span className="w-1.5 h-1.5 bg-blue-400 rounded-full mt-2 flex-shrink-0"></span>
+                      <span className="w-1.5 h-1.5 bg-primary-500 rounded-full mt-2 flex-shrink-0"></span>
                       <span>{barrier}</span>
                     </li>
                   ))}
                 </ul>
               </div>
 
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
+              <div className="bg-canvas rounded-2xl p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <svg className="w-5 h-5 text-yellow-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
-                  <h3 className="font-semibold">风险提示</h3>
+                  <h3 className="eyebrow">风险提示</h3>
                 </div>
                 <ul className="space-y-2">
                   {aiCard.risks.map((risk, index) => (
                     <li key={index} className="flex items-start gap-2 text-sm">
-                      <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full mt-2 flex-shrink-0"></span>
+                      <span className="w-1.5 h-1.5 bg-amber-500 rounded-full mt-2 flex-shrink-0"></span>
                       <span>{risk}</span>
                     </li>
                   ))}
@@ -868,11 +870,11 @@ export default function ProjectDetailPage() {
         {/* 左侧 */}
         <div className="space-y-6">
           {/* 项目概览 */}
-          <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
+          <div className="bg-surface rounded-2xl shadow-soft p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <h2 className="text-lg font-bold text-ink flex items-center gap-2">
                 <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 项目概览
               </h2>
@@ -886,7 +888,7 @@ export default function ProjectDetailPage() {
                     setMemberDropdownOpen(false)
                   }}
                   disabled={stageUpdating || !project.canEdit}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all-smooth border ${
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all-smooth border ${
                     project.canEdit
                       ? `${followStageColors[project.followStage]} border-transparent hover:shadow-sm cursor-pointer`
                       : `${followStageColors[project.followStage]} border-transparent cursor-default opacity-90`
@@ -900,13 +902,13 @@ export default function ProjectDetailPage() {
                     </svg>
                   ) : (
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
                     </svg>
                   )}
                   {followStageLabels[project.followStage]}
                   {project.canEdit && (
                     <svg className={`w-3 h-3 transition-transform ${stageDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M19 9l-7 7-7-7" />
                     </svg>
                   )}
                 </button>
@@ -914,7 +916,7 @@ export default function ProjectDetailPage() {
                   <>
                     {/* 点击外部关闭 */}
                     <div className="fixed inset-0 z-10" onClick={() => setStageDropdownOpen(false)} />
-                    <div className="absolute right-0 top-full mt-1 z-20 bg-white rounded-xl shadow-lg border border-gray-200 py-1 min-w-[140px] max-h-[320px] overflow-y-auto">
+                    <div className="absolute right-0 top-full mt-1 z-20 bg-surface rounded-2xl shadow-soft-lg border border-hairline py-1 min-w-[140px] max-h-[320px] overflow-y-auto">
                       {Object.entries(followStageLabels).map(([value, label]) => {
                         const isActive = value === project.followStage
                         return (
@@ -923,13 +925,13 @@ export default function ProjectDetailPage() {
                             type="button"
                             onClick={() => handleStageChange(value as FollowStage)}
                             className={`w-full text-left px-3 py-2 text-xs hover:bg-primary-50 transition-colors flex items-center justify-between gap-2 ${
-                              isActive ? 'bg-primary-50/50 font-medium text-primary-700' : 'text-gray-700'
+                              isActive ? 'bg-primary-50/50 font-medium text-primary-700' : 'text-ink'
                             }`}
                           >
                             <span>{label}</span>
                             {isActive && (
                               <svg className="w-3.5 h-3.5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M5 13l4 4L19 7" />
                               </svg>
                             )}
                           </button>
@@ -941,72 +943,72 @@ export default function ProjectDetailPage() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white/70 rounded-xl p-4 border border-primary-50">
-                <div className="text-xs text-gray-500 mb-1">公司全称</div>
-                <div className="text-sm font-medium text-gray-900">{project.companyFullName || '-'}</div>
+              <div className="bg-canvas rounded-2xl p-4">
+                <div className="text-xs text-ink-muted mb-1">公司全称</div>
+                <div className="text-sm font-medium text-ink">{project.companyFullName || '-'}</div>
               </div>
-              <div className="bg-white/70 rounded-xl p-4 border border-primary-50">
-                <div className="text-xs text-gray-500 mb-1">所处行业</div>
-                <div className="text-sm font-medium text-gray-900">{project.industry || '-'}</div>
+              <div className="bg-canvas rounded-2xl p-4">
+                <div className="text-xs text-ink-muted mb-1">所处行业</div>
+                <div className="text-sm font-medium text-ink">{project.industry || '-'}</div>
               </div>
-              <div className="bg-white/70 rounded-xl p-4 border border-primary-50">
-                <div className="text-xs text-gray-500 mb-1">公司定位</div>
-                <div className="text-sm font-medium text-gray-900">{project.companyPosition || '-'}</div>
+              <div className="bg-canvas rounded-2xl p-4">
+                <div className="text-xs text-ink-muted mb-1">公司定位</div>
+                <div className="text-sm font-medium text-ink">{project.companyPosition || '-'}</div>
               </div>
-              <div className="bg-white/70 rounded-xl p-4 border border-primary-50">
-                <div className="text-xs text-gray-500 mb-1">融资轮次</div>
-                <div className="text-sm font-medium text-gray-900">{project.financingRound || '-'}</div>
+              <div className="bg-canvas rounded-2xl p-4">
+                <div className="text-xs text-ink-muted mb-1">融资轮次</div>
+                <div className="text-sm font-medium text-ink">{project.financingRound || '-'}</div>
               </div>
-              <div className="bg-white/70 rounded-xl p-4 border border-primary-50">
-                <div className="text-xs text-gray-500 mb-1">融资金额</div>
+              <div className="bg-canvas rounded-2xl p-4">
+                <div className="text-xs text-ink-muted mb-1">融资金额</div>
                 <div className="text-sm font-medium text-primary-700">{project.totalAmount}</div>
               </div>
-              <div className="bg-white/70 rounded-xl p-4 border border-primary-50">
-                <div className="text-xs text-gray-500 mb-1">投资估值</div>
+              <div className="bg-canvas rounded-2xl p-4">
+                <div className="text-xs text-ink-muted mb-1">投资估值</div>
                 <div className="text-sm font-medium text-primary-700">{project.investmentValuation ? `¥${project.investmentValuation.toLocaleString()}亿` : '-'}</div>
               </div>
-              <div className="bg-white/70 rounded-xl p-4 border border-primary-50">
-                <div className="text-xs text-gray-500 mb-1">历史累计融资</div>
-                <div className="text-sm font-medium text-gray-900">{project.raisedAmount || '-'}</div>
+              <div className="bg-canvas rounded-2xl p-4">
+                <div className="text-xs text-ink-muted mb-1">历史累计融资</div>
+                <div className="text-sm font-medium text-ink">{project.raisedAmount || '-'}</div>
               </div>
             </div>
           </div>
 
           {/* 主要产品 */}
-          <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <div className="bg-surface rounded-2xl shadow-soft p-6">
+            <h2 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
               <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
               </svg>
               主要产品
             </h2>
             {isContentEmpty(project.mainProducts) ? (
-              <p className="text-gray-400">-</p>
+              <p className="text-ink-faint">-</p>
             ) : (
-              <div className="text-gray-600 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.mainProducts)} />
+              <div className="text-ink-muted leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.mainProducts)} />
             )}
           </div>
 
           {/* 核心优势 */}
-          <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <div className="bg-surface rounded-2xl shadow-soft p-6">
+            <h2 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
               <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
               </svg>
               核心优势
             </h2>
             {isContentEmpty(project.coreAdvantage) ? (
-              <p className="text-gray-400">-</p>
+              <p className="text-ink-faint">-</p>
             ) : (
-              <div className="text-gray-600 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.coreAdvantage)} />
+              <div className="text-ink-muted leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.coreAdvantage)} />
             )}
           </div>
 
           {/* 财务数据 */}
-          <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <div className="bg-surface rounded-2xl shadow-soft p-6">
+            <h2 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
               <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               财务数据
             </h2>
@@ -1021,9 +1023,9 @@ export default function ProjectDetailPage() {
                       return (
                         <div className="space-y-2">
                           {Object.entries(obj).map(([key, value]) => (
-                            <div key={key} className="flex justify-between py-2.5 border-b border-primary-50 last:border-0">
-                              <span className="text-gray-500 text-sm">{key}</span>
-                              <span className="text-gray-900 font-medium text-sm">{String(value)}</span>
+                            <div key={key} className="flex justify-between py-2.5 border-b border-hairline last:border-0">
+                              <span className="text-ink-muted text-sm">{key}</span>
+                              <span className="text-ink font-medium text-sm">{String(value)}</span>
                             </div>
                           ))}
                         </div>
@@ -1035,85 +1037,85 @@ export default function ProjectDetailPage() {
                 }
                 // HTML 内容渲染
                 if (!isContentEmpty(typeof parsed === 'string' ? parsed : String(parsed))) {
-                  return <div className="text-gray-600 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(typeof parsed === 'string' ? parsed : String(parsed))} />
+                  return <div className="text-ink-muted leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(typeof parsed === 'string' ? parsed : String(parsed))} />
                 }
               }
-              return <p className="text-gray-400">-</p>
+              return <p className="text-ink-faint">-</p>
             })()}
           </div>
 
           {/* 订单进展 */}
-          <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <div className="bg-surface rounded-2xl shadow-soft p-6">
+            <h2 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
               <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
               </svg>
               订单进展
             </h2>
             {isContentEmpty(project.orderProgress) ? (
-              <p className="text-gray-400">-</p>
+              <p className="text-ink-faint">-</p>
             ) : (
-              <div className="text-gray-600 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.orderProgress)} />
+              <div className="text-ink-muted leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.orderProgress)} />
             )}
           </div>
 
           {/* 核心团队 */}
-          <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <div className="bg-surface rounded-2xl shadow-soft p-6">
+            <h2 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
               <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
               核心团队
             </h2>
             {isContentEmpty(project.coreTeam) ? (
-              <p className="text-gray-400">-</p>
+              <p className="text-ink-faint">-</p>
             ) : (
-              <div className="text-gray-600 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.coreTeam)} />
+              <div className="text-ink-muted leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.coreTeam)} />
             )}
           </div>
 
           {/* 竞争对手 */}
-          <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <div className="bg-surface rounded-2xl shadow-soft p-6">
+            <h2 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
               <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
               竞争对手
             </h2>
             {isContentEmpty(project.competitors) ? (
-              <p className="text-gray-400">-</p>
+              <p className="text-ink-faint">-</p>
             ) : (
-              <div className="text-gray-600 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.competitors)} />
+              <div className="text-ink-muted leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.competitors)} />
             )}
           </div>
 
           {/* 融资规划 */}
-          <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <div className="bg-surface rounded-2xl shadow-soft p-6">
+            <h2 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
               <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
               </svg>
               融资规划
             </h2>
             {isContentEmpty(project.financingPlan) ? (
-              <p className="text-gray-400">-</p>
+              <p className="text-ink-faint">-</p>
             ) : (
-              <div className="text-gray-600 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.financingPlan)} />
+              <div className="text-ink-muted leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.financingPlan)} />
             )}
           </div>
 
           {/* 项目描述 */}
-          <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <div className="bg-surface rounded-2xl shadow-soft p-6">
+            <h2 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
               <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               项目描述
             </h2>
             {isContentEmpty(project.description) ? (
-              <p className="text-gray-400">-</p>
+              <p className="text-ink-faint">-</p>
             ) : (
-              <div className="text-gray-600 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.description)} />
+              <div className="text-ink-muted leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={renderHtmlContent(project.description)} />
             )}
           </div>
         </div>
@@ -1121,10 +1123,10 @@ export default function ProjectDetailPage() {
         {/* 右侧 - 宽大一倍 */}
         <div className="space-y-6">
           {/* 投资合伙人评价 */}
-          <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <div className="bg-surface rounded-2xl shadow-soft p-6">
+            <h2 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
               <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
               投资合伙人评价 ({project.partnerReviews.length})
             </h2>
@@ -1134,7 +1136,7 @@ export default function ProjectDetailPage() {
               <textarea
                 value={reviewContent}
                 onChange={(e) => setReviewContent(e.target.value)}
-                className="w-full px-4 py-2.5 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth resize-none placeholder-gray-400"
+                className="input-field resize-none"
                 rows={3}
                 placeholder="填写您的评价..."
               />
@@ -1142,7 +1144,7 @@ export default function ProjectDetailPage() {
                 <button
                   onClick={handleSubmitReview}
                   disabled={!reviewContent.trim() || isSubmittingReview}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl hover:from-primary-600 hover:to-primary-700 transition-all-smooth disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                  className="btn-primary disabled:cursor-not-allowed"
                 >
                   {isSubmittingReview ? '发布中...' : '发布评价'}
                 </button>
@@ -1152,30 +1154,30 @@ export default function ProjectDetailPage() {
             {/* 评价列表 */}
             <div className="space-y-3">
               {project.partnerReviews.map(review => (
-                <div key={review.id} className="bg-white/70 rounded-xl p-4 border border-primary-50">
+                <div key={review.id} className="bg-canvas rounded-2xl p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-medium text-sm">
+                      <div className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center text-white font-medium text-sm">
                         {review.userName.charAt(0).toUpperCase()}
                       </div>
-                      <span className="font-medium text-gray-900 text-sm">{review.userName}</span>
+                      <span className="font-medium text-ink text-sm">{review.userName}</span>
                     </div>
-                    <span className="text-xs text-gray-400">{new Date(review.createdAt).toLocaleString('zh-CN')}</span>
+                    <span className="text-xs text-ink-faint">{new Date(review.createdAt).toLocaleString('zh-CN')}</span>
                   </div>
-                  <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">{review.content}</p>
+                  <p className="text-ink-muted text-sm leading-relaxed whitespace-pre-wrap">{review.content}</p>
                 </div>
               ))}
               {project.partnerReviews.length === 0 && (
-                <p className="text-gray-400 text-center py-4 text-sm">暂无评价</p>
+                <p className="text-ink-faint text-center py-4 text-sm">暂无评价</p>
               )}
             </div>
           </div>
 
           {/* 跟进笔记 */}
-          <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <div className="bg-surface rounded-2xl shadow-soft p-6">
+            <h2 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
               <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
               跟进笔记 ({project.followUpNotes.length})
             </h2>
@@ -1185,7 +1187,7 @@ export default function ProjectDetailPage() {
               <textarea
                 value={noteContent}
                 onChange={(e) => setNoteContent(e.target.value)}
-                className="w-full px-4 py-2.5 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth resize-none placeholder-gray-400"
+                className="input-field resize-none"
                 rows={3}
                 placeholder="记录跟进情况..."
               />
@@ -1193,7 +1195,7 @@ export default function ProjectDetailPage() {
                 <button
                   onClick={handleSubmitNote}
                   disabled={!noteContent.trim() || isSubmittingNote}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl hover:from-primary-600 hover:to-primary-700 transition-all-smooth disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                  className="btn-primary disabled:cursor-not-allowed"
                 >
                   {isSubmittingNote ? '发布中...' : '发布笔记'}
                 </button>
@@ -1203,66 +1205,66 @@ export default function ProjectDetailPage() {
             {/* 笔记列表 */}
             <div className="space-y-3">
               {project.followUpNotes.map(note => (
-                <div key={note.id} className="bg-white/70 rounded-xl p-4 border border-primary-50">
+                <div key={note.id} className="bg-canvas rounded-2xl p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-medium text-sm">
+                      <div className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center text-white font-medium text-sm">
                         {note.userName.charAt(0).toUpperCase()}
                       </div>
-                      <span className="font-medium text-gray-900 text-sm">{note.userName}</span>
+                      <span className="font-medium text-ink text-sm">{note.userName}</span>
                     </div>
-                    <span className="text-xs text-gray-400">{new Date(note.createdAt).toLocaleString('zh-CN')}</span>
+                    <span className="text-xs text-ink-faint">{new Date(note.createdAt).toLocaleString('zh-CN')}</span>
                   </div>
-                  <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">{note.content}</p>
+                  <p className="text-ink-muted text-sm leading-relaxed whitespace-pre-wrap">{note.content}</p>
                 </div>
               ))}
               {project.followUpNotes.length === 0 && (
-                <p className="text-gray-400 text-center py-4 text-sm">暂无跟进笔记</p>
+                <p className="text-ink-faint text-center py-4 text-sm">暂无跟进笔记</p>
               )}
             </div>
           </div>
 
           {/* 立项审批 - 仅在 PreDD 阶段或已有审批记录时显示 */}
           {(project.followStage === 'PRE_DD' || project.stageApprovals.length > 0) && (
-            <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <div className="bg-surface rounded-2xl shadow-soft p-6">
+              <h2 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
                 <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                 </svg>
                 立项审批
               </h2>
 
               {/* 审批状态汇总 */}
               {approvalSummary && (
-                <div className="mb-4 p-4 rounded-xl bg-white/70 border border-primary-50">
+                <div className="mb-4 p-4 rounded-2xl bg-canvas border border-hairline">
                   <div className="grid grid-cols-4 gap-3 text-center">
                     <div>
                       <div className="text-2xl font-bold text-emerald-600">{approvalSummary.approvedCount}</div>
-                      <div className="text-xs text-gray-500">已通过</div>
+                      <div className="text-xs text-ink-muted">已通过</div>
                     </div>
                     <div>
                       <div className="text-2xl font-bold text-danger-600">{approvalSummary.rejectedCount}</div>
-                      <div className="text-xs text-gray-500">已拒绝</div>
+                      <div className="text-xs text-ink-muted">已拒绝</div>
                     </div>
                     <div>
-                      <div className="text-2xl font-bold text-gray-400">{approvalSummary.pendingCount}</div>
-                      <div className="text-xs text-gray-500">待审批</div>
+                      <div className="text-2xl font-bold text-ink-faint">{approvalSummary.pendingCount}</div>
+                      <div className="text-xs text-ink-muted">待审批</div>
                     </div>
                     <div>
                       <div className="text-2xl font-bold text-primary-700">{approvalSummary.majorityThreshold}</div>
-                      <div className="text-xs text-gray-500">通过阈值</div>
+                      <div className="text-xs text-ink-muted">通过阈值</div>
                     </div>
                   </div>
                   <div className="mt-3 text-center text-xs">
                     共 {approvalSummary.totalPartners} 位投资合伙人，需 {approvalSummary.majorityThreshold} 票通过方可立项
                   </div>
                   {approvalSummary.isApproved && !approvalSummary.isRejected && (
-                    <div className="mt-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-center text-sm text-emerald-700">
+                    <div className="mt-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-2xl text-center text-sm text-emerald-700">
                       ✓ 已达到多数通过，可进入立项阶段
                     </div>
                   )}
                   {approvalSummary.isRejected && (
-                    <div className="mt-2 px-3 py-2 bg-danger-50 border border-danger-200 rounded-lg text-center text-sm text-danger-700">
+                    <div className="mt-2 px-3 py-2 bg-danger-50 border border-danger-200 rounded-2xl text-center text-sm text-danger-700">
                       ✗ 存在合伙人拒绝立项，无法进入立项阶段
                     </div>
                   )}
@@ -1273,19 +1275,19 @@ export default function ProjectDetailPage() {
               {canApprove && project.followStage === 'PRE_DD' && (
                 <div className="mb-4">
                   {myApproval ? (
-                    <div className="px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-700">
+                    <div className="px-4 py-3 bg-primary-50 border border-primary-100 rounded-2xl text-sm text-primary-700">
                       您已审批：
                       <span className={`font-semibold ml-1 ${myApproval.status === 'APPROVED' ? 'text-emerald-700' : 'text-danger-700'}`}>
                         {myApproval.status === 'APPROVED' ? '通过' : '拒绝'}
                       </span>
-                      {myApproval.comment && <span className="ml-2 text-gray-600">（{myApproval.comment}）</span>}
+                      {myApproval.comment && <span className="ml-2 text-ink-muted">（{myApproval.comment}）</span>}
                     </div>
                   ) : (
                     <>
                       <textarea
                         value={approvalComment}
                         onChange={(e) => setApprovalComment(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth resize-none placeholder-gray-400 mb-2"
+                        className="input-field resize-none mb-2"
                         rows={2}
                         placeholder="审批意见（可选）"
                       />
@@ -1293,14 +1295,14 @@ export default function ProjectDetailPage() {
                         <button
                           onClick={() => handleSubmitApproval('APPROVED')}
                           disabled={isSubmittingApproval}
-                          className="flex-1 px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 transition-all-smooth disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                          className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-full hover:bg-emerald-700 transition-all-smooth disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
                         >
                           ✓ 同意立项
                         </button>
                         <button
                           onClick={() => handleSubmitApproval('REJECTED')}
                           disabled={isSubmittingApproval}
-                          className="flex-1 px-4 py-2 bg-gradient-to-r from-danger-500 to-danger-600 text-white rounded-xl hover:from-danger-600 hover:to-danger-700 transition-all-smooth disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                          className="flex-1 px-4 py-2 bg-danger-600 text-white rounded-full hover:bg-danger-700 transition-all-smooth disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
                         >
                           ✗ 拒绝立项
                         </button>
@@ -1313,7 +1315,7 @@ export default function ProjectDetailPage() {
               {/* 审批记录列表 */}
               <div className="space-y-2">
                 {project.stageApprovals.map(approval => (
-                  <div key={approval.id} className="bg-white/70 rounded-xl p-3 border border-primary-50">
+                  <div key={approval.id} className="bg-canvas rounded-2xl p-3">
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -1323,33 +1325,33 @@ export default function ProjectDetailPage() {
                         }`}>
                           {approval.status === 'APPROVED' ? '通过' : '拒绝'}
                         </span>
-                        <span className="font-medium text-gray-900 text-sm">{approval.userName}</span>
+                        <span className="font-medium text-ink text-sm">{approval.userName}</span>
                       </div>
-                      <span className="text-xs text-gray-400">{new Date(approval.createdAt).toLocaleString('zh-CN')}</span>
+                      <span className="text-xs text-ink-faint">{new Date(approval.createdAt).toLocaleString('zh-CN')}</span>
                     </div>
                     {approval.comment && (
-                      <p className="text-gray-600 text-sm leading-relaxed">{approval.comment}</p>
+                      <p className="text-ink-muted text-sm leading-relaxed">{approval.comment}</p>
                     )}
                   </div>
                 ))}
                 {project.stageApprovals.length === 0 && (
-                  <p className="text-gray-400 text-center py-3 text-sm">暂无审批记录</p>
+                  <p className="text-ink-faint text-center py-3 text-sm">暂无审批记录</p>
                 )}
               </div>
             </div>
           )}
 
           {/* 项目文档（BP、商业计划书等，支持多版本） */}
-          <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
+          <div className="bg-surface rounded-2xl shadow-soft p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <h2 className="text-lg font-bold text-ink flex items-center gap-2">
                 <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                 </svg>
                 项目文档 ({documents.length})
               </h2>
               {project.canEdit && (
-                <label className={`inline-flex items-center gap-2 px-3 py-1.5 bg-primary-50 text-primary-700 rounded-xl text-xs font-medium hover:bg-primary-100 transition-colors cursor-pointer ${uploadingDoc ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                <label className={`inline-flex items-center gap-2 px-3 py-1.5 bg-primary-50 text-primary-700 rounded-full text-xs font-medium hover:bg-primary-100 transition-colors cursor-pointer ${uploadingDoc ? 'opacity-50 cursor-not-allowed' : ''}`}>
                   {uploadingDoc ? (
                     <>
                       <svg className="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -1361,7 +1363,7 @@ export default function ProjectDetailPage() {
                   ) : (
                     <>
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                       </svg>
                       上传文档
                     </>
@@ -1378,9 +1380,9 @@ export default function ProjectDetailPage() {
             </div>
 
             {docError && (
-              <div className="mb-3 flex items-center gap-2 px-3 py-2 bg-danger-50 border border-danger-200 rounded-xl text-xs text-danger-700">
+              <div className="mb-3 flex items-center gap-2 px-3 py-2 bg-danger-50 border border-danger-200 rounded-2xl text-xs text-danger-700">
                 <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
                 {docError}
               </div>
@@ -1388,27 +1390,27 @@ export default function ProjectDetailPage() {
 
             {documents.length === 0 ? (
               <div className="text-center py-6">
-                <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-primary-50 flex items-center justify-center">
+                <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-primary-50 flex items-center justify-center">
                   <svg className="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                   </svg>
                 </div>
-                <p className="text-gray-500 text-sm">
+                <p className="text-ink-muted text-sm">
                   {project.canEdit ? '点击右上角"上传文档"添加 BP 等资料' : '暂无项目文档'}
                 </p>
-                <p className="text-gray-400 text-xs mt-1">支持 PDF / PPT / PPTX 格式</p>
+                <p className="text-ink-faint text-xs mt-1">支持 PDF / PPT / PPTX 格式</p>
               </div>
             ) : (
               <div className="space-y-2">
                 {documents.map(doc => (
                   <div
                     key={doc.id}
-                    className="group flex items-center gap-3 bg-white/70 rounded-xl p-3 border border-primary-50 hover:border-primary-200 hover:shadow-sm transition-all-smooth"
+                    className="group flex items-center gap-3 bg-canvas rounded-2xl p-3 hover:shadow-soft transition-all-smooth"
                   >
                     {/* 文件类型图标 */}
-                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${getDocIconColor(doc.fileType, doc.fileName)}`}>
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${getDocIconColor(doc.fileType, doc.fileName)}`}>
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                       </svg>
                     </div>
 
@@ -1417,10 +1419,10 @@ export default function ProjectDetailPage() {
                       onClick={() => setPreviewDoc({ fileName: doc.fileName, fileUrl: doc.fileUrl, fileType: doc.fileType })}
                       className="flex-1 min-w-0 text-left"
                     >
-                      <div className="font-medium text-gray-900 text-sm truncate hover:text-primary-700 transition-colors" title={doc.fileName}>
+                      <div className="font-medium text-ink text-sm truncate hover:text-primary-700 transition-colors" title={doc.fileName}>
                         {doc.fileName}
                       </div>
-                      <div className="text-xs text-gray-500 flex items-center gap-2">
+                      <div className="text-xs text-ink-muted flex items-center gap-2">
                         <span>{formatFileSize(doc.fileSize)}</span>
                         <span>·</span>
                         <span>{new Date(doc.createdAt).toLocaleDateString('zh-CN')}</span>
@@ -1437,29 +1439,29 @@ export default function ProjectDetailPage() {
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button
                         onClick={() => setPreviewDoc({ fileName: doc.fileName, fileUrl: doc.fileUrl, fileType: doc.fileType })}
-                        className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                        className="w-9 h-9 inline-flex items-center justify-center rounded-full text-ink-faint hover:text-primary-600 hover:bg-gray-50 transition-colors"
                         title="预览"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
                       </button>
                       <a
                         href={doc.fileUrl}
                         download={doc.fileName}
-                        className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                        className="w-9 h-9 inline-flex items-center justify-center rounded-full text-ink-faint hover:text-primary-600 hover:bg-gray-50 transition-colors"
                         title="下载"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                         </svg>
                       </a>
                       {project.canEdit && (
                         <button
                           onClick={() => handleDeleteDocument(doc.id)}
                           disabled={deletingDocId === doc.id}
-                          className="p-1.5 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg transition-colors disabled:opacity-50"
+                          className="w-9 h-9 inline-flex items-center justify-center rounded-full text-ink-faint hover:text-danger-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
                           title="删除"
                         >
                           {deletingDocId === doc.id ? (
@@ -1469,7 +1471,7 @@ export default function ProjectDetailPage() {
                             </svg>
                           ) : (
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
                           )}
                         </button>
@@ -1483,31 +1485,35 @@ export default function ProjectDetailPage() {
 
           {/* 网页资料（项目解读时抓取的网页链接内容，点击卡片弹窗查看全文） */}
           {webLinks.length > 0 && (
-            <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
+            <div className="bg-surface rounded-2xl shadow-soft p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <h2 className="text-lg font-bold text-ink flex items-center gap-2">
                   <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
                   </svg>
                   网页资料 ({webLinks.length})
                 </h2>
-                <span className="text-xs text-gray-400">来自项目解读 · 点击卡片查看全文</span>
+                <span className="text-xs text-ink-faint">来自项目解读 · 点击卡片查看全文</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {webLinks.map((w, idx) => (
                   <button
                     key={idx}
                     onClick={() => setPreviewLink(w)}
-                    className="text-left bg-white/70 rounded-xl p-4 border border-primary-50 hover:border-primary-200 hover:shadow-sm transition-all-smooth"
+                    className="text-left bg-canvas rounded-2xl p-4 hover:shadow-soft transition-all-smooth"
                   >
                     <div className="flex items-center gap-2">
-                      <span className="w-7 h-7 rounded-lg bg-sky-50 text-sky-600 text-sm flex items-center justify-center flex-shrink-0">🌐</span>
-                      <p className="font-medium text-gray-900 text-sm truncate" title={w.title}>{w.title || linkDomain(w.url)}</p>
+                      <span className="w-7 h-7 rounded-full bg-primary-50 text-primary-600 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                        </svg>
+                      </span>
+                      <p className="font-medium text-ink text-sm truncate" title={w.title}>{w.title || linkDomain(w.url)}</p>
                     </div>
-                    <p className="mt-2 text-xs text-gray-500 leading-relaxed line-clamp-3">
+                    <p className="mt-2 text-xs text-ink-muted leading-relaxed line-clamp-3">
                       {w.content.slice(0, 150)}{w.content.length > 150 ? '…' : ''}
                     </p>
-                    <div className="mt-2 flex items-center gap-2 text-[11px] text-gray-400">
+                    <div className="mt-2 flex items-center gap-2 text-[11px] text-ink-faint">
                       <span className="truncate">{linkDomain(w.url)}</span>
                       <span>·</span>
                       <span>{w.content.length} 字</span>
@@ -1520,18 +1526,18 @@ export default function ProjectDetailPage() {
           )}
 
           {/* 竞争态势分析 */}
-          <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
+          <div className="bg-surface rounded-2xl shadow-soft p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <h2 className="text-lg font-bold text-ink flex items-center gap-2">
                 <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
                 竞争态势分析
               </h2>
               <button
                 onClick={generateCompetitors}
                 disabled={isGeneratingCompetitors}
-                className="inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:from-purple-600 hover:to-pink-600 transition-all-smooth disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium shadow-md shadow-purple-500/30"
+                className="btn-primary text-xs disabled:cursor-not-allowed"
               >
                 {isGeneratingCompetitors ? (
                   <>
@@ -1544,7 +1550,7 @@ export default function ProjectDetailPage() {
                 ) : (
                   <>
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
                     {competitorList ? '重新分析' : 'AI 分析'}
                   </>
@@ -1553,9 +1559,9 @@ export default function ProjectDetailPage() {
             </div>
 
             {competitorError && (
-              <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-danger-50 border border-danger-200 rounded-xl text-sm text-danger-700">
+              <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-danger-50 border border-danger-200 rounded-2xl text-sm text-danger-700">
                 <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
                 {competitorError}
               </div>
@@ -1564,10 +1570,10 @@ export default function ProjectDetailPage() {
             {competitorList && competitorList.length > 0 ? (
               <div className="space-y-3">
                 {competitorList.map((c, idx) => (
-                  <div key={idx} className="bg-white/70 rounded-xl p-4 border border-primary-50">
+                  <div key={idx} className="bg-canvas rounded-2xl p-4">
                     <div className="flex items-start justify-between mb-3">
-                      <h3 className="font-semibold text-gray-900 text-sm flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-lg bg-gradient-to-br from-purple-400 to-pink-500 text-white text-xs font-bold flex items-center justify-center">
+                      <h3 className="font-semibold text-ink text-sm flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-primary-600 text-white text-xs font-bold flex items-center justify-center">
                           {idx + 1}
                         </span>
                         {c.projectName || '-'}
@@ -1576,23 +1582,23 @@ export default function ProjectDetailPage() {
                     <div className="space-y-2.5 text-sm">
                       {/* 产品维度 */}
                       <div className="flex gap-2">
-                        <div className="flex-shrink-0 w-20 text-xs text-gray-500 pt-0.5">产品</div>
-                        <div className="flex-1 text-gray-900">{(c as any).products || '-'}</div>
+                        <div className="flex-shrink-0 w-20 text-xs text-ink-muted pt-0.5">产品</div>
+                        <div className="flex-1 text-ink">{(c as any).products || '-'}</div>
                       </div>
                       {/* 技术路线维度 */}
                       <div className="flex gap-2">
-                        <div className="flex-shrink-0 w-20 text-xs text-gray-500 pt-0.5">技术路线</div>
-                        <div className="flex-1 text-gray-900">{(c as any).techRoute || '-'}</div>
+                        <div className="flex-shrink-0 w-20 text-xs text-ink-muted pt-0.5">技术路线</div>
+                        <div className="flex-1 text-ink">{(c as any).techRoute || '-'}</div>
                       </div>
                       {/* 团队背景维度 */}
                       <div className="flex gap-2">
-                        <div className="flex-shrink-0 w-20 text-xs text-gray-500 pt-0.5">团队背景</div>
-                        <div className="flex-1 text-gray-900">{(c as any).teamBackground || (c as any).founderBackground || '-'}</div>
+                        <div className="flex-shrink-0 w-20 text-xs text-ink-muted pt-0.5">团队背景</div>
+                        <div className="flex-1 text-ink">{(c as any).teamBackground || (c as any).founderBackground || '-'}</div>
                       </div>
                       {/* 融资进展维度 */}
                       <div className="flex gap-2">
-                        <div className="flex-shrink-0 w-20 text-xs text-gray-500 pt-0.5">融资进展</div>
-                        <div className="flex-1 text-gray-900">
+                        <div className="flex-shrink-0 w-20 text-xs text-ink-muted pt-0.5">融资进展</div>
+                        <div className="flex-1 text-ink">
                           {c.latestRound && c.latestRound !== '未公开' ? c.latestRound : ''}
                           {c.amount && c.amount !== '未公开' ? ` · ${c.amount}` : ''}
                           {(c as any).investors && (c as any).investors !== '未公开' ? ` · ${(c as any).investors}` : ''}
@@ -1606,23 +1612,23 @@ export default function ProjectDetailPage() {
             ) : (
               !isGeneratingCompetitors && !competitorError && (
                 <div className="text-center py-6">
-                  <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-purple-50 flex items-center justify-center">
-                    <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-primary-50 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
                   </div>
-                  <p className="text-gray-500 text-sm mb-1">点击右上角"AI 分析"</p>
-                  <p className="text-gray-400 text-xs">系统将根据竞争对手和主要产品信息检索市场竞品</p>
+                  <p className="text-ink-muted text-sm mb-1">点击右上角"AI 分析"</p>
+                  <p className="text-ink-faint text-xs">系统将根据竞争对手和主要产品信息检索市场竞品</p>
                 </div>
               )
             )}
           </div>
 
           {/* 维护人卡片：主维护人 + 接手申请 + 辅助维护人 */}
-          <div className="bg-gradient-card rounded-2xl p-5 border border-primary-100">
+          <div className="bg-surface rounded-2xl shadow-soft p-5">
             {/* 顶部消息提示 */}
             {maintainerMsg && (
-              <div className={`mb-3 px-3 py-2 rounded-lg text-xs ${
+              <div className={`mb-3 px-3 py-2 rounded-2xl text-xs ${
                 maintainerMsg.type === 'success' ? 'bg-success-50 text-success-700 border border-success-200' :
                 'bg-danger-50 text-danger-700 border border-danger-200'
               }`}>
@@ -1633,20 +1639,24 @@ export default function ProjectDetailPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* 左侧：主维护人 + 接手申请 */}
               <div className="space-y-3">
-                <div className="flex items-center gap-2 text-sm text-gray-500">
+                <div className="flex items-center gap-2 text-sm text-ink-muted">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
                   当前维护人
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-gray-900 text-sm font-medium flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-medium text-xs">
-                      {(project.createdBy?.name || project.createdBy?.email || '?').charAt(0).toUpperCase()}
+                  <div className="text-ink text-sm font-medium flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full overflow-hidden bg-primary-600 flex items-center justify-center text-white font-medium text-xs">
+                      {project.createdBy?.avatar ? (
+                        <Image src={project.createdBy.avatar} alt="主维护人头像" width={32} height={32} className="w-full h-full object-cover" unoptimized />
+                      ) : (
+                        (project.createdBy?.name || project.createdBy?.email || '?').charAt(0).toUpperCase()
+                      )}
                     </div>
                     <div>
                       <div>{project.createdBy?.name || project.createdBy?.email || '未知用户'}</div>
-                      <div className="text-xs text-gray-400 font-normal">主维护人</div>
+                      <div className="text-xs text-ink-faint font-normal">主维护人</div>
                     </div>
                   </div>
                   {/* 主动变更主维护人下拉 */}
@@ -1660,26 +1670,26 @@ export default function ProjectDetailPage() {
                           setMemberDropdownOpen(false)
                         }}
                         disabled={maintainerActionLoading}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs text-primary-700 bg-primary-50 hover:bg-primary-100 rounded-lg transition-colors disabled:opacity-50"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs text-primary-700 bg-primary-50 hover:bg-primary-100 rounded-full transition-colors disabled:opacity-50"
                         title="变更主维护人"
                       >
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
                         </svg>
                         变更
                         <svg className={`w-3 h-3 transition-transform ${ownerDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M19 9l-7 7-7-7" />
                         </svg>
                       </button>
                       {ownerDropdownOpen && (
                         <>
                           <div className="fixed inset-0 z-10" onClick={() => setOwnerDropdownOpen(false)} />
-                          <div className="absolute right-0 top-full mt-1 z-20 bg-white rounded-xl shadow-lg border border-gray-200 py-1 min-w-[200px] max-h-[280px] overflow-y-auto">
-                            <div className="px-3 py-1.5 text-xs text-gray-400 border-b border-gray-100">
+                          <div className="absolute right-0 top-full mt-1 z-20 bg-surface rounded-2xl shadow-soft-lg border border-hairline py-1 min-w-[200px] max-h-[280px] overflow-y-auto">
+                            <div className="px-3 py-1.5 text-xs text-ink-faint border-b border-hairline">
                               选择新的主维护人
                             </div>
                             {project.availableManagers.length === 0 ? (
-                              <div className="px-3 py-2 text-xs text-gray-400">无可选投资经理</div>
+                              <div className="px-3 py-2 text-xs text-ink-faint">无可选投资经理</div>
                             ) : (
                               project.availableManagers.map(m => (
                                 <button
@@ -1689,10 +1699,14 @@ export default function ProjectDetailPage() {
                                     setConfirmChangeOwner(m.id)
                                     setOwnerDropdownOpen(false)
                                   }}
-                                  className="w-full text-left px-3 py-2 text-xs hover:bg-primary-50 transition-colors flex items-center gap-2 text-gray-700"
+                                  className="w-full text-left px-3 py-2 text-xs hover:bg-primary-50 transition-colors flex items-center gap-2 text-ink"
                                 >
-                                  <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 text-[10px] font-medium">
-                                    {(m.name || m.email || '?').charAt(0).toUpperCase()}
+                                  <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center text-ink-muted text-[10px] font-medium">
+                                    {m.avatar ? (
+                                      <Image src={m.avatar} alt={m.name || m.email} width={24} height={24} className="w-full h-full object-cover" unoptimized />
+                                    ) : (
+                                      (m.name || m.email || '?').charAt(0).toUpperCase()
+                                    )}
                                   </div>
                                   <span>{m.name || m.username || m.email}</span>
                                 </button>
@@ -1707,16 +1721,16 @@ export default function ProjectDetailPage() {
                 {project.protectionExpiresAt && (
                   <div className="text-xs">
                     {new Date(project.protectionExpiresAt) > new Date() ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-warning-50 text-warning-700 border border-warning-200">
+                      <span className="pill bg-warning-50 text-warning-700">
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                         </svg>
                         保护期内 · 至 {new Date(project.protectionExpiresAt).toLocaleDateString('zh-CN')}
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-success-50 text-success-700 border border-success-200">
+                      <span className="pill bg-success-50 text-success-700">
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                         保护期已过期 · {new Date(project.protectionExpiresAt).toLocaleDateString('zh-CN')}
                       </span>
@@ -1726,29 +1740,29 @@ export default function ProjectDetailPage() {
 
                 {/* 接手申请列表（仅主维护人/管理员/合伙人可见） */}
                 {project.canManageMaintainers && project.pendingTakeoverRequests.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-primary-100">
-                    <div className="flex items-center gap-1.5 text-xs text-amber-700 mb-2">
+                  <div className="mt-3 pt-3 border-t border-hairline">
+                    <div className="flex items-center gap-1.5 text-xs text-warning-700 mb-2">
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                       </svg>
                       <span className="font-medium">接手申请 ({project.pendingTakeoverRequests.length})</span>
                     </div>
                     <div className="space-y-2">
                       {project.pendingTakeoverRequests.map(req => (
-                        <div key={req.id} className="bg-amber-50/60 border border-amber-200 rounded-lg p-2.5">
+                        <div key={req.id} className="bg-warning-50 rounded-2xl p-2.5">
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-medium text-gray-900">{req.requesterName}</span>
-                            <span className="text-[10px] text-gray-400">{new Date(req.createdAt).toLocaleDateString('zh-CN')}</span>
+                            <span className="text-xs font-medium text-ink">{req.requesterName}</span>
+                            <span className="text-[10px] text-ink-faint">{new Date(req.createdAt).toLocaleDateString('zh-CN')}</span>
                           </div>
                           {req.comment && (
-                            <p className="text-[11px] text-gray-600 mb-2 line-clamp-2">{req.comment}</p>
+                            <p className="text-[11px] text-ink-muted mb-2 line-clamp-2">{req.comment}</p>
                           )}
                           <div className="flex items-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => setConfirmTakeover({ requestId: req.id, action: 'approve' })}
                               disabled={maintainerActionLoading}
-                              className="flex-1 px-2 py-1 bg-emerald-500 text-white text-[11px] rounded hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                              className="flex-1 px-2 py-1 bg-emerald-600 text-white text-[11px] rounded-full hover:bg-emerald-700 transition-colors disabled:opacity-50"
                             >
                               同意
                             </button>
@@ -1756,7 +1770,7 @@ export default function ProjectDetailPage() {
                               type="button"
                               onClick={() => setConfirmTakeover({ requestId: req.id, action: 'reject' })}
                               disabled={maintainerActionLoading}
-                              className="flex-1 px-2 py-1 bg-white border border-gray-200 text-gray-700 text-[11px] rounded hover:bg-gray-50 transition-colors disabled:opacity-50"
+                              className="flex-1 px-2 py-1 bg-surface border border-hairline text-ink text-[11px] rounded-full hover:bg-gray-50 transition-colors disabled:opacity-50"
                             >
                               拒绝
                             </button>
@@ -1769,11 +1783,11 @@ export default function ProjectDetailPage() {
               </div>
 
               {/* 右侧：辅助维护人 */}
-              <div className="space-y-3 md:border-l md:border-primary-100 md:pl-5">
+              <div className="space-y-3 md:border-l md:border-hairline md:pl-5">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <div className="flex items-center gap-2 text-sm text-ink-muted">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
                     辅助维护人
                   </div>
@@ -1787,19 +1801,19 @@ export default function ProjectDetailPage() {
                           setOwnerDropdownOpen(false)
                         }}
                         disabled={maintainerActionLoading || project.availableManagers.length === 0}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs text-primary-700 bg-primary-50 hover:bg-primary-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs text-primary-700 bg-primary-50 hover:bg-primary-100 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         title={project.availableManagers.length === 0 ? '无更多可添加的投资经理' : '添加辅助维护人'}
                       >
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 4v16m8-8H4" />
                         </svg>
                         添加
                       </button>
                       {memberDropdownOpen && (
                         <>
                           <div className="fixed inset-0 z-10" onClick={() => setMemberDropdownOpen(false)} />
-                          <div className="absolute right-0 top-full mt-1 z-20 bg-white rounded-xl shadow-lg border border-gray-200 py-1 min-w-[200px] max-h-[280px] overflow-y-auto">
-                            <div className="px-3 py-1.5 text-xs text-gray-400 border-b border-gray-100">
+                          <div className="absolute right-0 top-full mt-1 z-20 bg-surface rounded-2xl shadow-soft-lg border border-hairline py-1 min-w-[200px] max-h-[280px] overflow-y-auto">
+                            <div className="px-3 py-1.5 text-xs text-ink-faint border-b border-hairline">
                               选择投资经理添加为辅助维护人
                             </div>
                             {project.availableManagers.map(m => (
@@ -1807,10 +1821,14 @@ export default function ProjectDetailPage() {
                                 key={m.id}
                                 type="button"
                                 onClick={() => handleAddMember(m.id)}
-                                className="w-full text-left px-3 py-2 text-xs hover:bg-primary-50 transition-colors flex items-center gap-2 text-gray-700"
+                                className="w-full text-left px-3 py-2 text-xs hover:bg-primary-50 transition-colors flex items-center gap-2 text-ink"
                               >
-                                <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 text-[10px] font-medium">
-                                  {(m.name || m.email || '?').charAt(0).toUpperCase()}
+                                <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center text-ink-muted text-[10px] font-medium">
+                                  {m.avatar ? (
+                                    <Image src={m.avatar} alt={m.name || m.email} width={24} height={24} className="w-full h-full object-cover" unoptimized />
+                                  ) : (
+                                    (m.name || m.email || '?').charAt(0).toUpperCase()
+                                  )}
                                 </div>
                                 <span>{m.name || m.username || m.email}</span>
                               </button>
@@ -1822,18 +1840,22 @@ export default function ProjectDetailPage() {
                   )}
                 </div>
                 {project.members.length === 0 ? (
-                  <div className="text-xs text-gray-400 py-2">暂无辅助维护人</div>
+                  <div className="text-xs text-ink-faint py-2">暂无辅助维护人</div>
                 ) : (
                   <div className="space-y-2">
                     {project.members.map(m => (
-                      <div key={m.id} className="flex items-center justify-between gap-2 bg-white/70 rounded-lg p-2 border border-primary-50">
+                      <div key={m.id} className="flex items-center justify-between gap-2 bg-canvas rounded-2xl p-2">
                         <div className="flex items-center gap-2 min-w-0">
-                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-medium text-[10px] flex-shrink-0">
-                            {(m.name || m.email || '?').charAt(0).toUpperCase()}
+                          <div className="w-7 h-7 rounded-full overflow-hidden bg-primary-600 flex items-center justify-center text-white font-medium text-[10px] flex-shrink-0">
+                            {m.avatar ? (
+                              <Image src={m.avatar} alt={m.name || m.email} width={28} height={28} className="w-full h-full object-cover" unoptimized />
+                            ) : (
+                              (m.name || m.email || '?').charAt(0).toUpperCase()
+                            )}
                           </div>
                           <div className="min-w-0">
-                            <div className="text-xs font-medium text-gray-900 truncate">{m.name || m.username || m.email}</div>
-                            <div className="text-[10px] text-gray-400">辅助维护人</div>
+                            <div className="text-xs font-medium text-ink truncate">{m.name || m.username || m.email}</div>
+                            <div className="text-[10px] text-ink-faint">辅助维护人</div>
                           </div>
                         </div>
                         {project.canManageMaintainers && (
@@ -1841,11 +1863,11 @@ export default function ProjectDetailPage() {
                             type="button"
                             onClick={() => setConfirmRemoveMember(m.id)}
                             disabled={maintainerActionLoading}
-                            className="p-1 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded transition-colors disabled:opacity-50"
+                            className="w-8 h-8 inline-flex items-center justify-center rounded-full text-ink-faint hover:text-danger-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
                             title="移除辅助维护人"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M6 18L18 6M6 6l12 12" />
                             </svg>
                           </button>
                         )}
@@ -1858,41 +1880,41 @@ export default function ProjectDetailPage() {
           </div>
 
           {/* 创建时间 */}
-          <div className="bg-gradient-card rounded-2xl p-5 border border-primary-100">
-            <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
+          <div className="bg-surface rounded-2xl shadow-soft p-5">
+            <div className="flex items-center gap-2 text-sm text-ink-muted mb-1">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               创建时间
             </div>
-            <div className="text-gray-900 text-sm">{new Date(project.createdAt).toLocaleString('zh-CN')}</div>
+            <div className="text-ink text-sm">{new Date(project.createdAt).toLocaleString('zh-CN')}</div>
           </div>
         </div>
       </div>
 
       {/* 删除确认弹窗 */}
       {confirmDelete && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-gradient-card rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl border border-primary-100">
+        <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
+          <div className="bg-surface rounded-2xl shadow-soft-lg p-6 max-w-md w-full mx-4">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 rounded-full bg-danger-50 flex items-center justify-center">
                 <svg className="w-5 h-5 text-danger-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900">确认删除</h3>
+              <h3 className="text-lg font-semibold text-ink">确认删除</h3>
             </div>
-            <p className="text-gray-600 mb-5">确定要删除项目「{project.name}」吗？此操作无法撤销。</p>
+            <p className="text-ink-muted mb-5">确定要删除项目「{project.name}」吗？此操作无法撤销。</p>
             <div className="flex items-center justify-end gap-3">
               <button
                 onClick={() => setConfirmDelete(false)}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all-smooth"
+                className="btn-secondary"
               >
                 取消
               </button>
               <button
                 onClick={handleDelete}
-                className="px-4 py-2 bg-gradient-to-r from-danger-500 to-danger-600 text-white rounded-xl hover:from-danger-600 hover:to-danger-700 transition-all-smooth shadow-md shadow-danger-500/30"
+                className="px-4 py-2 bg-danger-600 text-white rounded-full hover:bg-danger-700 transition-all-smooth"
               >
                 删除
               </button>
@@ -1903,26 +1925,26 @@ export default function ProjectDetailPage() {
 
       {/* 变更主维护人确认弹窗 */}
       {confirmChangeOwner && project && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-gradient-card rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl border border-primary-100">
+        <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
+          <div className="bg-surface rounded-2xl shadow-soft-lg p-6 max-w-md w-full mx-4">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 rounded-full bg-warning-50 flex items-center justify-center">
                 <svg className="w-5 h-5 text-warning-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900">确认变更主维护人</h3>
+              <h3 className="text-lg font-semibold text-ink">确认变更主维护人</h3>
             </div>
-            <p className="text-gray-600 mb-2">
+            <p className="text-ink-muted mb-2">
               确定要将项目「{project.name}」的主维护人变更为：
-              <span className="font-medium text-gray-900">
+              <span className="font-medium text-ink">
                 {project.availableManagers.find(m => m.id === confirmChangeOwner)?.name
                   || project.availableManagers.find(m => m.id === confirmChangeOwner)?.username
                   || project.availableManagers.find(m => m.id === confirmChangeOwner)?.email
                   || '未知用户'}
               </span> 吗？
             </p>
-            <p className="text-xs text-gray-500 mb-5">
+            <p className="text-xs text-ink-muted mb-5">
               · 变更后保护期将重置为 3 个月<br/>
               · 您将不再是该项目的主维护人（但仍可由新维护人添加为辅助维护人）<br/>
               · 该操作将被记录用于审计
@@ -1931,14 +1953,14 @@ export default function ProjectDetailPage() {
               <button
                 onClick={() => setConfirmChangeOwner(null)}
                 disabled={maintainerActionLoading}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all-smooth disabled:opacity-50"
+                className="btn-secondary disabled:opacity-50"
               >
                 取消
               </button>
               <button
                 onClick={() => handleChangeOwner(confirmChangeOwner)}
                 disabled={maintainerActionLoading}
-                className="px-4 py-2 bg-gradient-to-r from-warning-500 to-warning-600 text-white rounded-xl hover:from-warning-600 hover:to-warning-700 transition-all-smooth shadow-md shadow-warning-500/30 disabled:opacity-50"
+                className="px-4 py-2 bg-warning-600 text-white rounded-full hover:bg-warning-700 transition-all-smooth disabled:opacity-50"
               >
                 {maintainerActionLoading ? '变更中...' : '确认变更'}
               </button>
@@ -1949,19 +1971,19 @@ export default function ProjectDetailPage() {
 
       {/* 移除辅助维护人确认弹窗 */}
       {confirmRemoveMember && project && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-gradient-card rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl border border-primary-100">
+        <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
+          <div className="bg-surface rounded-2xl shadow-soft-lg p-6 max-w-md w-full mx-4">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 rounded-full bg-danger-50 flex items-center justify-center">
                 <svg className="w-5 h-5 text-danger-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900">确认移除辅助维护人</h3>
+              <h3 className="text-lg font-semibold text-ink">确认移除辅助维护人</h3>
             </div>
-            <p className="text-gray-600 mb-5">
+            <p className="text-ink-muted mb-5">
               确定要移除辅助维护人
-              <span className="font-medium text-gray-900">
+              <span className="font-medium text-ink">
                 {' '}{project.members.find(m => m.id === confirmRemoveMember)?.name
                   || project.members.find(m => m.id === confirmRemoveMember)?.username
                   || project.members.find(m => m.id === confirmRemoveMember)?.email
@@ -1973,14 +1995,14 @@ export default function ProjectDetailPage() {
               <button
                 onClick={() => setConfirmRemoveMember(null)}
                 disabled={maintainerActionLoading}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all-smooth disabled:opacity-50"
+                className="btn-secondary disabled:opacity-50"
               >
                 取消
               </button>
               <button
                 onClick={() => handleRemoveMember(confirmRemoveMember)}
                 disabled={maintainerActionLoading}
-                className="px-4 py-2 bg-gradient-to-r from-danger-500 to-danger-600 text-white rounded-xl hover:from-danger-600 hover:to-danger-700 transition-all-smooth shadow-md shadow-danger-500/30 disabled:opacity-50"
+                className="px-4 py-2 bg-danger-600 text-white rounded-full hover:bg-danger-700 transition-all-smooth disabled:opacity-50"
               >
                 {maintainerActionLoading ? '移除中...' : '确认移除'}
               </button>
@@ -1991,8 +2013,8 @@ export default function ProjectDetailPage() {
 
       {/* 接手申请审批确认弹窗 */}
       {confirmTakeover && project && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-gradient-card rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl border border-primary-100">
+        <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
+          <div className="bg-surface rounded-2xl shadow-soft-lg p-6 max-w-md w-full mx-4">
             <div className="flex items-center gap-3 mb-3">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
                 confirmTakeover.action === 'approve' ? 'bg-emerald-50' : 'bg-danger-50'
@@ -2001,17 +2023,17 @@ export default function ProjectDetailPage() {
                   confirmTakeover.action === 'approve' ? 'text-emerald-600' : 'text-danger-500'
                 }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   {confirmTakeover.action === 'approve' ? (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M5 13l4 4L19 7" />
                   ) : (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M6 18L18 6M6 6l12 12" />
                   )}
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900">
+              <h3 className="text-lg font-semibold text-ink">
                 {confirmTakeover.action === 'approve' ? '确认同意接手' : '确认拒绝接手'}
               </h3>
             </div>
-            <p className="text-gray-600 mb-5">
+            <p className="text-ink-muted mb-5">
               {confirmTakeover.action === 'approve'
                 ? '确定要同意该接手申请吗？同意后项目主维护人将变更为申请人，保护期重置为 3 个月。'
                 : '确定要拒绝该接手申请吗？拒绝后申请人将无法接手此项目。'}
@@ -2020,17 +2042,17 @@ export default function ProjectDetailPage() {
               <button
                 onClick={() => setConfirmTakeover(null)}
                 disabled={maintainerActionLoading}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all-smooth disabled:opacity-50"
+                className="btn-secondary disabled:opacity-50"
               >
                 取消
               </button>
               <button
                 onClick={() => handleTakeoverAction(confirmTakeover.requestId, confirmTakeover.action)}
                 disabled={maintainerActionLoading}
-                className={`px-4 py-2 text-white rounded-xl transition-all-smooth shadow-md disabled:opacity-50 ${
+                className={`px-4 py-2 text-white rounded-full transition-all-smooth disabled:opacity-50 ${
                   confirmTakeover.action === 'approve'
-                    ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-emerald-500/30'
-                    : 'bg-gradient-to-r from-danger-500 to-danger-600 hover:from-danger-600 hover:to-danger-700 shadow-danger-500/30'
+                    ? 'bg-emerald-600 hover:bg-emerald-700'
+                    : 'bg-danger-600 hover:bg-danger-700'
                 }`}
               >
                 {maintainerActionLoading
@@ -2053,16 +2075,19 @@ export default function ProjectDetailPage() {
 
       {/* 网页资料全文弹窗（80vw × 80vh，最大 1200px；ESC/点击背景关闭） */}
       {previewLink && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" onClick={() => setPreviewLink(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-6" onClick={() => setPreviewLink(null)}>
           <div
-            className="bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+            className="bg-surface rounded-2xl shadow-soft-lg flex flex-col overflow-hidden"
             style={{ width: '80vw', height: '80vh', maxWidth: 1200 }}
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-gray-100 flex-shrink-0">
+            <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-hairline flex-shrink-0">
               <div className="min-w-0">
-                <h3 className="font-semibold text-gray-900 text-base truncate" title={previewLink.title}>
-                  🌐 {previewLink.title || linkDomain(previewLink.url)}
+                <h3 className="font-semibold text-ink text-base flex items-center gap-2 min-w-0" title={previewLink.title}>
+                  <svg className="w-4 h-4 text-primary-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                  </svg>
+                  <span className="truncate">{previewLink.title || linkDomain(previewLink.url)}</span>
                 </h3>
                 <a
                   href={previewLink.url}
@@ -2078,23 +2103,23 @@ export default function ProjectDetailPage() {
                   href={previewLink.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-1.5 text-xs font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 rounded-xl transition-colors"
+                  className="px-3 py-1.5 text-xs font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 rounded-full transition-colors"
                 >
                   原网页打开
                 </a>
                 <button
                   onClick={() => setPreviewLink(null)}
-                  className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="w-9 h-9 inline-flex items-center justify-center rounded-full text-ink-faint hover:text-ink hover:bg-gray-50 transition-colors"
                   title="关闭 (ESC)"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-4">
-              <p className="text-sm text-gray-700 leading-7 whitespace-pre-wrap break-words">{previewLink.content}</p>
+              <p className="text-sm text-ink leading-7 whitespace-pre-wrap break-words">{previewLink.content}</p>
             </div>
           </div>
         </div>

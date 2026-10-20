@@ -26,14 +26,14 @@ export default function Pagination({
 
   return (
     <div className="flex items-center gap-2 text-sm">
-      <span className="text-gray-500 text-xs whitespace-nowrap">
+      <span className="text-ink-muted text-xs whitespace-nowrap">
         {start}-{end} / 共 {total}
       </span>
       <div className="flex items-center gap-1">
         <button
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage <= 1}
-          className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-surface border border-hairline text-ink-muted hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
           aria-label="上一页"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -45,7 +45,7 @@ export default function Pagination({
           if (totalPages > 5) {
             if (page !== 1 && page !== totalPages && Math.abs(page - currentPage) > 1) {
               if (page === 2 || page === totalPages - 1) {
-                return <span key={page} className="text-gray-300 px-1">···</span>
+                return <span key={page} className="text-ink-faint px-1">···</span>
               }
               return null
             }
@@ -54,10 +54,10 @@ export default function Pagination({
             <button
               key={page}
               onClick={() => onPageChange(page)}
-              className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-all ${
+              className={`w-9 h-9 flex items-center justify-center rounded-full text-sm font-medium transition-all ${
                 page === currentPage
-                  ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md shadow-primary-500/30'
-                  : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-surface border border-hairline text-ink-muted hover:bg-gray-50'
               }`}
             >
               {page}
@@ -67,7 +67,7 @@ export default function Pagination({
         <button
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage >= totalPages}
-          className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-surface border border-hairline text-ink-muted hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
           aria-label="下一页"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

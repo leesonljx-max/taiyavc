@@ -32,11 +32,11 @@ const statusColors: Record<string, string> = {
 }
 
 const roleColors: Record<string, string> = {
-  ADMIN: 'bg-purple-100 text-purple-700',
-  INVESTMENT_PARTNER: 'bg-blue-100 text-blue-700',
-  INVESTMENT_MANAGER: 'bg-cyan-100 text-cyan-700',
-  POST_INVESTMENT_OFFICER: 'bg-indigo-100 text-indigo-700',
-  TEMP_VISITOR: 'bg-gray-100 text-gray-700',
+  ADMIN: 'bg-primary-100 text-primary-700',
+  INVESTMENT_PARTNER: 'bg-emerald-100 text-emerald-700',
+  INVESTMENT_MANAGER: 'bg-amber-100 text-amber-700',
+  POST_INVESTMENT_OFFICER: 'bg-gray-100 text-gray-700',
+  TEMP_VISITOR: 'bg-gray-100 text-gray-500',
 }
 
 export default function AdminUsersPage() {
@@ -152,8 +152,8 @@ export default function AdminUsersPage() {
       <DashboardLayout title="管理员后台">
         <div className="flex items-center justify-center py-16">
           <div className="text-center">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">无权访问</h3>
-            <p className="text-gray-500">仅管理员可访问后台</p>
+            <h3 className="text-lg font-bold text-ink mb-2">无权访问</h3>
+            <p className="text-ink-muted">仅管理员可访问后台</p>
           </div>
         </div>
       </DashboardLayout>
@@ -167,30 +167,30 @@ export default function AdminUsersPage() {
     >
       {/* 统计卡片 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-gradient-card rounded-2xl p-5 shadow-sm border border-primary-100">
-          <div className="text-2xl font-bold text-gray-900">{users.length}</div>
-          <div className="text-xs text-gray-500">总用户数</div>
+        <div className="bg-surface rounded-2xl p-5 shadow-soft">
+          <div className="text-3xl font-bold tracking-tight text-ink">{users.length}</div>
+          <div className="text-xs text-ink-faint">总用户数</div>
         </div>
-        <div className="bg-gradient-card rounded-2xl p-5 shadow-sm border border-primary-100">
-          <div className="text-2xl font-bold text-amber-600">{pendingCount}</div>
-          <div className="text-xs text-gray-500">待审批</div>
+        <div className="bg-surface rounded-2xl p-5 shadow-soft">
+          <div className="text-3xl font-bold tracking-tight text-amber-600">{pendingCount}</div>
+          <div className="text-xs text-ink-faint">待审批</div>
         </div>
-        <div className="bg-gradient-card rounded-2xl p-5 shadow-sm border border-primary-100">
-          <div className="text-2xl font-bold text-emerald-600">
+        <div className="bg-surface rounded-2xl p-5 shadow-soft">
+          <div className="text-3xl font-bold tracking-tight text-emerald-600">
             {users.filter(u => u.status === 'ACTIVE').length}
           </div>
-          <div className="text-xs text-gray-500">已激活</div>
+          <div className="text-xs text-ink-faint">已激活</div>
         </div>
-        <div className="bg-gradient-card rounded-2xl p-5 shadow-sm border border-primary-100">
-          <div className="text-2xl font-bold text-purple-600">
+        <div className="bg-surface rounded-2xl p-5 shadow-soft">
+          <div className="text-3xl font-bold tracking-tight text-primary-600">
             {users.filter(u => u.role === 'ADMIN').length}
           </div>
-          <div className="text-xs text-gray-500">管理员</div>
+          <div className="text-xs text-ink-faint">管理员</div>
         </div>
       </div>
 
       {/* 筛选 */}
-      <div className="bg-gradient-card rounded-2xl shadow-sm p-1.5 mb-6 border border-primary-100 inline-flex">
+      <div className="bg-surface rounded-full shadow-soft p-1.5 mb-6 inline-flex">
         {([
           { key: 'all', label: '全部' },
           { key: 'pending', label: `待审批 (${pendingCount})` },
@@ -200,10 +200,10 @@ export default function AdminUsersPage() {
           <button
             key={item.key}
             onClick={() => setFilter(item.key)}
-            className={`px-5 py-2 rounded-xl text-sm font-medium transition-all-smooth ${
+            className={`px-5 py-2 rounded-full text-sm font-medium transition-all-smooth ${
               filter === item.key
-                ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md shadow-primary-500/30'
-                : 'text-gray-600 hover:bg-primary-50 hover:text-primary-700'
+                ? 'bg-primary-600 text-white'
+                : 'text-ink-muted hover:bg-gray-50 hover:text-primary-700'
             }`}
           >
             {item.label}
@@ -223,44 +223,44 @@ export default function AdminUsersPage() {
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
         </div>
       ) : (
-        <div className="bg-gradient-card rounded-2xl shadow-sm border border-primary-100 overflow-hidden">
+        <div className="bg-surface rounded-2xl shadow-soft overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="bg-primary-50/50 border-b border-primary-100">
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-600 uppercase">用户</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-600 uppercase">账户名</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-600 uppercase">邮箱</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-600 uppercase">角色</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-600 uppercase">状态</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-600 uppercase">注册时间</th>
-                  <th className="text-right px-4 py-3 text-xs font-medium text-gray-600 uppercase">操作</th>
+                <tr className="bg-gray-50 border-b border-hairline">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-ink-muted uppercase">用户</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-ink-muted uppercase">账户名</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-ink-muted uppercase">邮箱</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-ink-muted uppercase">角色</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-ink-muted uppercase">状态</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-ink-muted uppercase">注册时间</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-ink-muted uppercase">操作</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-primary-50">
+              <tbody className="divide-y divide-hairline">
                 {filteredUsers.map(user => (
-                  <tr key={user.id} className="hover:bg-primary-50/30 transition-colors">
+                  <tr key={user.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-medium text-sm">
+                        <div className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center text-white font-medium text-sm">
                           {(user.name || user.email).charAt(0).toUpperCase()}
                         </div>
-                        <span className="font-medium text-gray-900 text-sm">{user.name || '-'}</span>
+                        <span className="font-medium text-ink text-sm">{user.name || '-'}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{user.username || '-'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{user.email}</td>
+                    <td className="px-4 py-3 text-sm text-ink-muted">{user.username || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-ink-muted">{user.email}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${roleColors[user.role] || 'bg-gray-100 text-gray-700'}`}>
+                      <span className={`pill ${roleColors[user.role] || 'bg-gray-100 text-gray-700'}`}>
                         {roleLabels[user.role as UserRole] || user.role}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[user.status] || 'bg-gray-100 text-gray-700'}`}>
+                      <span className={`pill ${statusColors[user.status] || 'bg-gray-100 text-gray-700'}`}>
                         {statusLabels[user.status] || user.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-500">
+                    <td className="px-4 py-3 text-xs text-ink-faint">
                       {new Date(user.createdAt).toLocaleString('zh-CN')}
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -269,7 +269,7 @@ export default function AdminUsersPage() {
                           <select
                             value={editRole}
                             onChange={(e) => setEditRole(e.target.value)}
-                            className="text-xs px-2 py-1 border border-primary-200 rounded-lg bg-white"
+                            className="text-xs px-2 py-1 border border-hairline rounded-lg bg-surface"
                           >
                             {Object.entries(roleLabels).map(([value, label]) => (
                               <option key={value} value={value}>{label}</option>
@@ -278,7 +278,7 @@ export default function AdminUsersPage() {
                           <select
                             value={editStatus}
                             onChange={(e) => setEditStatus(e.target.value)}
-                            className="text-xs px-2 py-1 border border-primary-200 rounded-lg bg-white"
+                            className="text-xs px-2 py-1 border border-hairline rounded-lg bg-surface"
                           >
                             <option value="ACTIVE">已激活</option>
                             <option value="PENDING">待审批</option>
@@ -288,13 +288,13 @@ export default function AdminUsersPage() {
                           <button
                             onClick={() => handleUpdateUser(user.id, editRole, editStatus)}
                             disabled={isSubmitting}
-                            className="px-3 py-1 bg-emerald-500 text-white text-xs rounded-lg hover:bg-emerald-600 disabled:opacity-50"
+                            className="px-3 py-1 bg-primary-600 text-white text-xs rounded-full hover:bg-primary-700 disabled:opacity-50"
                           >
                             保存
                           </button>
                           <button
                             onClick={() => setEditingUser(null)}
-                            className="px-3 py-1 bg-gray-100 text-gray-600 text-xs rounded-lg hover:bg-gray-200"
+                            className="px-3 py-1 bg-gray-100 text-ink-muted text-xs rounded-full hover:bg-gray-200"
                           >
                             取消
                           </button>
@@ -305,13 +305,13 @@ export default function AdminUsersPage() {
                             <>
                               <button
                                 onClick={() => handleUpdateUser(user.id, user.role, 'ACTIVE')}
-                                className="px-3 py-1 bg-emerald-500 text-white text-xs rounded-lg hover:bg-emerald-600"
+                                className="px-3 py-1 bg-emerald-500 text-white text-xs rounded-full hover:bg-emerald-600"
                               >
                                 通过
                               </button>
                               <button
                                 onClick={() => handleUpdateUser(user.id, user.role, 'REJECTED')}
-                                className="px-3 py-1 bg-danger-500 text-white text-xs rounded-lg hover:bg-danger-600"
+                                className="px-3 py-1 bg-danger-500 text-white text-xs rounded-full hover:bg-danger-600"
                               >
                                 拒绝
                               </button>
@@ -323,14 +323,14 @@ export default function AdminUsersPage() {
                               setEditRole(user.role)
                               setEditStatus(user.status)
                             }}
-                            className="px-3 py-1 bg-primary-50 text-primary-700 text-xs rounded-lg hover:bg-primary-100"
+                            className="px-3 py-1 bg-primary-50 text-primary-700 text-xs rounded-full hover:bg-primary-100"
                           >
                             编辑
                           </button>
                           {user.id !== session.user.id && (
                             <button
                               onClick={() => setDeletingUser(user)}
-                              className="px-3 py-1 bg-danger-50 text-danger-700 text-xs rounded-lg hover:bg-danger-100"
+                              className="px-3 py-1 bg-danger-50 text-danger-700 text-xs rounded-full hover:bg-danger-100"
                             >
                               删除
                             </button>
@@ -342,7 +342,7 @@ export default function AdminUsersPage() {
                 ))}
                 {filteredUsers.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-gray-400 text-sm">
+                    <td colSpan={7} className="px-4 py-8 text-center text-ink-faint text-sm">
                       暂无用户
                     </td>
                   </tr>
@@ -354,34 +354,34 @@ export default function AdminUsersPage() {
       )}
       {/* 删除确认弹窗 */}
       {deletingUser && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4">
+        <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
+          <div className="bg-surface rounded-2xl shadow-soft-lg p-6 max-w-sm w-full mx-4">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-danger-100 rounded-full flex items-center justify-center">
                 <svg className="w-5 h-5 text-danger-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900">确认删除账号</h3>
+              <h3 className="text-lg font-bold text-ink">确认删除账号</h3>
             </div>
-            <p className="text-sm text-gray-600 mb-1">
-              确定要删除用户 <span className="font-medium text-gray-900">{deletingUser.name || deletingUser.email}</span> 吗？
+            <p className="text-sm text-ink-muted mb-1">
+              确定要删除用户 <span className="font-medium text-ink">{deletingUser.name || deletingUser.email}</span> 吗？
             </p>
-            <p className="text-xs text-gray-400 mb-6">
+            <p className="text-xs text-ink-faint mb-6">
               该操作不可撤销，用户的所有关联数据将被删除。
             </p>
             <div className="flex gap-3">
               <button
                 onClick={() => setDeletingUser(null)}
                 disabled={isSubmitting}
-                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200 transition-colors disabled:opacity-50"
+                className="flex-1 px-4 py-2.5 bg-gray-100 text-ink text-sm font-medium rounded-full hover:bg-gray-200 transition-colors disabled:opacity-50"
               >
                 取消
               </button>
               <button
                 onClick={() => handleDeleteUser(deletingUser.id)}
                 disabled={isSubmitting}
-                className="flex-1 px-4 py-2.5 bg-danger-500 text-white text-sm font-medium rounded-xl hover:bg-danger-600 transition-colors disabled:opacity-50"
+                className="flex-1 px-4 py-2.5 bg-danger-500 text-white text-sm font-medium rounded-full hover:bg-danger-600 transition-colors disabled:opacity-50"
               >
                 {isSubmitting ? '删除中...' : '确认删除'}
               </button>

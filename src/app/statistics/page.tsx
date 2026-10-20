@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic'
 import DashboardLayout from '@/components/DashboardLayout'
 import { SkillPanelLauncher } from '@/components/SkillPanel'
 
-// ECharts 树图（客户端组件，ssr:false 避免 prerender 报 window undefined）
+// ECharts 3D 柱状图（客户端组件，ssr:false 避免 prerender 报 window undefined）
 const IndustryTreemap = dynamic(() => import('@/components/IndustryTreemap'), {
   ssr: false,
   loading: () => (
@@ -73,10 +73,10 @@ interface IndustryNewsData {
 const EVENT_TYPE_STYLES: Record<string, string> = {
   融资: 'bg-rose-100 text-rose-700',
   产品发布: 'bg-emerald-100 text-emerald-700',
-  技术突破: 'bg-blue-100 text-blue-700',
+  技术突破: 'bg-primary-100 text-primary-700',
   人员变更: 'bg-amber-100 text-amber-700',
-  合作: 'bg-indigo-100 text-indigo-700',
-  政策: 'bg-purple-100 text-purple-700',
+  合作: 'bg-gray-100 text-ink-muted',
+  政策: 'bg-gray-200 text-ink-muted',
 }
 
 /** 时间维度选项（滚动窗口口径） */
@@ -214,7 +214,7 @@ export default function StatisticsPage() {
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-gradient-primary flex items-center justify-center">
+      <div className="min-h-screen bg-canvas flex items-center justify-center">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
       </div>
     )
@@ -247,17 +247,17 @@ export default function StatisticsPage() {
         {/* 页面标题 */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">统计分析</h1>
-            <p className="text-sm text-gray-500 mt-1">行业图谱与行业动态分析</p>
+            <h1 className="text-2xl font-bold tracking-tight text-ink">统计分析</h1>
+            <p className="text-sm text-ink-muted mt-1">行业图谱与行业动态分析</p>
           </div>
           {/* 年份筛选（仅"当年"模式下有意义） */}
           {selectedRange === 'year' && (
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-700">年份筛选</span>
+              <span className="text-sm font-medium text-ink-muted">年份筛选</span>
               <select
                 value={selectedYear}
                 onChange={(e) => changeYear(parseInt(e.target.value, 10))}
-                className="px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-400 focus:border-primary-400"
+                className="px-3 py-2 bg-white border border-hairline rounded-full text-sm text-ink focus:ring-2 focus:ring-primary-400 focus:border-primary-400"
               >
                 {(industryData?.years || [selectedYear]).map(y => (
                   <option key={y} value={y}>{y} 年</option>
@@ -270,27 +270,27 @@ export default function StatisticsPage() {
         {/* 双列布局 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* ═══ 左侧：行业图谱 ═══ */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+          <div className="bg-surface rounded-2xl shadow-soft p-6">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">行业图谱</h2>
-                <p className="text-xs text-gray-400 mt-0.5">
+                <h2 className="text-lg font-bold text-ink">行业图谱</h2>
+                <p className="text-xs text-ink-faint mt-0.5">
                   {industryData
                     ? `共 ${industryData.totalIndustries} 个行业 · ${industryData.totalProjects} 个项目 · ${formatWindow(industryData)}`
                     : ''}
                 </p>
               </div>
               {/* 时间维度切换（右上角）：近1月 / 近季度 / 近半年 / 当年 */}
-              <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-0.5">
+              <div className="flex items-center bg-gray-100 rounded-full p-1 gap-0.5">
                 {RANGE_OPTIONS.map(opt => (
                   <button
                     key={opt.key}
                     onClick={() => changeRange(opt.key)}
                     title={opt.hint}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
                       selectedRange === opt.key
                         ? 'bg-white text-primary-700 shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700'
+                        : 'text-ink-muted hover:text-ink'
                     }`}
                   >
                     {opt.label}
@@ -302,7 +302,7 @@ export default function StatisticsPage() {
             {industryLoading && (
               <div className="flex items-center justify-center py-20">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-                <span className="ml-3 text-sm text-gray-500">加载中...</span>
+                <span className="ml-3 text-sm text-ink-muted">加载中...</span>
               </div>
             )}
 
@@ -314,7 +314,7 @@ export default function StatisticsPage() {
 
             {!industryLoading && !industryError && industryData && industryData.industries.length === 0 && (
               <div className="py-10 text-center">
-                <p className="text-sm text-gray-400">
+                <p className="text-sm text-ink-faint">
                   {industryData.range === 'year' ? `${industryData.year} 年暂无项目数据` : '所选时间范围内暂无项目数据'}
                 </p>
               </div>
@@ -324,7 +324,7 @@ export default function StatisticsPage() {
               <>
                 {/* 图谱容器：relative 包裹，喷射卡片 overlay 覆盖其上 */}
                 <div className="relative">
-                {/* ECharts 矩形树图：块面积 = 项目数，单色蓝磨砂渐变 */}
+                {/* ECharts 3D 柱状图：柱高 = 项目数，颜色深浅 = 数量等级 */}
                 <IndustryTreemap
                   industries={industryData.industries.map(ind => ({ industry: ind.industry, count: ind.count }))}
                   selected={selectedIndustry}
@@ -334,7 +334,7 @@ export default function StatisticsPage() {
                   }}
                 />
 
-                {/* 点击行业块：项目卡片从方块位置 3D 喷射浮现（替代下方列表） */}
+                {/* 点击行业柱：项目卡片从柱体位置 3D 喷射浮现（替代下方列表） */}
                 {selectedIndustry && burstOrigin && (() => {
                   const stat = industryData.industries.find(i => i.industry === selectedIndustry)
                   if (!stat) return null
@@ -352,29 +352,29 @@ export default function StatisticsPage() {
                 </div>
 
                 {/* 图例 */}
-                <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
-                  <span>块面积 = 项目数量 · 颜色深浅 = 数量等级 · 角标 = 前十行业</span>
-                  <span>点击方块喷射查看项目并动态分析</span>
+                <div className="mt-4 pt-4 border-t border-hairline flex items-center justify-between text-xs text-ink-faint">
+                  <span>柱高 = 项目数量 · 颜色深浅 = 数量等级 · 角标 = 前十行业</span>
+                  <span>点击柱体喷射查看项目并动态分析</span>
                 </div>
               </>
             )}
           </div>
 
           {/* ═══ 右侧：行业动态 ═══ */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+          <div className="bg-surface rounded-2xl shadow-soft p-6">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">
+                <h2 className="text-lg font-bold text-ink">
                   行业动态{selectedIndustry ? ` · ${selectedIndustry}` : ''}
                 </h2>
-                <p className="text-xs text-gray-400 mt-0.5">
+                <p className="text-xs text-ink-faint mt-0.5">
                   {newsData?.date
                     ? `${newsData.date} · 每日 04:00 自动收集${selectedIndustry ? ' · 点击气泡即时分析' : ' 前十行业'}`
                     : '每日 04:00 自动收集前十行业动态'}
                 </p>
               </div>
               {!selectedIndustry && (
-                <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-[10px] font-bold">
+                <span className="px-2 py-0.5 rounded-full bg-primary-50 text-primary-700 text-[10px] font-bold">
                   AI HARNESS
                 </span>
               )}
@@ -384,17 +384,17 @@ export default function StatisticsPage() {
             {newsLoading && (
               <div className="flex flex-col items-center justify-center py-20">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-                <span className="mt-3 text-sm text-gray-500">加载行业动态...</span>
+                <span className="mt-3 text-sm text-ink-muted">加载行业动态...</span>
               </div>
             )}
 
             {/* 即时分析中（单行业） */}
             {!newsLoading && analyzingIndustry && (
-              <div className="mb-4 px-4 py-3 rounded-xl bg-gradient-to-r from-indigo-50 to-primary-50 border border-indigo-100 flex items-center gap-3">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-500 flex-shrink-0"></div>
-                <div className="text-sm text-indigo-700">
+              <div className="mb-4 px-4 py-3 rounded-2xl bg-primary-50 flex items-center gap-3">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600 flex-shrink-0"></div>
+                <div className="text-sm text-primary-700">
                   正在收集「{analyzingIndustry}」今日动态（联网检索 + AI 分析）...
-                  <span className="block text-xs text-indigo-400 mt-0.5">约需 20-40 秒</span>
+                  <span className="block text-xs text-primary-600 mt-0.5">约需 20-40 秒</span>
                 </div>
               </div>
             )}
@@ -405,7 +405,7 @@ export default function StatisticsPage() {
                 <p className="text-sm text-danger-600">{newsError}</p>
                 <button
                   onClick={() => fetchIndustryNews()}
-                  className="mt-3 px-3 py-1.5 bg-primary-50 text-primary-700 text-xs rounded-lg hover:bg-primary-100"
+                  className="mt-3 px-3 py-1.5 bg-primary-50 text-primary-700 text-xs rounded-full hover:bg-primary-100"
                 >
                   重试
                 </button>
@@ -415,13 +415,13 @@ export default function StatisticsPage() {
             {/* 卡片列表 */}
             {!newsLoading && !newsError && visibleCards.length === 0 && (
               <div className="py-10 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+                <div className="w-14 h-14 mx-auto mb-4 bg-gray-50 rounded-full flex items-center justify-center">
+                  <svg className="w-6 h-6 text-ink-faint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
                   </svg>
                 </div>
-                <p className="text-sm text-gray-500 mb-1">今日暂无行业动态</p>
-                <p className="text-xs text-gray-400 mb-3">
+                <p className="text-sm text-ink-muted mb-1">今日暂无行业动态</p>
+                <p className="text-xs text-ink-faint mb-3">
                   {topIndustries.length > 0
                     ? '点击左侧行业气泡，再点「行业动态分析」可即时收集'
                     : '暂无项目行业数据，请先创建项目'}
@@ -429,7 +429,7 @@ export default function StatisticsPage() {
                 {topIndustries.length > 0 && (
                   <button
                     onClick={() => analyzeNews()}
-                    className="px-3 py-1.5 bg-primary-500 text-white text-xs rounded-lg hover:bg-primary-600"
+                    className="px-3 py-1.5 bg-primary-500 text-white text-xs rounded-full hover:bg-primary-600"
                   >
                     收集前十行业动态
                   </button>
@@ -447,7 +447,7 @@ export default function StatisticsPage() {
 
             {/* 底部说明 */}
             {!newsLoading && visibleCards.length > 0 && (
-              <div className="mt-4 pt-3 border-t border-gray-100 text-[11px] text-gray-400 leading-relaxed">
+              <div className="mt-4 pt-3 border-t border-hairline text-[11px] text-ink-faint leading-relaxed">
                 事件类型：竞品融资 · 产品发布 · 技术突破 · 人员变更 · 合作 · 政策。数据由 AI 联网检索生成，
                 点击卡片内引用来源可溯源。
               </div>
@@ -466,24 +466,24 @@ function IndustryNewsCardView({ card, highlight }: { card: IndustryNewsCard; hig
 
   return (
     <div
-      className={`rounded-xl border p-4 transition-all ${
+      className={`rounded-2xl bg-surface p-4 transition-all ${
         highlight
-          ? 'border-indigo-300 bg-indigo-50/30 ring-1 ring-indigo-200'
-          : 'border-gray-100 bg-white hover:border-primary-200'
+          ? 'shadow-soft ring-2 ring-primary-400'
+          : 'shadow-soft hover:shadow-soft-lg'
       }`}
     >
       {/* 卡片头：行业名 + 事件数 + 分析时间 */}
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2 min-w-0">
           <span className={`w-2 h-2 rounded-full flex-shrink-0 ${card.events.length > 0 ? 'bg-emerald-500' : 'bg-gray-300'}`} />
-          <h3 className="text-sm font-bold text-gray-900 truncate">{card.industry}</h3>
+          <h3 className="text-sm font-bold text-ink truncate">{card.industry}</h3>
           {card.events.length > 0 && (
             <span className="px-1.5 py-0.5 rounded-full bg-primary-50 text-primary-600 text-[10px] font-bold flex-shrink-0">
               今日 {card.events.length} 件事
             </span>
           )}
         </div>
-        <span className="text-[10px] text-gray-400 flex-shrink-0">
+        <span className="text-[10px] text-ink-faint flex-shrink-0">
           {new Date(card.analyzedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 更新
         </span>
       </div>
@@ -493,29 +493,29 @@ function IndustryNewsCardView({ card, highlight }: { card: IndustryNewsCard; hig
         <div className="space-y-2">
           {card.events.map((e, i) => (
             <div key={i} className="flex gap-2.5 items-start">
-              <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold mt-0.5 ${EVENT_TYPE_STYLES[e.type] || 'bg-gray-100 text-gray-600'}`}>
+              <span className={`flex-shrink-0 pill mt-0.5 ${EVENT_TYPE_STYLES[e.type] || 'bg-gray-100 text-ink-muted'}`}>
                 {e.type}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-gray-800 leading-snug">
+                <p className="text-sm font-semibold text-ink leading-snug">
                   {e.title}
-                  <span className="ml-1.5 text-xs font-normal text-gray-400">{e.company}</span>
+                  <span className="ml-1.5 text-xs font-normal text-ink-faint">{e.company}</span>
                 </p>
-                {e.detail && <p className="text-xs text-gray-500 leading-relaxed mt-0.5">{e.detail}</p>}
+                {e.detail && <p className="text-xs text-ink-muted leading-relaxed mt-0.5">{e.detail}</p>}
               </div>
             </div>
           ))}
         </div>
       ) : (
-        <p className="text-sm text-gray-400 py-2">{card.note || '今日暂无重要动态'}</p>
+        <p className="text-sm text-ink-faint py-2">{card.note || '今日暂无重要动态'}</p>
       )}
 
       {/* 引用来源（可点击溯源） */}
       {card.citations.length > 0 && (
-        <div className="mt-3 pt-2 border-t border-gray-50">
+        <div className="mt-3 pt-2 border-t border-hairline">
           <button
             onClick={() => setShowCitations(!showCitations)}
-            className="text-[11px] text-gray-400 hover:text-primary-600 transition-colors"
+            className="text-[11px] text-ink-faint hover:text-primary-600 transition-colors"
           >
             来源（{card.citations.length}）{showCitations ? ' ▲' : ' ▼'}
           </button>

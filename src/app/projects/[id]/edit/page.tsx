@@ -70,8 +70,8 @@ interface Project {
   canEdit: boolean
 }
 
-const inputClass = "w-full px-4 py-2.5 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth placeholder-gray-400"
-const labelClass = "block text-sm font-medium text-gray-700 mb-2"
+const inputClass = "input-field"
+const labelClass = "block text-sm font-medium text-ink mb-2"
 
 export default function EditProjectPage() {
   const params = useParams()
@@ -242,12 +242,12 @@ export default function EditProjectPage() {
       <DashboardLayout title="编辑项目">
         <div className="flex items-center justify-center py-16">
           <div className="text-center">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-danger-50 flex items-center justify-center">
-              <svg className="w-8 h-8 text-danger-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-danger-50 flex items-center justify-center">
+              <svg className="w-8 h-8 text-danger-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">无权编辑该项目</h3>
+            <h3 className="text-lg font-bold text-ink mb-2">无权编辑该项目</h3>
             <Link href={`/projects/${params.id}`} className="text-primary-600 hover:text-primary-700 mt-2 inline-block">
               返回项目详情
             </Link>
@@ -268,7 +268,7 @@ export default function EditProjectPage() {
             type="submit"
             form="edit-project-form"
             disabled={isSubmitting}
-            className="inline-flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl hover:from-primary-600 hover:to-primary-700 transition-all-smooth disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-primary-500/30 text-sm font-medium"
+            className="btn-primary disabled:cursor-not-allowed"
           >
             {isSubmitting ? (
               <>
@@ -281,7 +281,7 @@ export default function EditProjectPage() {
             ) : (
               <>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M5 13l4 4L19 7" />
                 </svg>
                 保存修改
               </>
@@ -289,10 +289,10 @@ export default function EditProjectPage() {
           </button>
           <Link
             href={`/projects/${params.id}`}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-primary-200 text-gray-700 rounded-xl hover:bg-primary-50 hover:border-primary-300 transition-all-smooth text-sm font-medium"
+            className="btn-secondary"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
             返回详情
           </Link>
@@ -300,19 +300,19 @@ export default function EditProjectPage() {
       }
     >
       <div className="max-w-4xl mx-auto">
-        <form id="edit-project-form" onSubmit={handleSubmit} className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100 space-y-6">
+        <form id="edit-project-form" onSubmit={handleSubmit} className="card p-6 space-y-6">
           {error && (
             <div className="flex items-center gap-3 px-4 py-3 bg-danger-50 border border-danger-200 rounded-xl">
               <svg className="w-5 h-5 text-danger-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
               <span className="text-sm text-danger-700">{error}</span>
             </div>
           )}
 
           <div>
-            <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <span className="w-1 h-4 bg-gradient-to-b from-primary-400 to-primary-600 rounded-full"></span>
+            <h3 className="eyebrow mb-4 flex items-center gap-2">
+              <span className="w-1 h-4 bg-primary-600 rounded-full"></span>
               基本信息
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -381,8 +381,8 @@ export default function EditProjectPage() {
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <span className="w-1 h-4 bg-gradient-to-b from-primary-400 to-primary-600 rounded-full"></span>
+            <h3 className="eyebrow mb-4 flex items-center gap-2">
+              <span className="w-1 h-4 bg-primary-600 rounded-full"></span>
               融资信息
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -488,8 +488,8 @@ export default function EditProjectPage() {
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <span className="w-1 h-4 bg-gradient-to-b from-primary-400 to-primary-600 rounded-full"></span>
+            <h3 className="eyebrow mb-4 flex items-center gap-2">
+              <span className="w-1 h-4 bg-primary-600 rounded-full"></span>
               详细信息
             </h3>
             <div className="space-y-6">
@@ -592,7 +592,7 @@ export default function EditProjectPage() {
           </div>
 
           {/* 底部提示：保存按钮已移至顶部冻结栏 */}
-          <div className="pt-4 border-t border-primary-100 text-center text-xs text-gray-400">
+          <div className="pt-4 border-t border-hairline text-center text-xs text-ink-faint">
             点击右上角「保存修改」按钮保存更改，或点击「返回详情」放弃修改
           </div>
         </form>

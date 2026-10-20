@@ -68,8 +68,8 @@ interface LeadMatch {
   similarity: number
 }
 
-const inputClass = "w-full px-4 py-2.5 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth placeholder-gray-400"
-const labelClass = "block text-sm font-medium text-gray-700 mb-2"
+const inputClass = "input-field"
+const labelClass = "block text-sm font-medium text-ink mb-2"
 
 export default function NewProjectPage() {
   const router = useRouter()
@@ -524,10 +524,10 @@ export default function NewProjectPage() {
       actions={
         <Link
           href="/projects"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-primary-200 text-gray-700 rounded-xl hover:bg-primary-50 hover:border-primary-300 transition-all-smooth text-sm font-medium"
+          className="btn-secondary"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
           </svg>
           返回列表
         </Link>
@@ -535,10 +535,10 @@ export default function NewProjectPage() {
     >
       <div className="max-w-4xl mx-auto space-y-6">
         {/* 周报解析 */}
-        <div className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        <div className="card p-6">
+          <h2 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
+            <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
             从周报读取项目信息
           </h2>
@@ -546,16 +546,16 @@ export default function NewProjectPage() {
             placeholder="粘贴周报内容，系统将自动识别项目名称、公司全称、行业等信息..."
             value={weeklyReport}
             onChange={(e) => setWeeklyReport(e.target.value)}
-            className="w-full px-4 py-3 bg-white/80 border border-primary-200 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all-smooth resize-none placeholder-gray-400"
+            className="input-field resize-none"
             rows={4}
           />
           <button
             onClick={parseWeeklyReport}
             disabled={!weeklyReport}
-            className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-primary-50 text-primary-700 rounded-xl hover:bg-primary-100 transition-all-smooth disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+            className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-primary-50 text-primary-700 rounded-full hover:bg-primary-100 transition-all-smooth disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
             解析周报
           </button>
@@ -565,50 +565,50 @@ export default function NewProjectPage() {
         {duplicateWarning && (
           <div className="rounded-2xl p-5 border bg-warning-50 border-warning-200">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-warning-100">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 bg-warning-100">
                 <svg className="w-5 h-5 text-warning-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
               <div className="flex-1">
-                <h3 className="font-medium text-gray-900">项目名称已存在，不允许重复创建</h3>
-                <p className="text-sm text-gray-600 mt-1">
+                <h3 className="font-medium text-ink">项目名称已存在，不允许重复创建</h3>
+                <p className="text-sm text-ink-muted mt-1">
                   数据库中已存在名为「{duplicateWarning.name}」的项目
                   {duplicateWarning.companyFullName && `（${duplicateWarning.companyFullName}）`}
                 </p>
 
                 {/* 已有项目信息 */}
-                <div className="mt-3 p-3 bg-white/60 rounded-lg border border-warning-200">
+                <div className="mt-3 p-3 bg-surface rounded-xl border border-hairline">
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
-                      <span className="text-gray-500">当前维护人：</span>
-                      <span className="font-medium text-gray-900">{duplicateWarning.createdByName}</span>
+                      <span className="text-ink-muted">当前维护人：</span>
+                      <span className="font-medium text-ink">{duplicateWarning.createdByName}</span>
                     </div>
                     <div>
-                      <span className="text-gray-500">创建时间：</span>
-                      <span className="font-medium text-gray-900">
+                      <span className="text-ink-muted">创建时间：</span>
+                      <span className="font-medium text-ink">
                         {new Date(duplicateWarning.createdAt).toLocaleDateString('zh-CN')}
                       </span>
                     </div>
                     <div className="col-span-2">
-                      <span className="text-gray-500">保护期状态：</span>
+                      <span className="text-ink-muted">保护期状态：</span>
                       {duplicateWarning.isProtected ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-warning-100 text-warning-700 text-xs font-medium">
+                        <span className="pill bg-warning-100 text-warning-700">
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                           </svg>
                           保护期内（需原维护人审批）
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-success-100 text-success-700 text-xs font-medium">
+                        <span className="pill bg-success-100 text-success-700">
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                           保护期已过期（可直接接手）
                         </span>
                       )}
                       {duplicateWarning.protectionExpiresAt && (
-                        <span className="text-gray-500 text-xs ml-2">
+                        <span className="text-ink-muted text-xs ml-2">
                           到期时间：{new Date(duplicateWarning.protectionExpiresAt).toLocaleDateString('zh-CN')}
                         </span>
                       )}
@@ -618,14 +618,14 @@ export default function NewProjectPage() {
 
                 {/* 接手留言输入 */}
                 <div className="mt-3">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                  <label className="block text-xs font-medium text-ink-muted mb-1">
                     {duplicateWarning.isProtected ? '接手申请留言（可选）' : '接手说明（可选）'}
                   </label>
                   <textarea
                     value={takeoverComment}
                     onChange={e => setTakeoverComment(e.target.value)}
                     placeholder={duplicateWarning.isProtected ? '请简要说明您希望接手该项目的原因...' : '请简要说明接手原因...'}
-                    className="w-full px-3 py-2 bg-white/80 border border-warning-200 rounded-lg text-sm focus:ring-2 focus:ring-warning-400 focus:border-warning-400 transition-all-smooth"
+                    className="input-field text-sm"
                     rows={2}
                     disabled={takeoverLoading || !!takeoverResult?.success}
                   />
@@ -636,7 +636,7 @@ export default function NewProjectPage() {
                   <button
                     onClick={handleTakeover}
                     disabled={takeoverLoading || !!takeoverResult?.success}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-lg text-sm font-medium hover:from-primary-600 hover:to-primary-700 transition-all-smooth shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="btn-primary disabled:cursor-not-allowed"
                   >
                     {takeoverLoading ? (
                       <>
@@ -649,7 +649,7 @@ export default function NewProjectPage() {
                     ) : (
                       <>
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                         </svg>
                         {duplicateWarning.isProtected ? '申请接手项目' : '直接接手项目'}
                       </>
@@ -665,19 +665,19 @@ export default function NewProjectPage() {
 
                 {/* 接手结果提示 */}
                 {takeoverResult && (
-                  <div className={`mt-3 p-3 rounded-lg text-sm ${
+                  <div className={`mt-3 p-3 rounded-xl text-sm ${
                     takeoverResult.success
                       ? 'bg-success-50 text-success-700 border border-success-200'
-                      : 'bg-red-50 text-red-700 border border-red-200'
+                      : 'bg-danger-50 text-danger-700 border border-danger-200'
                   }`}>
                     <div className="flex items-start gap-2">
                       {takeoverResult.success ? (
                         <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                       ) : (
                         <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                         </svg>
                       )}
                       <span>{takeoverResult.message}</span>
@@ -685,7 +685,7 @@ export default function NewProjectPage() {
                   </div>
                 )}
 
-                <p className="text-xs text-gray-500 mt-3">
+                <p className="text-xs text-ink-muted mt-3">
                   说明：项目名称相同的项目不允许重复创建。您可以选择修改项目名称，或通过"接手项目"功能成为该项目的新维护人。
                   {duplicateWarning.isProtected
                     ? '当前项目处于3个月保护期内，接手需经原维护人审批同意。'
@@ -700,43 +700,43 @@ export default function NewProjectPage() {
         {leadMatch && !duplicateWarning && (
           <div className="rounded-2xl p-5 border bg-primary-50 border-primary-200">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-primary-100">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 bg-primary-100">
                 <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
               <div className="flex-1">
-                <h3 className="font-medium text-gray-900">匹配到项目线索</h3>
-                <p className="text-sm text-gray-600 mt-1">
+                <h3 className="font-medium text-ink">匹配到项目线索</h3>
+                <p className="text-sm text-ink-muted mt-1">
                   项目名称与线索「<span className="font-medium text-primary-700">{leadMatch.name}</span>」高度重合（相似度 {Math.round(leadMatch.similarity * 100)}%）。提交后将自动合并线索信息到本项目，并删除该线索。
                 </p>
                 <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                   {leadMatch.industry && (
-                    <div className="bg-white/60 rounded-lg px-3 py-1.5">
-                      <span className="text-gray-400 text-xs">行业：</span>
-                      <span className="text-gray-900">{leadMatch.industry}</span>
+                    <div className="bg-surface rounded-xl px-3 py-1.5">
+                      <span className="text-ink-faint text-xs">行业：</span>
+                      <span className="text-ink">{leadMatch.industry}</span>
                     </div>
                   )}
                   {leadMatch.companyPosition && (
-                    <div className="bg-white/60 rounded-lg px-3 py-1.5">
-                      <span className="text-gray-400 text-xs">定位：</span>
-                      <span className="text-gray-900">{leadMatch.companyPosition}</span>
+                    <div className="bg-surface rounded-xl px-3 py-1.5">
+                      <span className="text-ink-faint text-xs">定位：</span>
+                      <span className="text-ink">{leadMatch.companyPosition}</span>
                     </div>
                   )}
                   {leadMatch.mainProducts && (
-                    <div className="bg-white/60 rounded-lg px-3 py-1.5">
-                      <span className="text-gray-400 text-xs">主要产品：</span>
-                      <span className="text-gray-900 truncate">{leadMatch.mainProducts}</span>
+                    <div className="bg-surface rounded-xl px-3 py-1.5">
+                      <span className="text-ink-faint text-xs">主要产品：</span>
+                      <span className="text-ink truncate">{leadMatch.mainProducts}</span>
                     </div>
                   )}
                   {leadMatch.financingHistory && (
-                    <div className="bg-white/60 rounded-lg px-3 py-1.5">
-                      <span className="text-gray-400 text-xs">融资经历：</span>
-                      <span className="text-gray-900 truncate">{leadMatch.financingHistory}</span>
+                    <div className="bg-surface rounded-xl px-3 py-1.5">
+                      <span className="text-ink-faint text-xs">融资经历：</span>
+                      <span className="text-ink truncate">{leadMatch.financingHistory}</span>
                     </div>
                   )}
                 </div>
-                <p className="text-xs text-gray-500 mt-3">
+                <p className="text-xs text-ink-muted mt-3">
                   提示：仅合并你未填写的字段，已填写内容不会被覆盖。
                 </p>
               </div>
@@ -745,19 +745,19 @@ export default function NewProjectPage() {
         )}
 
         {/* 表单 */}
-        <form onSubmit={handleSubmit} className="bg-gradient-card rounded-2xl shadow-sm p-6 border border-primary-100 space-y-6">
+        <form onSubmit={handleSubmit} className="card p-6 space-y-6">
           {error && (
             <div className="flex items-center gap-3 px-4 py-3 bg-danger-50 border border-danger-200 rounded-xl">
               <svg className="w-5 h-5 text-danger-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
               <span className="text-sm text-danger-700">{error}</span>
             </div>
           )}
 
           <div>
-            <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <span className="w-1 h-4 bg-gradient-to-b from-primary-400 to-primary-600 rounded-full"></span>
+            <h3 className="eyebrow mb-4 flex items-center gap-2">
+              <span className="w-1 h-4 bg-primary-600 rounded-full"></span>
               基本信息
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -826,8 +826,8 @@ export default function NewProjectPage() {
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <span className="w-1 h-4 bg-gradient-to-b from-primary-400 to-primary-600 rounded-full"></span>
+            <h3 className="eyebrow mb-4 flex items-center gap-2">
+              <span className="w-1 h-4 bg-primary-600 rounded-full"></span>
               融资信息
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -932,8 +932,8 @@ export default function NewProjectPage() {
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <span className="w-1 h-4 bg-gradient-to-b from-primary-400 to-primary-600 rounded-full"></span>
+            <h3 className="eyebrow mb-4 flex items-center gap-2">
+              <span className="w-1 h-4 bg-primary-600 rounded-full"></span>
               详细信息
             </h3>
             <div className="space-y-6">
@@ -1035,17 +1035,17 @@ export default function NewProjectPage() {
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-primary-100">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-hairline">
             <Link
               href="/projects"
-              className="px-5 py-2.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all-smooth text-sm font-medium"
+              className="btn-secondary"
             >
               取消
             </Link>
             <button
               type="submit"
               disabled={loading || !!duplicateWarning}
-              className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl hover:from-primary-600 hover:to-primary-700 transition-all-smooth disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-primary-500/30 text-sm font-medium"
+              className="btn-primary disabled:cursor-not-allowed"
               title={duplicateWarning ? '项目名称已存在，请修改名称或接手已有项目' : ''}
             >
               {loading ? (
@@ -1059,14 +1059,14 @@ export default function NewProjectPage() {
               ) : duplicateWarning ? (
                 <>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
                   </svg>
                   名称已存在，无法创建
                 </>
               ) : (
                 <>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                   </svg>
                   创建项目
                 </>

@@ -212,22 +212,22 @@ export default function TrackingSignalsModal({ onClose }: { onClose: () => void 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
       {/* 遮罩 */}
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/20" onClick={onClose} />
 
       {/* 弹窗主体 */}
-      <div className="relative bg-white rounded-2xl shadow-2xl w-[92vw] max-w-2xl max-h-[85vh] flex flex-col">
+      <div className="relative bg-surface rounded-2xl shadow-soft-lg w-[92vw] max-w-2xl max-h-[85vh] flex flex-col">
         {/* 头部 */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
           <div className="flex items-center gap-2">
-            <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
-            <h3 className="text-lg font-semibold text-gray-900">跟踪信号</h3>
-            <span className="text-xs text-gray-400">自定义信号，按频率自动跟踪并生成线索</span>
+            <h3 className="text-lg font-bold text-ink">跟踪信号</h3>
+            <span className="text-xs text-ink-faint">自定义信号，按频率自动跟踪并生成线索</span>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1">
+          <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center text-ink-faint hover:bg-gray-50 hover:text-ink transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
@@ -236,20 +236,20 @@ export default function TrackingSignalsModal({ onClose }: { onClose: () => void 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
           {/* 新建信号 */}
           <div>
-            <h4 className="text-sm font-semibold text-gray-800 mb-2">新建信号</h4>
+            <h4 className="text-lg font-bold text-ink mb-2">新建信号</h4>
             <textarea
               value={desc}
               onChange={e => setDesc(e.target.value)}
               placeholder={'用自然语言描述你想跟踪的信号，AI 自动生成跟踪配置...\n例如：' + EXAMPLES[0]}
               rows={3}
-              className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 resize-y"
+              className="input-field resize-y"
             />
             <div className="flex flex-wrap gap-2 mt-2">
               {EXAMPLES.map((ex, i) => (
                 <button
                   key={i}
                   onClick={() => setDesc(ex)}
-                  className="px-2.5 py-1 text-xs bg-purple-50 text-purple-700 rounded-full hover:bg-purple-100 transition-colors"
+                  className="pill bg-primary-50 text-primary-700 hover:bg-primary-100 transition-colors"
                 >
                   示例{i + 1}
                 </button>
@@ -257,38 +257,38 @@ export default function TrackingSignalsModal({ onClose }: { onClose: () => void 
             </div>
 
             {draftError && (
-              <div className="mt-2 p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600">{draftError}</div>
+              <div className="mt-2 p-2.5 bg-danger-50 border border-danger-200 rounded-xl text-xs text-danger-700">{draftError}</div>
             )}
 
             <button
               onClick={handleGenerate}
               disabled={generating || desc.trim().length < 5}
-              className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary mt-3"
             >
               <svg className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
               </svg>
               {generating ? 'AI 解析中...' : 'AI 生成信号配置'}
             </button>
 
             {/* 草稿预览 */}
             {draft && (
-              <div className="mt-3 p-4 bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 rounded-xl">
+              <div className="mt-3 p-4 bg-gray-50 rounded-2xl border border-hairline">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-semibold text-purple-900">信号配置预览（可微调后保存）</span>
-                  {draft.reason && <span className="text-xs text-purple-500">{draft.reason}</span>}
+                  <span className="text-sm font-bold text-ink">信号配置预览（可微调后保存）</span>
+                  {draft.reason && <span className="text-xs text-primary-600">{draft.reason}</span>}
                 </div>
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">信号名称</label>
+                    <label className="block text-xs text-ink-muted mb-1">信号名称</label>
                     <input
                       value={draft.name}
                       onChange={e => setDraft({ ...draft, name: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-purple-200 rounded-lg bg-white focus:outline-none focus:border-purple-400"
+                      className="input-field"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">
+                    <label className="block text-xs text-ink-muted mb-1">
                       搜索关键词（用；分隔，1-3 组）
                     </label>
                     <input
@@ -299,39 +299,39 @@ export default function TrackingSignalsModal({ onClose }: { onClose: () => void 
                           keywords: e.target.value.split(/[；;]/).map(k => k.trim()).filter(Boolean).slice(0, 3),
                         })
                       }
-                      className="w-full px-3 py-2 text-sm border border-purple-200 rounded-lg bg-white focus:outline-none focus:border-purple-400"
+                      className="input-field"
                     />
                   </div>
                   {draft.watchTargets.length > 0 && (
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs text-gray-500">监控对象：</span>
+                      <span className="text-xs text-ink-muted">监控对象：</span>
                       {draft.watchTargets.map((t, i) => (
-                        <span key={i} className="px-2 py-0.5 bg-white border border-purple-200 text-purple-700 text-xs rounded-full">{t}</span>
+                        <span key={i} className="pill bg-primary-50 text-primary-700 border border-primary-100">{t}</span>
                       ))}
                     </div>
                   )}
                   <div className="flex items-center gap-4">
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">跟踪频率</label>
+                      <label className="block text-xs text-ink-muted mb-1">跟踪频率</label>
                       <select
                         value={draft.frequency}
                         onChange={e => setDraft({ ...draft, frequency: e.target.value })}
-                        className="px-3 py-2 text-sm border border-purple-200 rounded-lg bg-white focus:outline-none focus:border-purple-400"
+                        className="input-field"
                       >
                         <option value="DAILY">每天</option>
                         <option value="WEEKLY">每周</option>
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">信号类型</label>
-                      <span className="inline-block px-3 py-2 text-sm bg-white border border-purple-200 rounded-lg text-purple-700">
+                      <label className="block text-xs text-ink-muted mb-1">信号类型</label>
+                      <span className="pill bg-primary-50 text-primary-700 border border-primary-100">
                         {TYPE_LABELS[draft.signalType] || draft.signalType}
                       </span>
                     </div>
                     {draft.industry && (
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">关联行业</label>
-                        <span className="inline-block px-3 py-2 text-sm bg-white border border-purple-200 rounded-lg text-purple-700">{draft.industry}</span>
+                        <label className="block text-xs text-ink-muted mb-1">关联行业</label>
+                        <span className="pill bg-primary-50 text-primary-700 border border-primary-100">{draft.industry}</span>
                       </div>
                     )}
                   </div>
@@ -340,13 +340,13 @@ export default function TrackingSignalsModal({ onClose }: { onClose: () => void 
                   <button
                     onClick={handleSaveDraft}
                     disabled={saving || draft.keywords.length === 0}
-                    className="px-4 py-2 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-colors text-sm font-medium disabled:opacity-50"
+                    className="btn-primary"
                   >
                     {saving ? '保存中...' : '确认并开始跟踪'}
                   </button>
                   <button
                     onClick={() => setDraft(null)}
-                    className="px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors text-sm"
+                    className="btn-secondary"
                   >
                     重新生成
                   </button>
@@ -357,12 +357,20 @@ export default function TrackingSignalsModal({ onClose }: { onClose: () => void 
 
           {/* 信号列表 */}
           <div>
-            <h4 className="text-sm font-semibold text-gray-800 mb-2">我的信号（{signals.length}）</h4>
+            <h4 className="text-lg font-bold text-ink mb-2">我的信号（{signals.length}）</h4>
             {loading ? (
-              <div className="text-sm text-gray-400 py-4 text-center">加载中...</div>
+              <div className="flex flex-col items-center justify-center gap-2 py-6">
+                <div className="w-6 h-6 rounded-full border-2 border-gray-100 border-b-2 border-b-primary-600 animate-spin" />
+                <span className="text-xs text-ink-faint">加载中...</span>
+              </div>
             ) : signals.length === 0 ? (
-              <div className="text-sm text-gray-400 py-4 text-center bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                还没有跟踪信号，用上面的自然语言输入创建第一个吧
+              <div className="py-8 text-center">
+                <div className="w-14 h-14 rounded-full bg-gray-50 flex items-center justify-center mx-auto mb-3">
+                  <svg className="w-6 h-6 text-ink-faint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                </div>
+                <p className="text-xs text-ink-faint">还没有跟踪信号，用上面的自然语言输入创建第一个吧</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -372,34 +380,34 @@ export default function TrackingSignalsModal({ onClose }: { onClose: () => void 
                   return (
                     <div
                       key={signal.id}
-                      className={`p-3.5 rounded-xl border transition-colors ${
-                        signal.isActive ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-100 opacity-70'
+                      className={`p-3.5 rounded-2xl border transition-colors ${
+                        signal.isActive ? 'bg-surface border-hairline hover:bg-gray-50' : 'bg-gray-50 border-hairline opacity-70'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`font-medium text-sm ${signal.isActive ? 'text-gray-900' : 'text-gray-500'}`}>
+                            <span className={`font-bold text-sm ${signal.isActive ? 'text-ink' : 'text-ink-muted'}`}>
                               {signal.name}
                             </span>
-                            <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] rounded-full">
+                            <span className="pill bg-primary-50 text-primary-700">
                               {TYPE_LABELS[signal.signalType] || '自定义'}
                             </span>
-                            <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[10px] rounded-full">
+                            <span className="pill bg-gray-100 text-ink-muted">
                               {FREQ_LABELS[signal.frequency]}
                             </span>
                             {!signal.isActive && (
-                              <span className="px-1.5 py-0.5 bg-gray-200 text-gray-500 text-[10px] rounded-full">已暂停</span>
+                              <span className="pill bg-gray-200 text-ink-muted">已暂停</span>
                             )}
                           </div>
-                          <div className="mt-1 text-xs text-gray-400 truncate">{keywordList.join('；')}</div>
-                          <div className="mt-1 text-xs text-gray-400">
+                          <div className="mt-1 text-xs text-ink-faint truncate">{keywordList.join('；')}</div>
+                          <div className="mt-1 text-xs text-ink-faint">
                             {signal.lastRunAt
                               ? `上次跟踪：${new Date(signal.lastRunAt).toLocaleString('zh-CN')} · 新增 ${signal.lastRunCount} 条`
                               : '尚未执行（等待下一次定时任务）'}
                           </div>
                           {runResult?.signalId === signal.id && (
-                            <div className="mt-1.5 text-xs text-purple-600">{runResult.text}</div>
+                            <div className="mt-1.5 text-xs text-primary-700">{runResult.text}</div>
                           )}
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0">
@@ -407,36 +415,36 @@ export default function TrackingSignalsModal({ onClose }: { onClose: () => void 
                             onClick={() => handleRun(signal)}
                             disabled={runningId === signal.id}
                             title="立即执行一次"
-                            className="p-1.5 text-purple-500 hover:bg-purple-50 rounded-lg disabled:opacity-50"
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-primary-600 hover:bg-primary-50 transition-colors disabled:opacity-50"
                           >
                             <svg className={`w-4 h-4 ${runningId === signal.id ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                           </button>
                           <button
                             onClick={() => handleToggle(signal)}
                             title={signal.isActive ? '暂停' : '启用'}
-                            className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg"
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-ink-faint hover:bg-gray-50 hover:text-ink transition-colors"
                           >
                             {signal.isActive ? (
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                               </svg>
                             ) : (
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                               </svg>
                             )}
                           </button>
                           <button
                             onClick={() => handleDelete(signal)}
                             title="删除"
-                            className="p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500 rounded-lg"
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-ink-faint hover:bg-danger-50 hover:text-danger-600 transition-colors"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
                           </button>
                         </div>

@@ -84,7 +84,7 @@ export default function QuestionPanel({
   return (
     <div className="flex flex-col h-full">
       {/* 头部 */}
-      <div className="px-4 py-3 border-b border-primary-100 bg-gradient-to-r from-primary-50/60 to-transparent flex-shrink-0">
+      <div className="px-4 py-3 border-b border-hairline bg-primary-50/50 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <svg className="w-4 h-4 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -92,7 +92,7 @@ export default function QuestionPanel({
             </svg>
             <span className="text-sm font-bold text-gray-900">提问与回答</span>
             {openCount > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-600 text-xs font-bold">
+              <span className="pill bg-danger-100 text-danger-600">
                 {openCount} 待回答
               </span>
             )}
@@ -110,8 +110,8 @@ export default function QuestionPanel({
               onClick={() => setFilter(key)}
               className={`px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${
                 filter === key
-                  ? 'bg-primary-500 text-white'
-                  : 'bg-white text-gray-500 border border-gray-200 hover:border-primary-300'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-surface text-ink-muted border border-hairline hover:border-primary-300'
               }`}
             >
               {label}
@@ -162,7 +162,7 @@ export default function QuestionPanel({
                   {/* 提问人 + 状态 */}
                   <div className="flex items-center justify-between mb-1.5">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-[10px] text-white font-bold flex-shrink-0">
+                      <div className="w-5 h-5 rounded-full bg-primary-600 flex items-center justify-center text-[10px] text-white font-bold flex-shrink-0">
                         {(q.user.name || q.user.email || '?').charAt(0)}
                       </div>
                       <span className="text-xs font-medium text-gray-700 truncate">{q.user.name || q.user.email}</span>
@@ -209,19 +209,19 @@ export default function QuestionPanel({
                           placeholder="输入回答..."
                           rows={2}
                           autoFocus
-                          className="w-full px-2.5 py-2 text-sm border border-primary-200 rounded-lg focus:ring-2 focus:ring-primary-300 focus:border-primary-400 resize-none bg-white"
+                          className="w-full input-field resize-none"
                         />
                         <div className="flex gap-2 justify-end">
                           <button
                             onClick={() => { setReplyingTo(null); setReplyContent('') }}
-                            className="px-2.5 py-1 text-xs text-gray-500 hover:bg-gray-100 rounded-lg"
+                            className="px-2.5 py-1 text-xs text-ink-muted hover:bg-gray-50 rounded-full"
                           >
                             取消
                           </button>
                           <button
                             onClick={() => handleSubmitReply(q.id)}
                             disabled={submitting || !replyContent.trim()}
-                            className="px-3 py-1 text-xs font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
+                            className="px-3 py-1 text-xs font-semibold bg-primary-600 text-white rounded-full hover:bg-primary-700 disabled:opacity-50"
                           >
                             {submitting ? '提交中...' : '提交回答'}
                           </button>

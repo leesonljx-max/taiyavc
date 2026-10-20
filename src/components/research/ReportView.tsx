@@ -66,7 +66,7 @@ function HighlightText({ text }: { text: string }) {
     parts.push(
       <mark
         key={k++}
-        className="bg-gradient-to-r from-amber-100 to-amber-50 text-amber-900 font-bold px-1 py-0.5 rounded mx-0.5 border-b-2 border-amber-300 whitespace-nowrap"
+        className="bg-amber-100 text-amber-900 font-bold px-1 py-0.5 rounded mx-0.5 border-b-2 border-amber-300 whitespace-nowrap"
       >
         {match[0]}
       </mark>
@@ -119,7 +119,7 @@ function QuestionMarker({ fieldKey, count, onClick }: { fieldKey: string; count:
     <button
       onClick={onClick}
       title={`该字段有 ${count} 个提问`}
-      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors text-xs font-medium flex-shrink-0"
+      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-danger-50 text-danger-600 hover:bg-danger-100 transition-colors text-xs font-medium flex-shrink-0"
     >
       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
@@ -167,7 +167,7 @@ function ValueRenderer(props: FieldProps & { value: unknown }) {
     return (
       <div
         data-field={fieldKey}
-        className="relative rounded-xl bg-gradient-to-br from-primary-50 via-blue-50 to-indigo-50 border border-primary-200 p-4 select-text"
+        className="relative rounded-xl bg-primary-50 border border-primary-100 p-4 select-text"
       >
         <div className="flex items-center gap-2 mb-2">
           <span className="w-1.5 h-1.5 rounded-full bg-primary-500 animate-pulse" />
@@ -233,7 +233,7 @@ function ValueRenderer(props: FieldProps & { value: unknown }) {
         <FieldHeader {...props} />
         <div className="flex flex-wrap gap-1.5">
           {value.map((v, i) => (
-            <span key={i} className="px-2.5 py-1 bg-gradient-to-r from-primary-50 to-blue-50 text-primary-800 text-xs font-medium rounded-full border border-primary-100 select-text">
+            <span key={i} className="px-2.5 py-1 bg-primary-50 text-primary-800 text-xs font-medium rounded-full border border-primary-100 select-text">
               <HighlightText text={v} />
             </span>
           ))}

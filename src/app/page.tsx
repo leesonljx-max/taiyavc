@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useSyncExternalStore } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import DashboardLayout from '@/components/DashboardLayout'
 import { followStageLabels, followStageColors, type FollowStage } from './projects/types'
 import { fetchWithCache, getCachedData, subscribeCache, setupFocusRefresh, invalidateCache } from '@/lib/cache'
@@ -25,6 +26,7 @@ interface WeeklyProject {
   createdAt: string
   aiCard: AICardData | null
   maintainerName: string
+  maintainerAvatar: string | null
 }
 
 interface MaintainerProject {
@@ -40,6 +42,7 @@ interface MaintainerProject {
 interface MaintainerStat {
   userId: string
   userName: string
+  userAvatar: string | null
   stageCounts: Record<string, number>
   projects: MaintainerProject[]
 }
@@ -73,16 +76,20 @@ export default function HomePage() {
   // 是否有缓存数据（有缓存则不显示 loading，后台静默刷新）
   const [loading, setLoading] = useState(!getCachedData<DashboardData>(DASHBOARD_CACHE_KEY))
 
-  // 订阅缓存变化（后台刷新完成后自动更新 UI）
+  // 订阅缓存变化（后台刷新完成后自动更新 UI；缓存被失效时立即重新拉取，如修改头像后）
   useEffect(() => {
     const unsubscribe = subscribeCache(DASHBOARD_CACHE_KEY, () => {
       const cached = getCachedData<DashboardData>(DASHBOARD_CACHE_KEY)
       if (cached) {
         setData(cached)
         setLoading(false)
+      } else {
+        // 缓存已被失效（例如更新头像/姓名后）→ 静默立即重新拉取
+        fetchDashboard(true)
       }
     })
     return unsubscribe
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // 首次加载 / 获取数据
@@ -99,12 +106,14 @@ export default function HomePage() {
     )
   }, [])
 
-  const fetchDashboard = async () => {
-    // 有缓存则不显示 loading（后台静默刷新）
-    if (getCachedData<DashboardData>(DASHBOARD_CACHE_KEY)) {
-      setLoading(false)
-    } else {
-      setLoading(true)
+  const fetchDashboard = async (silent = false) => {
+    if (!silent) {
+      // 有缓存则不显示 loading（后台静默刷新）
+      if (getCachedData<DashboardData>(DASHBOARD_CACHE_KEY)) {
+        setLoading(false)
+      } else {
+        setLoading(true)
+      }
     }
     try {
       const result = await fetchWithCache(DASHBOARD_CACHE_KEY, fetchDashboardData, 30 * 1000)
@@ -114,7 +123,7 @@ export default function HomePage() {
     } catch (error) {
       console.error('Failed to fetch dashboard:', error)
     }
-    setLoading(false)
+    if (!silent) setLoading(false)
   }
 
   // 四个统计卡片：本周新增 / PreDD / 立项项目 / 尽调项目
@@ -157,14 +166,14 @@ export default function HomePage() {
   return (
     <DashboardLayout title="首页" subtitle="本周项目动态总览">
       {/* Stats Cards - 四个本周统计卡片 */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="stat-3d-row grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {stats.map((stat) => (
           <div
             key={stat.label}
-            className="bg-gradient-card rounded-2xl p-5 shadow-sm border border-primary-100 hover:shadow-md transition-all-smooth"
+            className="card p-5"
           >
             <div className="flex items-center gap-4">
-              <div className={`w-12 h-12 bg-gradient-to-br ${stat.gradient} rounded-xl flex items-center justify-center shadow-md ${stat.shadow} flex-shrink-0`}>
+              <div className={`icon-3d-tile w-12 h-12 bg-gradient-to-br ${stat.gradient} rounded-xl flex items-center justify-center shadow-md ${stat.shadow} flex-shrink-0`}>
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={stat.icon} />
                 </svg>
@@ -179,7 +188,7 @@ export default function HomePage() {
       </div>
 
       {/* 本周新增项目（按维护人分组） */}
-      <div className="bg-gradient-card rounded-2xl shadow-sm border border-primary-100 p-6">
+      <div className="card p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-lg font-bold text-gray-900">本周新增项目</h2>
@@ -206,16 +215,27 @@ export default function HomePage() {
             {data.maintainerStats.map((m) => (
               <div
                 key={m.userId}
-                className="bg-white rounded-2xl border border-primary-100 overflow-hidden hover:shadow-md transition-all-smooth"
+                className="glass-card rounded-2xl overflow-hidden"
               >
                 <div className="flex flex-col lg:flex-row">
                   {/* 左侧：姓名 + 各阶段项目数量 */}
                   <div className="lg:w-64 lg:flex-shrink-0 p-5 border-b lg:border-b-0 lg:border-r border-primary-100 bg-gradient-to-br from-primary-50/50 to-transparent">
                     <div className="flex items-center gap-3 mb-4">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-md shadow-primary-500/30">
-                        <span className="text-white font-bold text-sm">
-                          {m.userName.charAt(0).toUpperCase()}
-                        </span>
+                      <div className="w-10 h-10 rounded-xl overflow-hidden bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-md shadow-primary-500/30">
+                        {m.userAvatar ? (
+                          <Image
+                            src={m.userAvatar}
+                            alt={m.userName}
+                            width={40}
+                            height={40}
+                            className="w-full h-full object-cover"
+                            unoptimized
+                          />
+                        ) : (
+                          <span className="text-white font-bold text-sm">
+                            {m.userName.charAt(0).toUpperCase()}
+                          </span>
+                        )}
                       </div>
                       <div>
                         <div className="font-semibold text-gray-900 text-sm">{m.userName}</div>
@@ -263,7 +283,7 @@ export default function HomePage() {
                             <Link
                               key={project.id}
                               href={`/projects/${project.id}`}
-                              className="block bg-white rounded-xl p-3 border border-primary-50 hover:border-primary-200 hover:shadow-md transition-all-smooth"
+                              className="block glass-card rounded-xl p-3"
                             >
                               <div className="flex items-center gap-2 mb-2">
                                 <h4 className="font-semibold text-gray-900 text-sm truncate hover:text-primary-700 transition-colors">

@@ -6,7 +6,7 @@ import prisma from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import {
   listMySkills, listColleagueSkills, validateSkillInput,
-  isSkillInScene, isSkillScene, sanitizeScenes,
+  isSkillInScene, isSkillScene, sanitizeScenes, SKILL_CATEGORIES,
 } from '@/lib/skill-registry'
 
 /**
@@ -15,7 +15,7 @@ import {
  *                              + colleagueSkills（同事挂载在本场景的 CONFIRMED 技能）
  *                              无 scene 时兼容全量视图（librarySkills 为空）
  * POST   /api/skills          创建技能（初始 DRAFT；body.scene → scenes=[scene]，缺省全场景兼容态）
- * PATCH  /api/skills          更新本人技能（提示词/能力勾选变更后回到 DRAFT；scenes 数组可更新且不重置状态）
+ * PATCH  /api/skills          更新本人技能（提示词/能力勾选变更后回到 DRAFT；分类/启停/scenes 更新不重置状态）
  * DELETE /api/skills?key=xxx  删除本人技能
  */
 async function requireUser(): Promise<{ userId: string } | { response: NextResponse }> {
@@ -120,6 +120,13 @@ export async function PATCH(request: Request) {
       if (!description || description.length > 200) return NextResponse.json({ error: '能力说明必填（≤200 字）' }, { status: 400 })
       data.description = description
     }
+    if (body.category !== undefined) {
+      const category = String(body.category || '').trim()
+      if (!SKILL_CATEGORIES.includes(category as (typeof SKILL_CATEGORIES)[number])) {
+        return NextResponse.json({ error: '分类不合法' }, { status: 400 })
+      }
+      data.category = category
+    }
     if (body.content !== undefined) {
       const content = String(body.content || '').trim()
       if (content.length < 20) return NextResponse.json({ error: '提示词内容过短（至少 20 字）' }, { status: 400 })
@@ -128,6 +135,8 @@ export async function PATCH(request: Request) {
     if (body.useSearch !== undefined) data.useSearch = body.useSearch === true
     if (body.useProjectLibrary !== undefined) data.useProjectLibrary = body.useProjectLibrary === true
     if (body.usePostInvestment !== undefined) data.usePostInvestment = body.usePostInvestment === true
+    // 启停（本人技能暂停/恢复挂载；不属于能力变更，不重置 DRAFT/CONFIRMED 状态）
+    if (body.isActive !== undefined) data.isActive = body.isActive === true
     // 适用场景更新（白名单过滤；场景挂载调整不属于能力变更，不重置 DRAFT/CONFIRMED 状态）
     if (body.scenes !== undefined) data.scenes = sanitizeScenes(body.scenes)
     if (Object.keys(data).length === 0) {

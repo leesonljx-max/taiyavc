@@ -11,13 +11,14 @@ export const followStageLabels: Record<FollowStage, string> = {
   REJECTED: '已否',
 }
 
+// 阶段标签配色：统一为「中性灰 → 深翡翠绿」递进 + 少量功能色（尽调/已否）
 export const followStageColors: Record<FollowStage, string> = {
-  INITIAL_TALK: 'bg-gray-100 text-gray-800',
-  PRE_DD: 'bg-blue-100 text-blue-800',
-  PROJECT_INITIATION: 'bg-purple-100 text-purple-800',
-  DUE_DILIGENCE: 'bg-yellow-100 text-yellow-800',
-  AGREEMENT: 'bg-teal-100 text-teal-800',
-  CLOSING: 'bg-orange-100 text-orange-800',
-  POST_INVESTMENT: 'bg-green-100 text-green-800',
-  REJECTED: 'bg-red-100 text-red-800',
+  INITIAL_TALK: 'bg-gray-100 text-gray-600',
+  PRE_DD: 'bg-gray-200 text-gray-700',
+  PROJECT_INITIATION: 'bg-primary-50 text-primary-700',
+  DUE_DILIGENCE: 'bg-warning-50 text-warning-700',
+  AGREEMENT: 'bg-primary-100 text-primary-700',
+  CLOSING: 'bg-primary-600 text-white',
+  POST_INVESTMENT: 'bg-emerald-100 text-emerald-800',
+  REJECTED: 'bg-danger-50 text-danger-600',
 }

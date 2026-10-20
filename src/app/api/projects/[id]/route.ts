@@ -28,10 +28,10 @@ export async function GET(
         members: {
           select: {
             userId: true,
-            user: { select: { id: true, name: true, email: true, username: true } },
+            user: { select: { id: true, name: true, email: true, username: true, avatar: true } },
           },
         },
-        createdBy: { select: { id: true, name: true, email: true } },
+        createdBy: { select: { id: true, name: true, email: true, avatar: true } },
         partnerReviews: {
           orderBy: { createdAt: 'desc' },
         },
@@ -90,7 +90,7 @@ export async function GET(
           id: { notIn: Array.from(excludeIds) },
         },
         orderBy: { name: 'asc' },
-        select: { id: true, name: true, email: true, username: true },
+        select: { id: true, name: true, email: true, username: true, avatar: true },
       })
       availableManagers = managers
     }

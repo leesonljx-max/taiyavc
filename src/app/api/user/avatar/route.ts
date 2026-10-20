@@ -63,14 +63,16 @@ export async function POST(request: Request) {
       select: { avatar: true },
     })
 
-    // 上传：COS 优先，本地存储 fallback
-    let avatarUrl: string
+    // 上传：COS 优先；COS 异常时回退本地存储，避免因 COS 故障导致头像无法更新
+    let avatarUrl: string | null = null
     if (isCosConfigured()) {
-      const cosKey = `avatars/${fileName}`
-      const cosUrl = await uploadToCos(buffer, cosKey, file.type)
-      if (!cosUrl) throw new Error('COS 上传失败')
-      avatarUrl = cosUrl
-    } else {
+      try {
+        avatarUrl = await uploadToCos(buffer, `avatars/${fileName}`, file.type)
+      } catch (err) {
+        console.error('COS 头像上传失败，回退本地存储:', err)
+      }
+    }
+    if (!avatarUrl) {
       // 本地存储 fallback
       const uploadDir = path.join(process.cwd(), 'public', 'avatars')
       await mkdir(uploadDir, { recursive: true })

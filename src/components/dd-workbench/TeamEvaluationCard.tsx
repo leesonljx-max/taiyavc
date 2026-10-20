@@ -313,8 +313,8 @@ export default function TeamEvaluationCard({
 
   if (loading) {
     return (
-      <div className="rounded-xl border border-[#ddd7f2] bg-white p-4 text-center">
-        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#8d84e0] mx-auto"></div>
+      <div className="rounded-2xl bg-surface shadow-soft p-4 text-center">
+        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600 mx-auto"></div>
       </div>
     )
   }
@@ -328,7 +328,7 @@ export default function TeamEvaluationCard({
   const aiReview = evaluation?.aiReview || null
 
   return (
-    <div className="rounded-2xl border border-[#ddd7f2] bg-white p-4">
+    <div className="rounded-2xl bg-surface shadow-soft p-4">
       {/* 标题（右上角：最终得分 + AI 审评分） */}
       <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
         <span className="text-sm font-bold text-gray-800">
@@ -337,8 +337,8 @@ export default function TeamEvaluationCard({
         <div className="flex items-center gap-2">
           {confirmed && aiReview && (
             <span
-              className={`px-2.5 py-1 rounded-xl text-white text-sm font-black flex items-center gap-1 ${
-                aiReview.rating >= 8 ? 'bg-indigo-500' : aiReview.rating >= 6 ? 'bg-indigo-400' : 'bg-red-400'
+              className={`px-2.5 py-1 rounded-full text-white text-sm font-black flex items-center gap-1 ${
+                aiReview.rating >= 8 ? 'bg-primary-600' : aiReview.rating >= 6 ? 'bg-primary-500' : 'bg-danger-500'
               }`}
               title="AI 审评分：校验各维度打分与简历描述的一致性"
             >
@@ -346,7 +346,7 @@ export default function TeamEvaluationCard({
             </span>
           )}
           {confirmed && evaluation?.finalScore !== null && evaluation?.finalScore !== undefined && (
-            <span className={`px-3 py-1 rounded-xl text-white text-lg font-black ${SCORE_COLOR_STYLES[scoreColor(evaluation.finalScore)].bg}`}>
+            <span className={`px-3 py-1 rounded-full text-white text-lg font-black ${SCORE_COLOR_STYLES[scoreColor(evaluation.finalScore)].bg}`}>
               {evaluation.finalScore.toFixed(2)}
               <span className="text-[10px] font-bold ml-1">{SCORE_COLOR_STYLES[scoreColor(evaluation.finalScore)].label}</span>
             </span>
@@ -354,18 +354,18 @@ export default function TeamEvaluationCard({
         </div>
       </div>
 
-      {msg && <div className="mb-3 p-2.5 rounded-lg text-xs bg-blue-50 text-blue-700 border border-blue-100">{msg}</div>}
+      {msg && <div className="mb-3 p-2.5 rounded-xl text-xs bg-primary-50 text-primary-700 border border-primary-100">{msg}</div>}
       {err && <div className="mb-3 p-2.5 rounded-lg text-xs bg-red-50 text-red-600 border border-red-100 max-h-32 overflow-auto">{err}</div>}
 
       {/* AI 审评分析（确认后显示） */}
       {confirmed && aiReview && (
-        <div className="mb-3 p-3 rounded-xl bg-indigo-50/50 border border-indigo-100">
+        <div className="mb-3 p-3 rounded-xl bg-primary-50 border border-primary-100">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <span className="text-[11px] font-bold text-indigo-700">
+            <span className="text-[11px] font-bold text-primary-700">
               🤖 AI 审评分 {aiReview.rating.toFixed(1)} / 10 <span className="font-normal text-gray-500">校验各维度打分与简历描述的一致性</span>
             </span>
             {canEdit && (
-              <button onClick={reReview} disabled={busy} className="px-2.5 py-1 text-[10px] font-bold rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-100 disabled:opacity-40">
+              <button onClick={reReview} disabled={busy} className="px-2.5 py-1 text-[10px] font-bold rounded-full border border-primary-200 text-primary-600 hover:bg-primary-100 disabled:opacity-40">
                 重新审评
               </button>
             )}
@@ -382,9 +382,9 @@ export default function TeamEvaluationCard({
         </div>
       )}
       {confirmed && !aiReview && canEdit && (
-        <div className="mb-3 px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-between gap-2 flex-wrap">
+        <div className="mb-3 px-3 py-2 rounded-xl bg-gray-50 border border-hairline flex items-center justify-between gap-2 flex-wrap">
           <span className="text-[11px] text-gray-500">AI 审评分未生成（校验打分与简历一致性）</span>
-          <button onClick={reReview} disabled={busy} className="px-2.5 py-1 text-[10px] font-bold rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-100 disabled:opacity-40">
+          <button onClick={reReview} disabled={busy} className="px-2.5 py-1 text-[10px] font-bold rounded-full border border-primary-200 text-primary-600 hover:bg-primary-100 disabled:opacity-40">
             🤖 重新审评
           </button>
         </div>
@@ -400,10 +400,10 @@ export default function TeamEvaluationCard({
             <button
               onClick={generate}
               disabled={busy || !hasResourceData}
-              className={`px-5 py-2 text-sm font-bold rounded-xl shadow-md transition-all ${
+              className={`px-5 py-2 text-sm font-bold rounded-full transition-all ${
                 hasResourceData && !busy
-                  ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-500/25'
-                  : 'bg-gray-200 text-gray-500 cursor-not-allowed shadow-none'
+                  ? 'bg-primary-600 text-white hover:bg-primary-700'
+                  : 'bg-gray-200 text-gray-500 cursor-not-allowed'
               }`}
             >
               {busy ? '⏳ AI 识别中...' : '📋 生成团队评价表'}
@@ -423,7 +423,7 @@ export default function TeamEvaluationCard({
               <button
                 onClick={regenerate}
                 disabled={busy}
-                className="px-3 py-1 text-[10px] font-bold rounded-lg border border-[#ddd7f2] text-[#6f63c9] hover:bg-[#efedfb] disabled:opacity-40"
+                className="px-3 py-1 text-[10px] font-bold rounded-full border border-hairline text-primary-600 hover:bg-primary-50 disabled:opacity-40"
               >
                 🔄 重新生成
               </button>
@@ -437,7 +437,7 @@ export default function TeamEvaluationCard({
               <DimensionSection
                 title={`实控人/CEO · 独占 60 分`}
                 badge={`${ceo.name}${ceo.roleLabel ? `（${ceo.roleLabel}）` : ''}`}
-                badgeStyle="bg-blue-600 text-white"
+                badgeStyle="bg-primary-600 text-white"
                 dims={ceo.dimensions}
                 coefficient={6}
                 subtotalVal={result?.ceoScore ?? null}
@@ -450,9 +450,9 @@ export default function TeamEvaluationCard({
           {/* ── 区段二：联创&核心高管（共享 20 分，取平均） ── */}
           <div>
             <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-              <span className="text-xs font-bold text-[#6f63c9]">联创 & 核心高管 · 共享 20 分（{execs.length} 人取平均）</span>
+              <span className="text-xs font-bold text-primary-600">联创 & 核心高管 · 共享 20 分（{execs.length} 人取平均）</span>
               {result?.execAvg !== null && result?.execAvg !== undefined && (
-                <span className="text-[11px] font-bold text-[#6f63c9]">平均 {result.execAvg.toFixed(2)} 分</span>
+                <span className="text-[11px] font-bold text-primary-600">平均 {result.execAvg.toFixed(2)} 分</span>
               )}
             </div>
             {execs.length === 0 ? (
@@ -465,8 +465,8 @@ export default function TeamEvaluationCard({
                     <button
                       key={m.id}
                       onClick={() => setActiveExecId(m.id)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                        activeExec?.id === m.id ? 'bg-[#6f63c9] text-white shadow-sm' : 'bg-[#efedfb] text-[#6f63c9] hover:bg-[#e2ddf8]'
+                      className={`px-2.5 py-1 rounded-full text-xs font-bold transition-all ${
+                        activeExec?.id === m.id ? 'bg-primary-600 text-white' : 'bg-primary-50 text-primary-600 hover:bg-primary-100'
                       }`}
                     >
                       {m.name}
@@ -479,7 +479,7 @@ export default function TeamEvaluationCard({
                     <DimensionSection
                       title={PROFILE_LABELS[activeExec.profileType]}
                       badge={`${activeExec.name}${activeExec.roleLabel ? `（${activeExec.roleLabel}）` : ''}`}
-                      badgeStyle="bg-[#8d84e0] text-white"
+                      badgeStyle="bg-primary-500 text-white"
                       dims={activeExec.dimensions}
                       coefficient={2}
                       subtotalVal={result?.execSubs.find(e => e.id === activeExec.id)?.score ?? null}
@@ -496,7 +496,7 @@ export default function TeamEvaluationCard({
           <DimensionSection
             title="团队整体 · 独占 20 分"
             badge="完整性 / 稳定性"
-            badgeStyle="bg-teal-600 text-white"
+            badgeStyle="bg-primary-700 text-white"
             dims={evaluation.team}
             coefficient={2}
             subtotalVal={result?.teamScore ?? null}
@@ -506,7 +506,7 @@ export default function TeamEvaluationCard({
 
           {/* 汇总与操作 */}
           {!confirmed ? (
-            <div className="pt-3 border-t border-gray-100 space-y-2">
+            <div className="pt-3 border-t border-hairline space-y-2">
               <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
                 <span className="text-gray-500">
                   实时合计：CEO {result?.ceoScore?.toFixed(2) ?? '—'} + 高管平均 {result?.execAvg?.toFixed(2) ?? '—'} + 团队 {result?.teamScore?.toFixed(2) ?? '—'}
@@ -520,17 +520,17 @@ export default function TeamEvaluationCard({
                   <button
                     onClick={saveDraft}
                     disabled={busy}
-                    className="px-4 py-1.5 text-xs font-bold rounded-lg border border-[#ddd7f2] text-[#6f63c9] hover:bg-[#efedfb] disabled:opacity-40"
+                    className="px-4 py-1.5 text-xs font-bold rounded-full border border-hairline text-primary-600 hover:bg-primary-50 disabled:opacity-40"
                   >
                     {busy ? '处理中...' : '保存草稿'}
                   </button>
                   <button
                     onClick={confirmOrReopen}
                     disabled={busy || !result?.allScored}
-                    className={`px-4 py-1.5 text-xs font-bold rounded-lg shadow-md transition-all ${
+                    className={`px-4 py-1.5 text-xs font-bold rounded-full transition-all ${
                       result?.allScored && !busy
-                        ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-500/25'
-                        : 'bg-gray-200 text-gray-500 cursor-not-allowed shadow-none'
+                        ? 'bg-primary-600 text-white hover:bg-primary-700'
+                        : 'bg-gray-200 text-gray-500 cursor-not-allowed'
                     }`}
                     title={result?.allScored ? '自动保存评分并确认，随后 AI 审校打分与简历一致性' : '完成全部维度评分后可确认'}
                   >
@@ -540,7 +540,7 @@ export default function TeamEvaluationCard({
               )}
             </div>
           ) : (
-            <div className="pt-3 border-t border-gray-100 flex items-center justify-between flex-wrap gap-2">
+            <div className="pt-3 border-t border-hairline flex items-center justify-between flex-wrap gap-2">
               <span className="text-xs text-gray-400">
                 已确认 · 得分构成：CEO {result?.ceoScore?.toFixed(2) ?? '—'} + 高管平均 {result?.execAvg?.toFixed(2) ?? '—'} + 团队 {result?.teamScore?.toFixed(2) ?? '—'}，满分 10 分
               </span>
@@ -548,7 +548,7 @@ export default function TeamEvaluationCard({
                 <button
                   onClick={confirmOrReopen}
                   disabled={busy}
-                  className="px-3 py-1 text-xs font-bold rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40"
+                  className="px-3 py-1 text-xs font-bold rounded-full border border-hairline text-ink-muted hover:bg-gray-50 disabled:opacity-40"
                 >
                   ✏️ 重新编辑
                 </button>
@@ -578,12 +578,12 @@ function MemberIdentityBar({
         onChange={e => onChange({ name: e.target.value })}
         placeholder="姓名"
         maxLength={30}
-        className="w-24 px-2 py-1 text-xs border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-300"
+        className="w-24 px-2 py-1 text-xs border border-hairline rounded-lg focus:ring-2 focus:ring-primary-200 focus:border-primary-300"
       />
       <select
         value={member.profileType}
         onChange={e => onChange({ profileType: e.target.value as ProfileType })}
-        className="px-2 py-1 text-xs border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-200"
+        className="px-2 py-1 text-xs border border-hairline rounded-lg bg-surface focus:ring-2 focus:ring-primary-200"
         title="变更画像将换用对应模板维度（该成员评分清空）；实控人/CEO 只能有一名"
       >
         {PROFILE_OPTIONS.map(o => (
@@ -595,7 +595,7 @@ function MemberIdentityBar({
         onChange={e => onChange({ roleLabel: e.target.value })}
         placeholder="身份描述（如：联合创始人/CTO）"
         maxLength={40}
-        className="flex-1 min-w-[180px] px-2 py-1 text-xs border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-300"
+        className="flex-1 min-w-[180px] px-2 py-1 text-xs border border-hairline rounded-lg focus:ring-2 focus:ring-primary-200 focus:border-primary-300"
       />
     </div>
   )
@@ -628,20 +628,20 @@ function DimensionSection({
   const groups = Array.from(new Set(dims.map(d => d.group)))
 
   return (
-    <div className="rounded-xl border border-[#efedfb] overflow-hidden">
+    <div className="rounded-2xl border border-hairline overflow-hidden">
       <div className={`flex items-center justify-between gap-2 px-3 py-2 flex-wrap`}>
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${badgeStyle}`}>{badge}</span>
           <span className="text-[11px] font-bold text-gray-600">{title}</span>
         </div>
         <span className="text-xs font-black text-gray-700">
-          小计：<span className={subtotalVal === null ? 'text-gray-300' : 'text-[#6f63c9]'}>{subtotalVal?.toFixed(2) ?? '待评分'}</span>
+          小计：<span className={subtotalVal === null ? 'text-gray-300' : 'text-primary-600'}>{subtotalVal?.toFixed(2) ?? '待评分'}</span>
         </span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="bg-slate-50/80 text-gray-400 text-[10px]">
+            <tr className="bg-gray-50/80 text-gray-400 text-[10px]">
               <th className="text-left font-bold px-3 py-1.5">二级目录</th>
               <th className="text-left font-bold px-2 py-1.5">提示</th>
               <th className="text-right font-bold px-2 py-1.5 w-20">权重(%)</th>
@@ -670,7 +670,7 @@ function DimensionSection({
                               const v = e.target.value === '' ? null : Number(e.target.value)
                               onPatch(d.key, 'weight', v === null ? 0 : v / 100)
                             }}
-                            className="w-16 px-1.5 py-0.5 text-right border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-300"
+                            className="w-16 px-1.5 py-0.5 text-right border border-hairline rounded-lg focus:ring-2 focus:ring-primary-200 focus:border-primary-300"
                           />
                         ) : (
                           <span className="text-gray-600">{(d.weight * 100).toFixed(0)}</span>
@@ -688,8 +688,8 @@ function DimensionSection({
                               const v = e.target.value === '' ? null : Number(e.target.value)
                               onPatch(d.key, 'score', v)
                             }}
-                            className={`w-16 px-1.5 py-0.5 text-right rounded-lg border focus:ring-2 focus:ring-blue-200 ${
-                              d.score === null ? 'border-amber-200 bg-amber-50/50' : 'border-gray-200 focus:border-blue-300'
+                            className={`w-16 px-1.5 py-0.5 text-right rounded-lg border focus:ring-2 focus:ring-primary-200 ${
+                              d.score === null ? 'border-amber-200 bg-amber-50/50' : 'border-hairline focus:border-primary-300'
                             }`}
                           />
                         ) : (

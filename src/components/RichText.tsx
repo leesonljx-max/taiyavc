@@ -83,7 +83,7 @@ export default function RichText({
                   {(block.rows[0] || []).map((cell, ci) => (
                     <th
                       key={ci}
-                      className="border border-gray-200 bg-slate-50 px-2.5 py-1.5 text-left font-bold text-gray-700 whitespace-nowrap"
+                      className="border border-hairline bg-gray-50 px-2.5 py-1.5 text-left font-bold text-gray-700 whitespace-nowrap"
                     >
                       {renderInline(cell)}
                     </th>
@@ -95,9 +95,9 @@ export default function RichText({
                   const headerLen = (block.rows[0] || []).length
                   const cells = row.length === headerLen ? row : [...row, ...Array(Math.max(0, headerLen - row.length)).fill('')]
                   return (
-                    <tr key={ri} className={ri % 2 === 1 ? 'bg-slate-50/50' : ''}>
+                    <tr key={ri} className={ri % 2 === 1 ? 'bg-gray-50/50' : ''}>
                       {cells.map((cell, ci) => (
-                        <td key={ci} className="border border-gray-200 px-2.5 py-1.5 text-gray-600 align-top">
+                        <td key={ci} className="border border-hairline px-2.5 py-1.5 text-gray-600 align-top">
                           {renderInline(cell)}
                         </td>
                       ))}

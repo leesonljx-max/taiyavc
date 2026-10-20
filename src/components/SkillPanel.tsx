@@ -68,10 +68,10 @@ interface EditorState {
 /** 能力徽章 */
 function CapabilityBadges({ s }: { s: PersonalSkill }) {
   const badges = []
-  if (s.useSearch) badges.push(<span key="web" className="px-1.5 py-0.5 rounded bg-sky-50 text-sky-600 text-[10px] font-medium">🌐 联网</span>)
-  if (s.useProjectLibrary) badges.push(<span key="proj" className="px-1.5 py-0.5 rounded bg-violet-50 text-violet-600 text-[10px] font-medium">📁 项目库</span>)
-  if (s.usePostInvestment) badges.push(<span key="pi" className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 text-[10px] font-medium">📊 投后报告</span>)
-  if (badges.length === 0) badges.push(<span key="none" className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 text-[10px]">纯提示词</span>)
+  if (s.useSearch) badges.push(<span key="web" className="pill bg-primary-50 text-primary-700">🌐 联网</span>)
+  if (s.useProjectLibrary) badges.push(<span key="proj" className="pill bg-gray-100 text-ink-muted">📁 项目库</span>)
+  if (s.usePostInvestment) badges.push(<span key="pi" className="pill bg-emerald-50 text-emerald-700">📊 投后报告</span>)
+  if (badges.length === 0) badges.push(<span key="none" className="pill bg-gray-100 text-ink-faint">纯提示词</span>)
   return <div className="flex flex-wrap gap-1">{badges}</div>
 }
 
@@ -267,31 +267,31 @@ export function SkillPanel({ open, onClose, scene }: { open: boolean; onClose: (
   return createPortal(
     <>
       {/* 遮罩（z-[60] 覆盖侧边栏/头部/主区所有层叠上下文） */}
-      <div className="fixed inset-0 z-[60] bg-black/25 backdrop-blur-[1px]" onClick={onClose} />
+      <div className="fixed inset-0 z-[60] bg-black/20 backdrop-blur-[1px]" onClick={onClose} />
       {/* 侧滑面板（z-[70] 确保最高层） */}
-      <div className="fixed right-0 top-0 z-[70] h-full w-full max-w-[520px] bg-white shadow-2xl border-l border-gray-100 flex flex-col">
+      <div className="fixed right-0 top-0 z-[70] h-full w-full max-w-[520px] bg-surface shadow-soft-lg border-l border-hairline flex flex-col">
         {/* 头部 */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-hairline">
           <div>
-            <h2 className="text-base font-bold text-gray-900">⚙️ 我的技能{scene ? ` · ${sceneLabel(scene)}` : ''}</h2>
-            <p className="text-[11px] text-gray-400 mt-0.5">
+            <h2 className="text-lg font-bold text-ink">⚙️ 我的技能{scene ? ` · ${sceneLabel(scene)}` : ''}</h2>
+            <p className="text-[11px] text-ink-faint mt-0.5">
               {scene ? `「${sceneLabel(scene)}」独立技能设定：本页创建/启用的技能只在本页 AI 功能生效` : '创建个人 AI 分析技能，调试满意后确认使用'}
             </p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 text-xl leading-none">✕</button>
+          <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-gray-50 text-ink-faint hover:text-ink text-xl leading-none transition-colors">✕</button>
         </div>
 
         {/* Tabs */}
         <div className="flex gap-1 px-5 pt-3">
           <button
             onClick={() => setTab('mine')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${tab === 'mine' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors ${tab === 'mine' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-ink-muted hover:bg-gray-200'}`}
           >
             我的技能（{mySkills.length}）
           </button>
           <button
             onClick={() => setTab('colleague')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${tab === 'colleague' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors ${tab === 'colleague' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-ink-muted hover:bg-gray-200'}`}
           >
             同事技能（{colleagueSkills.length}）
           </button>
@@ -299,43 +299,43 @@ export function SkillPanel({ open, onClose, scene }: { open: boolean; onClose: (
 
         {/* 内容区 */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-          {error && <div className="text-xs text-red-500 bg-red-50 rounded-lg p-3">{error}</div>}
+          {error && <div className="text-xs text-danger-700 bg-danger-50 rounded-xl p-3">{error}</div>}
 
           {/* ── 编辑器（内嵌） ── */}
           {editor && (
-            <div ref={expandRef} className="rounded-xl border-2 border-indigo-200 bg-indigo-50/30 p-4 space-y-3">
-              <p className="text-xs font-bold text-indigo-700">{editor.mode === 'create' ? '＋ 新建技能' : `✏️ 编辑：${editor.originalKey}`}</p>
+            <div ref={expandRef} className="rounded-2xl bg-primary-50/40 p-4 space-y-3">
+              <p className="text-xs font-bold text-primary-700">{editor.mode === 'create' ? '＋ 新建技能' : `✏️ 编辑：${editor.originalKey}`}</p>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[11px] text-gray-500 font-medium">技能名称 *</label>
+                  <label className="text-[11px] text-ink-muted font-medium">技能名称 *</label>
                   <input value={editor.name} onChange={e => setEditor({ ...editor, name: e.target.value })} placeholder="如：融资窗口评估"
-                    className="mt-1 w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs focus:border-indigo-400 focus:outline-none" />
+                    className="input-field mt-1" />
                 </div>
                 <div>
-                  <label className="text-[11px] text-gray-500 font-medium">技能标识 *{editor.mode === 'edit' ? '（不可改）' : ''}</label>
+                  <label className="text-[11px] text-ink-muted font-medium">技能标识 *{editor.mode === 'edit' ? '（不可改）' : ''}</label>
                   <input value={editor.key} onChange={e => setEditor({ ...editor, key: e.target.value })} placeholder="如 fin-window-check" disabled={editor.mode === 'edit'}
-                    className="mt-1 w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs focus:border-indigo-400 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400" />
+                    className="input-field mt-1 disabled:bg-gray-100 disabled:text-ink-faint" />
                 </div>
               </div>
               <div>
-                <label className="text-[11px] text-gray-500 font-medium">能力说明 *（≤200 字，说明何时该用）</label>
+                <label className="text-[11px] text-ink-muted font-medium">能力说明 *（≤200 字，说明何时该用）</label>
                 <input value={editor.description} onChange={e => setEditor({ ...editor, description: e.target.value })} placeholder="如：评估某赛道未来12个月的融资窗口是否开启"
-                  className="mt-1 w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs focus:border-indigo-400 focus:outline-none" />
+                  className="input-field mt-1" />
               </div>
               <div>
-                <label className="text-[11px] text-gray-500 font-medium">提示词内容 *（≥20 字，作为技能的 system prompt）</label>
+                <label className="text-[11px] text-ink-muted font-medium">提示词内容 *（≥20 字，作为技能的 system prompt）</label>
                 <textarea value={editor.content} onChange={e => setEditor({ ...editor, content: e.target.value })} rows={7}
                   placeholder={'# 角色\n你是一位资深一级市场投资人…\n\n# 任务\n…'}
-                  className="mt-1 w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-mono focus:border-indigo-400 focus:outline-none" />
+                  className="input-field mt-1 font-mono leading-relaxed" />
               </div>
               <div>
-                <label className="text-[11px] text-gray-500 font-medium">适用场景 *（确认使用后挂载到勾选的页面；可多选实现跨场景适用）</label>
+                <label className="text-[11px] text-ink-muted font-medium">适用场景 *（确认使用后挂载到勾选的页面；可多选实现跨场景适用）</label>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {SCENE_OPTIONS.map(o => (
-                    <label key={o.key} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border cursor-pointer text-xs transition-colors ${
+                    <label key={o.key} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border cursor-pointer text-xs transition-colors ${
                       editor.scenes.includes(o.key)
-                        ? 'bg-indigo-50 border-indigo-300 text-indigo-700 font-medium'
-                        : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                        ? 'bg-primary-50 border-primary-200 text-primary-700 font-bold'
+                        : 'bg-surface border-hairline text-ink-muted hover:border-gray-300'
                     }`}>
                       <input type="checkbox" className="hidden" checked={editor.scenes.includes(o.key)}
                         onChange={e => setEditor({
@@ -350,7 +350,7 @@ export function SkillPanel({ open, onClose, scene }: { open: boolean; onClose: (
                 </div>
               </div>
               <div>
-                <label className="text-[11px] text-gray-500 font-medium">执行能力（勾选后技能可调用对应工具）</label>
+                <label className="text-[11px] text-ink-muted font-medium">执行能力（勾选后技能可调用对应工具）</label>
                 <div className="mt-1.5 space-y-1.5">
                   {([
                     ['useSearch', '🌐 联网搜索', '执行时可联网检索最新信息（web_search）'],
@@ -359,25 +359,25 @@ export function SkillPanel({ open, onClose, scene }: { open: boolean; onClose: (
                   ] as const).map(([field, label, hint]) => (
                     <label key={field} className="flex items-start gap-2 cursor-pointer">
                       <input type="checkbox" checked={editor[field]} onChange={e => setEditor({ ...editor, [field]: e.target.checked })}
-                        className="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-400" />
+                        className="mt-0.5 rounded border-gray-300 text-primary-600 focus:ring-primary-400" />
                       <span>
-                        <span className="text-xs font-medium text-gray-700">{label}</span>
-                        <span className="block text-[10px] text-gray-400">{hint}</span>
+                        <span className="text-xs font-bold text-ink">{label}</span>
+                        <span className="block text-[10px] text-ink-faint">{hint}</span>
                       </span>
                     </label>
                   ))}
                 </div>
               </div>
-              {editorError && <p className="text-[11px] text-red-500">{editorError}</p>}
+              {editorError && <p className="text-[11px] text-danger-600">{editorError}</p>}
               <div className="flex gap-2">
                 <button onClick={saveEditor} disabled={saving}
-                  className="px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-50">
+                  className="btn-primary">
                   {saving ? '保存中…' : '保存'}
                 </button>
                 <button onClick={() => { setEditor(null); setEditorError('') }}
-                  className="px-3.5 py-1.5 rounded-lg bg-gray-100 text-gray-500 text-xs hover:bg-gray-200">取消</button>
+                  className="btn-secondary">取消</button>
                 {editor.mode === 'edit' && (
-                  <span className="text-[10px] text-amber-500 self-center">提示词/能力变更保存后将回到「调试中」，需重新确认使用</span>
+                  <span className="text-[10px] text-amber-600 self-center">提示词/能力变更保存后将回到「调试中」，需重新确认使用</span>
                 )}
               </div>
             </div>
@@ -385,40 +385,43 @@ export function SkillPanel({ open, onClose, scene }: { open: boolean; onClose: (
 
           {/* ── 调试器（内嵌） ── */}
           {debugSkill && (
-            <div ref={expandRef} className="rounded-xl border-2 border-amber-200 bg-amber-50/30 p-4 space-y-3">
+            <div ref={expandRef} className="rounded-2xl bg-amber-50 p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-bold text-amber-700">🧪 调试：{debugSkill.name} <span className="font-mono text-[10px] text-gray-400">({debugSkill.key})</span></p>
+                <p className="text-xs font-bold text-amber-700">🧪 调试：{debugSkill.name} <span className="font-mono text-[10px] text-ink-faint">({debugSkill.key})</span></p>
                 <button onClick={() => { setDebugSkill(null); setDebugOutput(''); setDebugError('') }}
-                  className="text-gray-400 hover:text-gray-600 text-sm">✕</button>
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-ink-faint hover:bg-gray-50 hover:text-ink text-sm transition-colors">✕</button>
               </div>
               <textarea value={debugInput} onChange={e => setDebugInput(e.target.value)} rows={3}
                 placeholder="输入调试内容（分析对象/问题，如：宇树科技 人形机器人 融资）"
-                className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs focus:border-amber-400 focus:outline-none" />
+                className="input-field" />
               <button onClick={runDebug} disabled={debugRunning || !debugInput.trim()}
-                className="px-3.5 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-medium hover:bg-amber-600 disabled:opacity-50">
+                className="px-3.5 py-1.5 rounded-full bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 disabled:opacity-50">
                 {debugRunning ? '运行中（可能需要联网检索，请稍候）…' : '▶ 运行'}
               </button>
-              {debugError && <p className="text-[11px] text-red-500 bg-red-50 rounded-lg p-2.5">{debugError}</p>}
+              {debugError && <p className="text-[11px] text-danger-700 bg-danger-50 rounded-xl p-2.5">{debugError}</p>}
               {debugOutput && (
-                <div className="rounded-lg bg-white border border-gray-200 p-3 max-h-64 overflow-y-auto">
-                  <pre className="text-[11px] text-gray-700 whitespace-pre-wrap font-sans">{debugOutput}</pre>
+                <div className="rounded-2xl bg-surface border border-hairline p-3 max-h-64 overflow-y-auto">
+                  <pre className="text-[11px] text-ink whitespace-pre-wrap font-sans">{debugOutput}</pre>
                 </div>
               )}
               {debugSkill.status === 'DRAFT' && (
-                <div className="flex items-center gap-2 pt-1 border-t border-amber-200">
-                  <span className="text-[11px] text-gray-500">调试效果满意？</span>
+                <div className="flex items-center gap-2 pt-1 border-t border-hairline">
+                  <span className="text-[11px] text-ink-muted">调试效果满意？</span>
                   <button onClick={() => confirmSkill(debugSkill.key)}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700">
+                    className="px-3 py-1.5 rounded-full bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700">
                     ✓ 确认使用
                   </button>
-                  <span className="text-[10px] text-gray-400">确认后挂载到你的 AI行研，同事可见可引用</span>
+                  <span className="text-[10px] text-ink-faint">确认后挂载到你的 AI行研，同事可见可引用</span>
                 </div>
               )}
             </div>
           )}
 
           {loading && mySkills.length === 0 && colleagueSkills.length === 0 ? (
-            <p className="text-center text-xs text-gray-400 py-8">加载中…</p>
+            <div className="flex flex-col items-center justify-center gap-2 py-8">
+              <div className="w-6 h-6 rounded-full border-2 border-gray-100 border-b-2 border-b-primary-600 animate-spin" />
+              <span className="text-xs text-ink-faint">加载中…</span>
+            </div>
           ) : tab === 'mine' ? (
             <>
               <button onClick={() => setEditor({
@@ -426,39 +429,46 @@ export function SkillPanel({ open, onClose, scene }: { open: boolean; onClose: (
                 useSearch: false, useProjectLibrary: false, usePostInvestment: false,
                 scenes: scene ? [scene] : [], // 新建默认挂载当前场景
               })}
-                className="w-full rounded-xl border-2 border-dashed border-indigo-200 py-3 text-xs font-medium text-indigo-500 hover:bg-indigo-50 transition-colors">
+                className="w-full rounded-2xl border-2 border-dashed border-gray-200 py-3 text-xs font-bold text-primary-600 hover:bg-primary-50 transition-colors">
                 ＋ 新建技能{scene ? `（${sceneLabel(scene)}）` : ''}
               </button>
               {mySkills.length === 0 && !editor && (
-                <p className="text-center text-xs text-gray-400 py-6">
-                  {scene ? `「${sceneLabel(scene)}」还没有挂载你的技能，点击上方创建或从下方技能库启用` : '还没有自己的技能，点击上方「新建技能」创建'}
-                </p>
+                <div className="py-6 text-center">
+                  <div className="w-14 h-14 rounded-full bg-gray-50 flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-6 h-6 text-ink-faint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                    </svg>
+                  </div>
+                  <p className="text-xs text-ink-faint">
+                    {scene ? `「${sceneLabel(scene)}」还没有挂载你的技能，点击上方创建或从下方技能库启用` : '还没有自己的技能，点击上方「新建技能」创建'}
+                  </p>
+                </div>
               )}
               {mySkills.map(s => (
-                <div key={s.id} className={`rounded-xl border p-3.5 ${s.status === 'CONFIRMED' ? 'border-emerald-100 bg-emerald-50/30' : 'border-amber-100 bg-amber-50/20'}`}>
+                <div key={s.id} className={`rounded-2xl p-3.5 border ${s.status === 'CONFIRMED' ? 'border-emerald-100 bg-emerald-50/40' : 'border-amber-100 bg-amber-50/40'}`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-semibold text-gray-900">{s.name}</span>
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${s.status === 'CONFIRMED' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                        <span className="text-sm font-bold text-ink">{s.name}</span>
+                        <span className={`pill ${s.status === 'CONFIRMED' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                           {s.status === 'CONFIRMED' ? '🟢 已确认使用' : '🟡 调试中'}
                         </span>
-                        <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 text-[10px] font-medium">📍 {sceneLabels(s.scenes)}</span>
-                        {s.forkedFromKey && <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 text-[10px]">↩ 引用自 {s.forkedFromKey}</span>}
+                        <span className="pill bg-primary-50 text-primary-700">📍 {sceneLabels(s.scenes)}</span>
+                        {s.forkedFromKey && <span className="pill bg-gray-100 text-ink-faint">↩ 引用自 {s.forkedFromKey}</span>}
                       </div>
-                      <p className="mt-1 text-[11px] text-gray-500 line-clamp-2">{s.description}</p>
+                      <p className="mt-1 text-[11px] text-ink-muted line-clamp-2">{s.description}</p>
                       <div className="mt-1.5 flex items-center gap-2 flex-wrap">
                         <CapabilityBadges s={s} />
-                        <span className="text-[10px] text-gray-400">已运行 {s.runCount} 次</span>
+                        <span className="text-[10px] text-ink-faint">已运行 {s.runCount} 次</span>
                       </div>
                     </div>
                   </div>
                   <div className="mt-2.5 flex gap-1.5 flex-wrap">
                     <button onClick={() => { setDebugSkill(s); setDebugInput(''); setDebugOutput(''); setDebugError(''); setEditor(null) }}
-                      className="px-2.5 py-1 rounded-lg bg-amber-500 text-white text-[11px] font-medium hover:bg-amber-600">🧪 调试</button>
+                      className="px-2.5 py-1 rounded-full bg-amber-500 text-white text-[11px] font-semibold hover:bg-amber-600">🧪 调试</button>
                     {s.status === 'DRAFT' && (
                       <button onClick={() => confirmSkill(s.key)}
-                        className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-medium hover:bg-emerald-700">✓ 确认使用</button>
+                        className="px-2.5 py-1 rounded-full bg-emerald-600 text-white text-[11px] font-semibold hover:bg-emerald-700">✓ 确认使用</button>
                     )}
                     <button onClick={() => setEditor({
                       mode: 'edit', originalKey: s.key, key: s.key, name: s.name, description: s.description,
@@ -466,13 +476,13 @@ export function SkillPanel({ open, onClose, scene }: { open: boolean; onClose: (
                       useProjectLibrary: s.useProjectLibrary, usePostInvestment: s.usePostInvestment,
                       scenes: s.scenes,
                     })}
-                      className="px-2.5 py-1 rounded-lg bg-gray-100 text-gray-600 text-[11px] hover:bg-gray-200">编辑</button>
+                      className="px-2.5 py-1 rounded-full bg-gray-100 text-ink-muted text-[11px] hover:bg-gray-200">编辑</button>
                     {scene && s.scenes.length > 1 && (
                       <button onClick={() => removeFromScene(s)}
-                        className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-600 text-[11px] hover:bg-blue-100">移出本页</button>
+                        className="px-2.5 py-1 rounded-full bg-primary-50 text-primary-700 text-[11px] hover:bg-primary-100">移出本页</button>
                     )}
                     <button onClick={() => removeSkill(s.key)}
-                      className="px-2.5 py-1 rounded-lg bg-red-50 text-red-500 text-[11px] hover:bg-red-100">删除</button>
+                      className="px-2.5 py-1 rounded-full bg-danger-50 text-danger-700 text-[11px] hover:bg-danger-100">删除</button>
                   </div>
                 </div>
               ))}
@@ -480,31 +490,31 @@ export function SkillPanel({ open, onClose, scene }: { open: boolean; onClose: (
               {/* 我的技能库（其他场景的技能，可跨场景启用到本页） */}
               {scene && librarySkills.length > 0 && (
                 <div className="pt-2 space-y-2">
-                  <p className="text-[11px] font-bold text-gray-500 border-t border-gray-100 pt-3">
+                  <p className="eyebrow border-t border-hairline pt-3">
                     📚 我的技能库 · 其他场景（可跨场景启用到本页）
                   </p>
                   {librarySkills.map(s => (
-                    <div key={s.id} className="rounded-xl border border-gray-100 bg-slate-50/40 p-3">
+                    <div key={s.id} className="rounded-2xl bg-gray-50 border border-hairline p-3">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-semibold text-gray-800">{s.name}</span>
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${s.status === 'CONFIRMED' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                        <span className="text-sm font-bold text-ink">{s.name}</span>
+                        <span className={`pill ${s.status === 'CONFIRMED' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                           {s.status === 'CONFIRMED' ? '🟢 已确认' : '🟡 调试中'}
                         </span>
-                        <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 text-[10px] font-medium">📍 {sceneLabels(s.scenes)}</span>
+                        <span className="pill bg-primary-50 text-primary-700">📍 {sceneLabels(s.scenes)}</span>
                       </div>
-                      <p className="mt-1 text-[11px] text-gray-500 line-clamp-2">{s.description}</p>
+                      <p className="mt-1 text-[11px] text-ink-muted line-clamp-2">{s.description}</p>
                       <div className="mt-2 flex items-center gap-2 flex-wrap">
                         <button onClick={() => enableInScene(s)}
-                          className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[11px] font-medium hover:bg-indigo-700">
+                          className="px-2.5 py-1 rounded-full bg-primary-600 text-white text-[11px] font-semibold hover:bg-primary-700">
                           ＋ 启用到{sceneLabel(scene)}
                         </button>
-                        <span className="text-[10px] text-gray-400">启用后即可在本页 AI 功能中应用（跨场景复用）</span>
+                        <span className="text-[10px] text-ink-faint">启用后即可在本页 AI 功能中应用（跨场景复用）</span>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
-              <p className="text-[10px] text-gray-400 pt-1">
+              <p className="text-[10px] text-ink-faint pt-1">
                 {scene
                   ? `已确认使用的技能挂载到其适用场景（含${sceneLabel(scene)}）的 AI 功能；同事在${sceneLabel(scene)}页可一键引用。`
                   : '已确认使用的技能将挂载到所选场景的 AI 功能，同事在对应场景页可见、可一键引用。'}
@@ -513,27 +523,34 @@ export function SkillPanel({ open, onClose, scene }: { open: boolean; onClose: (
           ) : (
             <>
               {colleagueSkills.length === 0 ? (
-                <p className="text-center text-xs text-gray-400 py-8">
-                  {scene ? `暂无同事挂载在「${sceneLabel(scene)}」的技能（同事确认使用且适用本页的技能会出现在这里）` : '暂无同事分享的技能（同事确认使用后的技能会出现在这里）'}
-                </p>
-              ) : colleagueSkills.map(s => (
-                <div key={s.id} className="rounded-xl border border-gray-100 bg-white p-3.5">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-semibold text-gray-900">{s.name}</span>
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 text-[10px] font-medium">🟢 已确认</span>
-                    <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 text-[10px] font-medium">📍 {sceneLabels(s.scenes)}</span>
+                <div className="py-8 text-center">
+                  <div className="w-14 h-14 rounded-full bg-gray-50 flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-6 h-6 text-ink-faint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
                   </div>
-                  <p className="mt-0.5 text-[11px] text-indigo-500 font-medium">by {s.creatorName || '同事'}</p>
-                  <p className="mt-1 text-[11px] text-gray-500 line-clamp-2">{s.description}</p>
+                  <p className="text-xs text-ink-faint">
+                    {scene ? `暂无同事挂载在「${sceneLabel(scene)}」的技能（同事确认使用且适用本页的技能会出现在这里）` : '暂无同事分享的技能（同事确认使用后的技能会出现在这里）'}
+                  </p>
+                </div>
+              ) : colleagueSkills.map(s => (
+                <div key={s.id} className="rounded-2xl bg-surface border border-hairline p-3.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-bold text-ink">{s.name}</span>
+                    <span className="pill bg-emerald-50 text-emerald-700">🟢 已确认</span>
+                    <span className="pill bg-primary-50 text-primary-700">📍 {sceneLabels(s.scenes)}</span>
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-primary-600 font-medium">by {s.creatorName || '同事'}</p>
+                  <p className="mt-1 text-[11px] text-ink-muted line-clamp-2">{s.description}</p>
                   <div className="mt-1.5 flex items-center gap-2 flex-wrap">
                     <CapabilityBadges s={s} />
-                    <span className="text-[10px] text-gray-400">已运行 {s.runCount} 次</span>
+                    <span className="text-[10px] text-ink-faint">已运行 {s.runCount} 次</span>
                   </div>
                   <button onClick={() => forkColleague(s.key)}
-                    className="mt-2.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-[11px] font-medium hover:bg-indigo-700">
+                    className="mt-2.5 px-3 py-1.5 rounded-full bg-primary-600 text-white text-[11px] font-semibold hover:bg-primary-700">
                     ⧉ 一键引用
                   </button>
-                  <span className="ml-2 text-[10px] text-gray-400">复制为自己的副本{scene ? `（挂载到${sceneLabel(scene)}）` : ''}，可修改调试</span>
+                  <span className="ml-2 text-[10px] text-ink-faint">复制为自己的副本{scene ? `（挂载到${sceneLabel(scene)}）` : ''}，可修改调试</span>
                 </div>
               ))}
             </>
@@ -553,7 +570,7 @@ export function SkillPanelLauncher({ scene }: { scene?: string }) {
       <button
         onClick={() => setOpen(true)}
         title={scene ? `管理「${sceneLabel(scene)}」的 AI 技能` : '管理我的 AI 技能'}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-indigo-200 text-indigo-600 text-xs font-medium hover:bg-indigo-50 transition-colors"
+        className="btn-secondary"
       >
         ⚙️ 我的技能
       </button>
