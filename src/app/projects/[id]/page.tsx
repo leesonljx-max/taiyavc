@@ -943,31 +943,31 @@ export default function ProjectDetailPage() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-canvas rounded-2xl p-4">
+              <div className="bg-blue-50 rounded-2xl p-4">
                 <div className="text-xs text-ink-muted mb-1">公司全称</div>
                 <div className="text-sm font-medium text-ink">{project.companyFullName || '-'}</div>
               </div>
-              <div className="bg-canvas rounded-2xl p-4">
+              <div className="bg-blue-50 rounded-2xl p-4">
                 <div className="text-xs text-ink-muted mb-1">所处行业</div>
                 <div className="text-sm font-medium text-ink">{project.industry || '-'}</div>
               </div>
-              <div className="bg-canvas rounded-2xl p-4">
+              <div className="bg-blue-50 rounded-2xl p-4">
                 <div className="text-xs text-ink-muted mb-1">公司定位</div>
                 <div className="text-sm font-medium text-ink">{project.companyPosition || '-'}</div>
               </div>
-              <div className="bg-canvas rounded-2xl p-4">
+              <div className="bg-blue-50 rounded-2xl p-4">
                 <div className="text-xs text-ink-muted mb-1">融资轮次</div>
                 <div className="text-sm font-medium text-ink">{project.financingRound || '-'}</div>
               </div>
-              <div className="bg-canvas rounded-2xl p-4">
+              <div className="bg-blue-50 rounded-2xl p-4">
                 <div className="text-xs text-ink-muted mb-1">融资金额</div>
                 <div className="text-sm font-medium text-primary-700">{project.totalAmount}</div>
               </div>
-              <div className="bg-canvas rounded-2xl p-4">
+              <div className="bg-blue-50 rounded-2xl p-4">
                 <div className="text-xs text-ink-muted mb-1">投资估值</div>
                 <div className="text-sm font-medium text-primary-700">{project.investmentValuation ? `¥${project.investmentValuation.toLocaleString()}亿` : '-'}</div>
               </div>
-              <div className="bg-canvas rounded-2xl p-4">
+              <div className="bg-blue-50 rounded-2xl p-4">
                 <div className="text-xs text-ink-muted mb-1">历史累计融资</div>
                 <div className="text-sm font-medium text-ink">{project.raisedAmount || '-'}</div>
               </div>

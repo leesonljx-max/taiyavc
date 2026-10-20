@@ -134,6 +134,7 @@ model User {
   passwordHash  String
   name          String?
   avatar        String?  // 头像 URL（如 /avatars/xxx.png）
+  themeColor    String?  // 底色主题 id（src/lib/themes.ts 目录；null = 默认）
   role          String          @default("TEMP_VISITOR")
   status        String          @default("ACTIVE")  // ACTIVE / PENDING / REJECTED / DISABLED
   createdAt     DateTime        @default(now())

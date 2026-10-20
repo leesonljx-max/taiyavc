@@ -63,7 +63,7 @@ export default function RegisterPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
+      <div className="min-h-screen app-canvas flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-surface rounded-2xl shadow-soft-lg p-8 text-center">
           <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-primary-50 flex items-center justify-center">
             <svg className="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -86,7 +86,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
+    <div className="min-h-screen app-canvas flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-surface rounded-2xl shadow-soft-lg p-8">
         {/* 标题 */}
         <div className="text-center mb-8">

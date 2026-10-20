@@ -6,6 +6,7 @@ import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
 import ProfileEditModal from './ProfileEditModal'
+import ThemeSwitcher from './ThemeSwitcher'
 import packageJson from '../../package.json'
 
 const APP_VERSION = `v${packageJson.version}`
@@ -81,7 +82,7 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
   }
 
   return (
-    <div className="min-h-screen bg-canvas">
+    <div className="min-h-screen app-canvas">
       {/* Sidebar - 固定冻结，不随页面滚动而变动 */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-gradient-sidebar border-r border-hairline shadow-[6px_0_16px_rgba(74,60,40,0.08)] transform transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full">
@@ -174,6 +175,8 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
 
               {session ? (
                 <>
+                  {/* 切换主题（仅首页，头像左侧）：底色换肤，保存到账户 */}
+                  {pathname === '/' && <ThemeSwitcher />}
                   {pathname === '/' && (
                     <button
                       onClick={handleSignOut}
@@ -182,7 +185,7 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                      </svg>
+                    </svg>
                     </button>
                   )}
                   {pathname === '/' && (
@@ -197,6 +200,9 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
                         session.user?.name?.charAt(0).toUpperCase() || 'U'
                       )}
                     </button>
+                  )}
+                  {pathname === '/' && (
+                    <span className="text-sm font-medium text-ink hidden md:block">{session.user?.name || session.user?.email}</span>
                   )}
                 </>
               ) : (

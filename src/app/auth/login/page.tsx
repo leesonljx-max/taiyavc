@@ -50,7 +50,7 @@ function LoginContent() {
   }
 
   return (
-    <div className="min-h-screen bg-canvas flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+    <div className="min-h-screen app-canvas flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
       {/* 背景装饰 */}
       <div className="absolute top-0 left-0 w-96 h-96 bg-primary-100/40 rounded-full -ml-48 -mt-48 blur-3xl"></div>
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-primary-100/40 rounded-full -mr-48 -mb-48 blur-3xl"></div>
@@ -169,7 +169,7 @@ function LoginContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-canvas flex items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div></div>}>
+    <Suspense fallback={<div className="min-h-screen app-canvas flex items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div></div>}>
       <LoginContent />
     </Suspense>
   )

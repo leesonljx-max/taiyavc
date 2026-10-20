@@ -73,36 +73,36 @@ module.exports = {
           navy: '#3B4664',
           cream: '#FDF6EC',
         },
-        // 语义化 token
-        canvas: '#ECE3D5',
+        // 语义化 token（canvas 为卡片内浅色底，跟随换肤 CSS 变量；全屏画布用 .app-canvas 类）
+        canvas: 'var(--app-canvas-tint, #E7EFF2)',
         surface: '#FFFFFF',
         ink: {
           DEFAULT: '#2F3A55',
           muted: '#6B7589',
           faint: '#9AA2B1',
         },
-        hairline: '#E9DFCE',
+        hairline: '#E2EAEF',
         // Tailwind 内置亮色系由默认色板提供（深色反转已移除）
       },
       boxShadow: {
-        // 暖色柔和弥散阴影
-        soft: '0 2px 10px rgba(74, 60, 40, 0.06)',
-        'soft-lg': '0 10px 30px rgba(74, 60, 40, 0.10)',
-        'soft-xl': '0 20px 48px rgba(74, 60, 40, 0.14)',
+        // 冷色柔和弥散阴影
+        soft: '0 2px 10px rgba(23, 42, 58, 0.06)',
+        'soft-lg': '0 10px 30px rgba(23, 42, 58, 0.10)',
+        'soft-xl': '0 20px 48px rgba(23, 42, 58, 0.14)',
         // 兼容旧类名 shadow-soft-green（现为紫色光晕）
         'soft-green': '0 10px 28px rgba(124, 58, 237, 0.22)',
-        card: '0 4px 16px rgba(74, 60, 40, 0.08)',
+        card: '0 4px 16px rgba(23, 42, 58, 0.08)',
         // 卡片 Hover：底部彩虹亮光
         glow: '0 4px 14px -2px rgba(249, 168, 212, 0.75), 0 8px 22px -6px rgba(129, 140, 248, 0.7), 0 12px 28px -8px rgba(94, 234, 212, 0.6), 0 16px 34px -10px rgba(253, 186, 116, 0.55)',
       },
       backgroundImage: {
         'gradient-primary': 'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)',
-        'gradient-sidebar': 'linear-gradient(180deg, #FFFCF7 0%, #FBF4EA 100%)',
-        'gradient-card': 'linear-gradient(135deg, #FFFFFF 0%, #FFFDFA 100%)',
+        'gradient-sidebar': 'linear-gradient(180deg, #F8FBFC 0%, #F0F5F7 100%)',
+        'gradient-card': 'linear-gradient(135deg, #FFFFFF 0%, #FDFFFE 100%)',
         // 斜线纹理（未激活数据柱 / 弱化背景）
-        'hatch': 'repeating-linear-gradient(45deg, #E9DFCE 0 5px, #F5EEE2 5px 11px)',
+        'hatch': 'repeating-linear-gradient(45deg, #E2EAEF 0 5px, #F2F6F8 5px 11px)',
         'hatch-primary': 'repeating-linear-gradient(45deg, #8B5CF6 0 5px, #A78BFA 5px 11px)',
-        'hatch-light': 'repeating-linear-gradient(45deg, #F3EDE2 0 5px, #FFFFFF 5px 11px)',
+        'hatch-light': 'repeating-linear-gradient(45deg, #F0F5F7 0 5px, #FFFFFF 5px 11px)',
       },
       keyframes: {
         'fade-up': {
