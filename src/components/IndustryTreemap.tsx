@@ -54,6 +54,8 @@ function barColor(ratio: number): number[] {
 
 /** 前十行业：柱顶数值标签拥挤时仍始终显示 */
 const TOP_N_BADGE = 10
+/** 前 15 名行业显示赛道名称；其余柱子缩小且不显示名称（悬停查看） */
+const TOP_LABELED = 15
 
 export default function IndustryTreemap({ industries, selected, onSelect }: IndustryTreemapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -103,10 +105,9 @@ export default function IndustryTreemap({ industries, selected, onSelect }: Indu
     const total = industries.reduce((sum, i) => sum + i.count, 0)
     // 类目轴统一用序号（dim 0），避免中文长名称映射问题；名称仅在标签显示
     const names = industries.map(i => i.industry)
-    // 轴标签按行业密度自适应：行业越多 → 旋转越立、截断越短、字号越小，避免重叠
-    const n = industries.length
-    const labelLimit = n > 28 ? 3 : 4
-    const labelFontSize = n > 20 ? 9.5 : 10
+    // 轴标签：斜排 58°、最多 4 字；仅前 15 名显示
+    const labelLimit = 4
+    const labelFontSize = 10
 
     const option: ECOption = {
       tooltip: {
@@ -137,6 +138,8 @@ export default function IndustryTreemap({ industries, selected, onSelect }: Indu
           color: '#6B7589',
           formatter: (value: string) => {
             const idx = Number(value)
+            // 前 15 名显示赛道名；其余不显示（柱子缩小，悬停查看）
+            if (idx >= TOP_LABELED) return ''
             const name = names[idx] ?? ''
             return name.length > labelLimit ? `${name.slice(0, labelLimit)}…` : name
           },
@@ -165,17 +168,14 @@ export default function IndustryTreemap({ industries, selected, onSelect }: Indu
             const bandW = api.size?.([1, 0]) as number[] | undefined
             const sizeW = bandW?.[0] || 24
 
-            const w = Math.max(6, Math.min(sizeW * 0.52, 42))
-            const d = w * 0.34 // 立体深度（等距右上偏移）
-            const cx = base[0]
-            const y0 = base[1] // 基线
-            const y1 = top[1]  // 柱顶
-            const left = cx - w / 2
-            const right = cx + w / 2
-
             const idx = params.dataIndex
-            // 数值标签防重叠：柱带过窄时只保留前十柱（左侧高柱），其余悬停查看
-            const showValue = idx < TOP_N_BADGE || sizeW >= 26
+            // 前 15 名之外的柱子：缩小、半透明、无名称（悬停查看）
+            const isTail = idx >= TOP_LABELED
+            const barW = Math.max(6, Math.min(sizeW * 0.52, 42))
+            const w = isTail ? Math.max(4, barW * 0.55) : barW
+            const shapeOpacity = isTail ? 0.55 : 1
+            // 数值标签防重叠：尾部柱不显示；柱带过窄时只保留前十柱（左侧高柱）
+            const showValue = !isTail && (idx < TOP_N_BADGE || sizeW >= 26)
             const ratio = industries[idx] ? industries[idx].count / maxCount : 0
             const rgb = barColor(ratio)
             const frontFill = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`
@@ -184,6 +184,13 @@ export default function IndustryTreemap({ industries, selected, onSelect }: Indu
             const isSelected = selected === industries[idx]?.industry
             const stroke = isSelected ? '#8B5CF6' : 'rgba(255,255,255,0.85)'
             const strokeWidth = isSelected ? 2 : 1
+
+            const d = w * 0.34 // 立体深度（等距右上偏移）
+            const cx = base[0]
+            const y0 = base[1] // 基线
+            const y1 = top[1]  // 柱顶
+            const left = cx - w / 2
+            const right = cx + w / 2
 
             const shapes: unknown[] = [
               // 右侧面
@@ -197,7 +204,7 @@ export default function IndustryTreemap({ industries, selected, onSelect }: Indu
                     [right, y0],
                   ],
                 },
-                style: { fill: sideFill, stroke, lineWidth: strokeWidth },
+                style: { fill: sideFill, stroke, lineWidth: strokeWidth, opacity: shapeOpacity },
               },
               // 顶面
               {
@@ -210,7 +217,7 @@ export default function IndustryTreemap({ industries, selected, onSelect }: Indu
                     [right, y1],
                   ],
                 },
-                style: { fill: topFill, stroke, lineWidth: strokeWidth },
+                style: { fill: topFill, stroke, lineWidth: strokeWidth, opacity: shapeOpacity },
               },
               // 正面（最后画，压在最上层）
               {
@@ -223,7 +230,7 @@ export default function IndustryTreemap({ industries, selected, onSelect }: Indu
                     [left, y0],
                   ],
                 },
-                style: { fill: frontFill, stroke, lineWidth: strokeWidth },
+                style: { fill: frontFill, stroke, lineWidth: strokeWidth, opacity: shapeOpacity },
               },
               // 数值标签（柱顶上方；拥挤时仅前十柱显示）
               ...(showValue

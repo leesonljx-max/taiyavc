@@ -34,6 +34,11 @@ body {
   background-attachment: fixed;
 }
 
+/* 侧边栏 / 顶栏底色：主题同色系淡一号（默认 #FDF9F1） */
+.app-panel {
+  background-color: var(--app-canvas-panel, #fdf9f1);
+}
+
 /* Custom scrollbar（冷色） */
 ::-webkit-scrollbar {
   width: 6px;
@@ -198,9 +203,9 @@ body {
   );
 }
 
-/* Glass（顶栏）：冷白微透明 + 毛玻璃 */
+/* Glass（顶栏）：主题淡一号底色 + 毛玻璃 */
 .glass {
-  background: rgba(250, 253, 254, 0.82);
+  background: var(--app-canvas-panel, #fdf9f1);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -234,15 +239,15 @@ body {
   color: #6d28d9;
 }
 
-/* 选中态：更饱和的马卡龙紫 + 白字 */
+/* 选中态：主题同色系加深（--app-nav-active），白字；回退值 = 默认主题暖铜色 */
 .nav-block-active,
 .nav-list .nav-block-active.nav-block {
-  background-color: #a78bfa !important;
-  background-image: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+  background-color: var(--app-nav-active, #a57627) !important;
+  background-image: none;
   color: #ffffff !important;
   font-weight: 700;
   border-color: rgba(255, 255, 255, 0.6);
-  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.32);
+  box-shadow: 0 6px 18px rgba(23, 42, 58, 0.25);
 }
 .nav-block-active:hover {
   color: #ffffff;

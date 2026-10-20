@@ -84,7 +84,7 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
   return (
     <div className="min-h-screen app-canvas">
       {/* Sidebar - 固定冻结，不随页面滚动而变动 */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-gradient-sidebar border-r border-hairline shadow-[6px_0_16px_rgba(74,60,40,0.08)] transform transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 app-panel border-r border-hairline shadow-[6px_0_16px_rgba(23,42,58,0.08)] transform transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full">
           {/* Logo */}
           <div className="flex items-center gap-3 px-6 py-5 border-b border-hairline">
