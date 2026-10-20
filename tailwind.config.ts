@@ -74,7 +74,7 @@ module.exports = {
           cream: '#FDF6EC',
         },
         // 语义化 token（canvas 为卡片内浅色底，跟随换肤 CSS 变量；全屏画布用 .app-canvas 类）
-        canvas: 'var(--app-canvas-tint, #E7EFF2)',
+        canvas: 'var(--app-canvas-tint, #ECE3D4)',
         surface: '#FFFFFF',
         ink: {
           DEFAULT: '#2F3A55',

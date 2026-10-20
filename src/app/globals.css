@@ -4,10 +4,10 @@
 
 /* ═══════════════════════════════════════════
    设计系统基础（可换肤画布 · 白色卡片 · 玻璃点缀）
-   画布默认 #719FAA，由 CSS 变量驱动换肤：
-   - --app-canvas        画布主色（默认 #719FAA）
+   画布默认 #ECE3D4，由 CSS 变量驱动换肤：
+   - --app-canvas        画布主色（默认 #ECE3D4）
    - --app-canvas-image  渐变画布（默认无）
-   - --app-canvas-tint   卡片内浅色底（默认 #E7EFF2）
+   - --app-canvas-tint   卡片内浅色底（默认 #ECE3D4）
    变量由内联脚本 / ThemeSwitcher / ThemeSync 写入 <html>
    ═══════════════════════════════════════════ */
 * {
@@ -21,7 +21,7 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: var(--app-canvas, #719faa);
+  background-color: var(--app-canvas, #ece3d4);
   background-image: var(--app-canvas-image, none);
   background-attachment: fixed;
   color: #2f3a55;
@@ -29,7 +29,7 @@ body {
 
 /* 全屏画布容器（布局根 / 登录页 / 加载态）：跟随主题底色（含渐变） */
 .app-canvas {
-  background-color: var(--app-canvas, #719faa);
+  background-color: var(--app-canvas, #ece3d4);
   background-image: var(--app-canvas-image, none);
   background-attachment: fixed;
 }

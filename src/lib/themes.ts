@@ -31,7 +31,7 @@ export const THEME_STORAGE_KEY = 'investrack-theme'
 
 export const THEMES: ThemeDef[] = [
   // ── 默认 ──
-  { id: 'default', label: '默认青灰', type: 'solid', css: '#719FAA', base: '#719FAA', tint: '#E7EFF2' },
+  { id: 'default', label: '默认奶油', type: 'solid', css: '#ECE3D4', base: '#ECE3D4', tint: '#ECE3D4' },
 
   // ── 纯色（用户指定 16 色）──
   { id: 'c1', label: '雾松绿', type: 'solid', css: '#72A1AA', base: '#72A1AA', tint: '#E8F0F2' },
@@ -60,6 +60,16 @@ export const THEMES: ThemeDef[] = [
   { id: 'g6', label: '智慧靛', type: 'gradient', css: 'linear-gradient(135deg, #B224EF, #7579FF)', base: '#944EF7', tint: '#EFE9FC' },
   { id: 'g7', label: '翡翠水', type: 'gradient', css: 'linear-gradient(135deg, #348F50, #56B4D3)', base: '#45A1BF', tint: '#E4F1F0' },
   { id: 'g8', label: '桃霞', type: 'gradient', css: 'linear-gradient(135deg, #fc5c7d, #6a82fb)', base: '#B36FBC', tint: '#F3E9F5' },
+
+  // ── 单色系渐变（同一色相 · 由浅到深）──
+  { id: 'm1', label: '浅碧', type: 'gradient', css: 'linear-gradient(135deg, #B6DCEF, #167378)', base: '#66A2B1', tint: '#E3F1F4' },
+  { id: 'm2', label: '黛青', type: 'gradient', css: 'linear-gradient(135deg, #719FAA, #122E37)', base: '#426572', tint: '#DFE9EC' },
+  { id: 'm3', label: '湛蓝', type: 'gradient', css: 'linear-gradient(135deg, #A9C6E8, #487ACF)', base: '#7BA8DB', tint: '#E5EEF8' },
+  { id: 'm4', label: '霁蓝', type: 'gradient', css: 'linear-gradient(135deg, #B8C9DA, #404E74)', base: '#7C8CA6', tint: '#E2E8EF' },
+  { id: 'm5', label: '藤紫', type: 'gradient', css: 'linear-gradient(135deg, #DCD7F7, #8D77EA)', base: '#B4A7F0', tint: '#EEEBFA' },
+  { id: 'm6', label: '香芋', type: 'gradient', css: 'linear-gradient(135deg, #E3D6F5, #B398FF)', base: '#CBB7FA', tint: '#F1EBFD' },
+  { id: 'm7', label: '樱粉', type: 'gradient', css: 'linear-gradient(135deg, #FDD5E0, #FD84B0)', base: '#FDACC8', tint: '#FEEBF2' },
+  { id: 'm8', label: '青碧', type: 'gradient', css: 'linear-gradient(135deg, #9FE8EC, #02B7C4)', base: '#51CDD7', tint: '#E4F6F7' },
 ]
 
 /** 合法主题 id 白名单（API 校验用） */
