@@ -353,7 +353,7 @@ export default function StatisticsPage() {
 
                 {/* 图例 */}
                 <div className="mt-4 pt-4 border-t border-hairline flex items-center justify-between text-xs text-ink-faint">
-                  <span>柱高 = 项目数量 · 颜色深浅 = 数量等级 · 角标 = 前十行业</span>
+                  <span>柱高 = 项目数量 · 颜色深浅 = 数量等级 · 悬停查看排名明细</span>
                   <span>点击柱体喷射查看项目并动态分析</span>
                 </div>
               </>

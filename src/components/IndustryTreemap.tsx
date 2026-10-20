@@ -52,7 +52,7 @@ function barColor(ratio: number): number[] {
   return RAMP[i].map((v, k) => Math.round(v + (RAMP[i + 1][k] - v) * f))
 }
 
-/** 前十行业在类目标签上显示排名前缀 */
+/** 前十行业：柱顶数值标签拥挤时仍始终显示 */
 const TOP_N_BADGE = 10
 
 export default function IndustryTreemap({ industries, selected, onSelect }: IndustryTreemapProps) {
@@ -103,6 +103,10 @@ export default function IndustryTreemap({ industries, selected, onSelect }: Indu
     const total = industries.reduce((sum, i) => sum + i.count, 0)
     // 类目轴统一用序号（dim 0），避免中文长名称映射问题；名称仅在标签显示
     const names = industries.map(i => i.industry)
+    // 轴标签按行业密度自适应：行业越多 → 旋转越立、截断越短、字号越小，避免重叠
+    const n = industries.length
+    const labelLimit = n > 28 ? 3 : 4
+    const labelFontSize = n > 20 ? 9.5 : 10
 
     const option: ECOption = {
       tooltip: {
@@ -113,29 +117,28 @@ export default function IndustryTreemap({ industries, selected, onSelect }: Indu
         padding: [8, 12],
         textStyle: { color: '#FFFFFF', fontSize: 12 },
         formatter: params => {
-          const item = industries[(params as { dataIndex: number }).dataIndex]
+          const idx = (params as { dataIndex: number }).dataIndex
+          const item = industries[idx]
           if (!item) return ''
           const percent = total > 0 ? Math.round((item.count / total) * 100) : 0
-          return `<b>${item.industry}</b><br/>项目数：${item.count}（占比 ${percent}%）`
+          return `<b>${item.industry}</b><br/>排名：第 ${idx + 1} 名 · 项目数：${item.count}（占比 ${percent}%）`
         },
       },
       grid: { left: 8, right: 20, top: 44, bottom: 8, containLabel: true },
       xAxis: {
         type: 'category',
         data: names.map((_, idx) => String(idx)),
-        axisLine: { lineStyle: { color: '#E9DFCE' } },
+        axisLine: { lineStyle: { color: '#E2EAEF' } },
         axisTick: { show: false },
         axisLabel: {
           interval: 0,
-          rotate: 40,
-          fontSize: 10,
+          rotate: 58,
+          fontSize: labelFontSize,
           color: '#6B7589',
           formatter: (value: string) => {
             const idx = Number(value)
             const name = names[idx] ?? ''
-            const short = name.length > 5 ? `${name.slice(0, 5)}…` : name
-            const badge = idx < TOP_N_BADGE ? `${idx + 1}. ` : ''
-            return `${badge}${short}`
+            return name.length > labelLimit ? `${name.slice(0, labelLimit)}…` : name
           },
         },
       },
@@ -145,7 +148,7 @@ export default function IndustryTreemap({ industries, selected, onSelect }: Indu
         axisLine: { show: false },
         axisTick: { show: false },
         axisLabel: { color: '#9AA2B1', fontSize: 11 },
-        splitLine: { lineStyle: { color: 'rgba(233,223,206,0.7)' } },
+        splitLine: { lineStyle: { color: 'rgba(226, 234, 239, 0.7)' } },
       },
       series: [
         {
@@ -171,6 +174,8 @@ export default function IndustryTreemap({ industries, selected, onSelect }: Indu
             const right = cx + w / 2
 
             const idx = params.dataIndex
+            // 数值标签防重叠：柱带过窄时只保留前十柱（左侧高柱），其余悬停查看
+            const showValue = idx < TOP_N_BADGE || sizeW >= 26
             const ratio = industries[idx] ? industries[idx].count / maxCount : 0
             const rgb = barColor(ratio)
             const frontFill = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`
@@ -220,20 +225,24 @@ export default function IndustryTreemap({ industries, selected, onSelect }: Indu
                 },
                 style: { fill: frontFill, stroke, lineWidth: strokeWidth },
               },
-              // 数值标签（柱顶上方）
-              {
-                type: 'text',
-                style: {
-                  text: String(industries[idx]?.count ?? ''),
-                  x: cx + d / 2,
-                  y: y1 - d - 8,
-                  fill: isSelected ? '#6D28D9' : '#3B4664',
-                  font: `bold ${industries.length > 14 ? 10 : 12}px sans-serif`,
-                  textAlign: 'center',
-                  textVerticalAlign: 'bottom',
-                },
-                emphasisDisabled: true,
-              },
+              // 数值标签（柱顶上方；拥挤时仅前十柱显示）
+              ...(showValue
+                ? [
+                    {
+                      type: 'text',
+                      style: {
+                        text: String(industries[idx]?.count ?? ''),
+                        x: cx + d / 2,
+                        y: y1 - d - 8,
+                        fill: isSelected ? '#6D28D9' : '#3B4664',
+                        font: `bold ${industries.length > 14 ? 10 : 12}px sans-serif`,
+                        textAlign: 'center',
+                        textVerticalAlign: 'bottom',
+                      },
+                      emphasisDisabled: true,
+                    },
+                  ]
+                : []),
             ]
 
             return {
