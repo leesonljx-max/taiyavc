@@ -353,7 +353,7 @@ export default function StatisticsPage() {
 
                 {/* 图例 */}
                 <div className="mt-4 pt-4 border-t border-hairline flex items-center justify-between text-xs text-ink-faint">
-                  <span>柱高 = 项目数量 · 前 15 名显示赛道名 · 其余缩小悬停查看</span>
+                  <span>柱高 = 项目数量 · 前 20 名放大显示（占 65% 幅宽）· 其余缩小悬停查看</span>
                   <span>点击柱体喷射查看项目并动态分析</span>
                 </div>
               </>

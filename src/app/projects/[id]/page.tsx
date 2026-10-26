@@ -902,10 +902,10 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {/* 左右各占1列布局 - 右侧宽大一倍 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* 左右分栏：左侧约 65%（项目概览/主要产品等），右侧约 35%（评价/笔记/文档） */}
+      <div className="grid grid-cols-1 lg:grid-cols-[13fr_7fr] gap-6">
         {/* 左侧 */}
-        <div className="space-y-6">
+        <div className="space-y-6 min-w-0">
           {/* 项目概览 */}
           <div className="bg-surface rounded-2xl shadow-soft p-6">
             <div className="flex items-center justify-between mb-4">
@@ -1157,8 +1157,8 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        {/* 右侧 - 宽大一倍 */}
-        <div className="space-y-6">
+        {/* 右侧 */}
+        <div className="space-y-6 min-w-0">
           {/* 投资合伙人评价 */}
           <div className="bg-surface rounded-2xl shadow-soft p-6">
             <h2 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
@@ -1274,7 +1274,7 @@ export default function ProjectDetailPage() {
               {/* 审批状态汇总 */}
               {approvalSummary && (
                 <div className="mb-4 p-4 rounded-2xl bg-canvas border border-hairline">
-                  <div className="grid grid-cols-4 gap-3 text-center">
+                  <div className="grid grid-cols-2 gap-3 text-center xl:grid-cols-4">
                     <div>
                       <div className="text-2xl font-bold text-emerald-600">{approvalSummary.approvedCount}</div>
                       <div className="text-xs text-ink-muted">已通过</div>
@@ -1532,7 +1532,7 @@ export default function ProjectDetailPage() {
                 </h2>
                 <span className="text-xs text-ink-faint">来自项目解读 · 点击卡片查看全文</span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3">
                 {webLinks.map((w, idx) => (
                   <button
                     key={idx}
@@ -1673,7 +1673,7 @@ export default function ProjectDetailPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
               {/* 左侧：主维护人 + 接手申请 */}
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-sm text-ink-muted">

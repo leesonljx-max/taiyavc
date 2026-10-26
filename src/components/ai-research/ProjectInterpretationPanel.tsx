@@ -485,9 +485,9 @@ export default function ProjectInterpretationPanel({ onBackHandlerChange }: Proj
   const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
   return (
-    <div className="h-full flex gap-4 overflow-hidden">
-      {/* ── 左 1/4：上传区（固定不随列表滚动；提交时 3D 翻转切换） ── */}
-      <div className="w-[300px] xl:w-[340px] flex-shrink-0 overflow-y-auto pb-4">
+    <div className="flex flex-col gap-4 lg:h-full lg:flex-row lg:overflow-hidden">
+      {/* ── 左 1/4：上传区（桌面端固定不随列表滚动；手机端置顶并随页面滚动） ── */}
+      <div className="w-full flex-shrink-0 pb-4 lg:w-[300px] lg:overflow-y-auto xl:w-[340px]">
         <div className="flip-scene">
           <div className={`flip-card ${flipping ? 'flipped' : ''}`}>
             {/* 正面：上传表单（卡片悬浮立体） */}
