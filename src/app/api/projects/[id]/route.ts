@@ -135,7 +135,6 @@ export async function GET(
         : [],
       availableManagers,
       canManageMaintainers,
-      versions,
       aiCardJson: project.aiCardJson,
       canEdit: canEditProject(currentUser, {
         followStage: project.followStage,
@@ -149,7 +148,7 @@ export async function GET(
       }),
     }
 
-    return NextResponse.json({ project: result })
+    return NextResponse.json({ project: result, versions })
   } catch (error) {
     return NextResponse.json(
       { error: '获取项目详情失败' },
