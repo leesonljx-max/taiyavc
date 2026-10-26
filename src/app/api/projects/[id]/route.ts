@@ -95,6 +95,18 @@ export async function GET(
       availableManagers = managers
     }
 
+    // 同名项目的所有版本（不同维护人各自创建；项目详情页冻结栏下方用于切换版本）
+    const versions = await prisma.project.findMany({
+      where: { name: project.name },
+      select: {
+        id: true,
+        createdAt: true,
+        createdById: true,
+        createdBy: { select: { id: true, name: true, email: true, username: true, avatar: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    })
+
     // 去除敏感字段：takeoverRequests 原始记录不直接暴露，仅通过 pendingTakeoverRequests 暴露必要字段
     const { takeoverRequests: _takeoverRequests, ...projectWithoutTakeover } = project
 
@@ -123,6 +135,7 @@ export async function GET(
         : [],
       availableManagers,
       canManageMaintainers,
+      versions,
       aiCardJson: project.aiCardJson,
       canEdit: canEditProject(currentUser, {
         followStage: project.followStage,

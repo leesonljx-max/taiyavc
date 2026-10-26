@@ -6,7 +6,7 @@ import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import prisma from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
-import { extractTextFromFile } from '@/lib/document-extract'
+import { extractTextFromFile, stripNul } from '@/lib/document-extract'
 import {
   PI_DOC_ACCEPTED_EXTENSIONS,
   PI_DOC_MAX_SIZE,
@@ -113,8 +113,11 @@ export async function POST(request: Request) {
     // ── 备选通道：粘贴文本 ──
     const pastedBlock = typeof pastedText === 'string' && pastedText.trim() ? pastedText.trim() : ''
 
-    // ── 合并 documentText：文档 + 网页 + 粘贴文本 ──
-    const documentText = [...docTexts, ...webBlocks, pastedBlock].filter(Boolean).join('\n\n').slice(0, MAX_DOCUMENT_TEXT)
+    // ── 合并 documentText：文档 + 网页 + 粘贴文本（剔除 NUL，Postgres text 不接受 0x00） ──
+    const documentText = stripNul([...docTexts, ...webBlocks, pastedBlock].filter(Boolean).join('\n\n')).slice(
+      0,
+      MAX_DOCUMENT_TEXT
+    )
 
     // 输入校验：至少一份有效文档 / 网页内容 / 粘贴文本
     if (files.length > 0 && docTexts.length === 0 && webLinks.length === 0 && pastedBlock.length < 100) {
@@ -156,8 +159,10 @@ export async function POST(request: Request) {
     const record = await prisma.projectInterpretation.create({
       data: {
         userId: session.user.id,
-        projectName: projectName || defaultName,
-        fileName: fileNameLabel || (webLinks.length > 0 ? `${webLinks.length} 个网页链接` : '粘贴文本.txt'),
+        projectName: stripNul(projectName || defaultName),
+        fileName: stripNul(
+          fileNameLabel || (webLinks.length > 0 ? `${webLinks.length} 个网页链接` : '粘贴文本.txt')
+        ),
         fileUrl,
         fileType: primaryFile?.type || 'text/plain',
         fileSize: primaryFile?.size || documentText.length,
@@ -168,7 +173,7 @@ export async function POST(request: Request) {
           ? {
               interviewFileName: interview.fileName,
               interviewFileUrl: interview.fileUrl,
-              interviewText: interview.text ? interview.text.slice(0, 40000) : null,
+              interviewText: interview.text ? stripNul(interview.text).slice(0, 40000) : null,
             }
           : {}),
       },

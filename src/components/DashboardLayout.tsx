@@ -35,9 +35,12 @@ interface DashboardLayoutProps {
   title?: string
   subtitle?: string
   actions?: React.ReactNode
+  /** 冻结栏左侧返回按钮（true 时显示；onBack 可覆盖默认 router.back()） */
+  back?: boolean
+  onBack?: () => void
 }
 
-export default function DashboardLayout({ children, title, subtitle, actions }: DashboardLayoutProps) {
+export default function DashboardLayout({ children, title, subtitle, actions, back, onBack }: DashboardLayoutProps) {
   const pathname = usePathname()
   const router = useRouter()
   const { data: session, update: updateSession } = useSession()
@@ -163,6 +166,19 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
+              {/* 返回：放在冻结栏内，随页面滚动始终可见 */}
+              {back && (
+                <button
+                  onClick={() => (onBack ? onBack() : router.back())}
+                  className="flex items-center gap-1.5 h-9 px-3 rounded-full bg-surface/80 border border-hairline text-sm font-medium text-ink-muted hover:text-primary-700 hover:border-primary-200 hover:bg-surface transition-colors"
+                  title="返回上一页"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                  返回
+                </button>
+              )}
               <div>
                 {title && <h1 className="text-xl font-bold text-ink">{title}</h1>}
                 {subtitle && <p className="text-sm text-ink-muted">{subtitle}</p>}

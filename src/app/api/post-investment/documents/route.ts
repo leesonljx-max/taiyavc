@@ -7,7 +7,7 @@ import { authOptions, type UserRole } from '@/lib/auth'
 import type { PermissionUser } from '@/lib/permissions'
 import { canEditResearchProject } from '@/lib/research-permissions'
 import { isValidPeriod } from '@/lib/post-investment/calc'
-import { extractTextFromFile } from '@/lib/document-extract'
+import { extractTextFromFile, stripNul } from '@/lib/document-extract'
 import { writeFile, mkdir, unlink } from 'fs/promises'
 import { join } from 'path'
 
@@ -42,6 +42,7 @@ export async function POST(request: Request) {
     const period = String(formData.get('period') || '')
     const docType = String(formData.get('docType') || '')
     const file = formData.get('file') as File | null
+    const manualText = String(formData.get('text') || '')
 
     if (!projectId) return NextResponse.json({ error: '缺少 projectId' }, { status: 400 })
     if (!isValidPeriod(period)) {
@@ -50,14 +51,20 @@ export async function POST(request: Request) {
     if (!DOC_TYPES.includes(docType as typeof DOC_TYPES[number])) {
       return NextResponse.json({ error: '无效的文档类型' }, { status: 400 })
     }
-    if (!file) return NextResponse.json({ error: '未找到上传文件' }, { status: 400 })
-
-    const ext = '.' + (file.name.toLowerCase().split('.').pop() || '')
-    if (!DOC_EXTENSIONS.includes(ext)) {
-      return NextResponse.json({ error: `不支持的文件类型: ${ext}，仅支持 PDF/Word/Excel/PPT/txt/md` }, { status: 400 })
+    if (!file && !manualText.trim()) {
+      return NextResponse.json({ error: '请上传文件或填写投后信息' }, { status: 400 })
     }
-    if (file.size > MAX_SIZE) {
-      return NextResponse.json({ error: '文件大小超过 50MB 限制' }, { status: 400 })
+
+    let ext = ''
+    if (file) {
+      ext = '.' + (file.name.toLowerCase().split('.').pop() || '')
+      if (!DOC_EXTENSIONS.includes(ext)) {
+        return NextResponse.json({ error: `不支持的文件类型: ${ext}，仅支持 PDF/Word/Excel/PPT/txt/md` }, { status: 400 })
+      }
+      // Excel 不限制文件大小（业务导出的大表常超过 50MB）
+      if (ext !== '.xlsx' && file.size > MAX_SIZE) {
+        return NextResponse.json({ error: '文件大小超过 50MB 限制' }, { status: 400 })
+      }
     }
 
     const project = await prisma.project.findUnique({
@@ -70,6 +77,35 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '无权上传该项目资料' }, { status: 403 })
     }
 
+    // ── 手动填写投后资料：文本作为一份 txt 文档直接入库（无需上传文件） ──
+    if (!file) {
+      const content = stripNul(manualText).trim()
+      const doc = await prisma.postInvestDoc.create({
+        data: {
+          projectId,
+          docType,
+          period,
+          fileName: `手动填写-${period}.txt`,
+          fileUrl: '',
+          fileType: 'text/plain',
+          fileSize: Buffer.byteLength(content, 'utf8'),
+          text: content,
+          uploadedById: session.user.id,
+        },
+      })
+      return NextResponse.json({
+        ok: true,
+        doc: {
+          id: doc.id,
+          fileName: doc.fileName,
+          docTypeLabel: DOC_TYPE_LABELS[docType] || docType,
+          period,
+          fileSize: doc.fileSize,
+          hasText: true,
+        },
+      })
+    }
+
     await mkdir(UPLOAD_DIR, { recursive: true })
     const rawExt = file.name.split('.').pop() || 'pdf'
     const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}.${rawExt}`
@@ -80,7 +116,7 @@ export async function POST(request: Request) {
     let text = ''
     try {
       if (rawExt.toLowerCase() === 'txt' || rawExt.toLowerCase() === 'md') {
-        text = buffer.toString('utf8').trim()
+        text = stripNul(buffer.toString('utf8')).trim()
       } else {
         text = (await extractTextFromFile(buffer, file.name, file.type)).text
       }

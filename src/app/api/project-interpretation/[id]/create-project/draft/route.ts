@@ -120,21 +120,6 @@ export async function POST(
       } catch { /* 搜索失败不阻塞 */ }
     }
 
-    // ── 重名预检查（项目名唯一）──
-    const existing = await prisma.project.findFirst({
-      where: { name: draft.name },
-      select: { id: true, name: true, createdBy: { select: { name: true, email: true } } },
-    })
-    if (existing) {
-      return NextResponse.json(
-        {
-          error: `项目库已存在同名项目「${existing.name}」（维护人：${existing.createdBy?.name || existing.createdBy?.email || '未知'}），请先在项目库处理同名项目（接管或改名），或修改项目名称后创建`,
-          existingProjectId: existing.id,
-        },
-        { status: 409 }
-      )
-    }
-
     // 初聊日期默认取创建当时的日期（表单可改）
     return NextResponse.json({
       draft,

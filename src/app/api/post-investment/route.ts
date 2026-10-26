@@ -9,10 +9,22 @@ import { canViewResearchProject } from '@/lib/research-permissions'
 import { getAvailableFunds } from '@/lib/post-investment/funds'
 import type { PostInvestAnalysisResult } from '@/lib/post-investment/analysis'
 
-/** 当前季度（用于统计"本季已提交/待提交"） */
+/**
+ * 当前报告季度（用于统计"本季已提交/待提交"）
+ * 季度结束后 45 天内仍计为上一季度（季报提交宽限期），如 Q3 截止 9/30，
+ * 11/14 之前（含）都显示为 Q3 待提交，11/15 起切换为 Q4。
+ */
 function currentQuarter(): string {
   const now = new Date()
-  return `${now.getFullYear()}Q${Math.floor(now.getMonth() / 3) + 1}`
+  const q = Math.floor(now.getMonth() / 3) // 0-based：0=Q1
+  const quarterStart = new Date(now.getFullYear(), q * 3, 1)
+  const GRACE_MS = 45 * 24 * 60 * 60 * 1000
+  if (now.getTime() < quarterStart.getTime() + GRACE_MS) {
+    const prevYear = q === 0 ? now.getFullYear() - 1 : now.getFullYear()
+    const prevQ = q === 0 ? 3 : q - 1
+    return `${prevYear}Q${prevQ + 1}`
+  }
+  return `${now.getFullYear()}Q${q + 1}`
 }
 
 /** 从分析结果提取风险等级（取风险提示与异常的最高级） */

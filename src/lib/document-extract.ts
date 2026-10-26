@@ -13,6 +13,15 @@ export type SupportedFileType = 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'unknown'
 const MAX_EXTRACT_LENGTH = 30000
 
 /**
+ * 剔除 NUL 字节（\u0000）
+ * PostgreSQL 的 text 类型不接受 0x00（报 22021 invalid byte sequence for encoding "UTF8"），
+ * PDF 提取（pdf.js 解析部分字体/CMap）与部分网页正文会带出该字符，写入数据库前必须清除。
+ */
+export function stripNul(s: string): string {
+  return s.replace(/\u0000/g, '')
+}
+
+/**
  * 根据文件名或 MIME 类型判断支持的文件类型
  */
 export function detectFileType(fileName: string, mimeType?: string): SupportedFileType {
@@ -153,7 +162,7 @@ export async function extractTextFromFile(
     text = text.substring(0, MAX_EXTRACT_LENGTH)
   }
 
-  return { text: text.trim(), fileType, truncated }
+  return { text: stripNul(text).trim(), fileType, truncated }
 }
 
 /**

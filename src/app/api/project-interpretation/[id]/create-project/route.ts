@@ -123,21 +123,6 @@ export async function POST(
       return NextResponse.json({ error: `请先填写必填项：${missing.join('、')}` }, { status: 400 })
     }
 
-    // ── 重名检查（项目名唯一，不允许重复创建） ──
-    const existing = await prisma.project.findFirst({
-      where: { name },
-      select: { id: true, name: true, createdBy: { select: { name: true, email: true } } },
-    })
-    if (existing) {
-      return NextResponse.json(
-        {
-          error: `项目库已存在同名项目「${existing.name}」（维护人：${existing.createdBy?.name || existing.createdBy?.email || '未知'}），请先在项目库处理同名项目（接管或改名），或修改项目名称后创建`,
-          existingProjectId: existing.id,
-        },
-        { status: 409 }
-      )
-    }
-
     // ── 创建到项目库（初聊阶段；富文本字段已转 HTML：分点分段+加粗+BP 配图） ──
     const initialStage = 'INITIAL_TALK'
     const project = await prisma.project.create({

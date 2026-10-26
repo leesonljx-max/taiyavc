@@ -642,7 +642,7 @@ async function seedVerified() {
   })
 }
 
-test('create-project：AI 按项目库模板提取并创建（主要产品/核心优势/核心团队截取 BP）；重名 409；重复创建 400', async () => {
+test('create-project：AI 按项目库模板提取并创建（主要产品/核心优势/核心团队截取 BP）；同名可继续创建；重复创建 400', async () => {
   asUser()
   await seedVerified()
 
@@ -777,7 +777,7 @@ test('create-project：AI 按项目库模板提取并创建（主要产品/核�
   assert.equal(res.status, 400)
   assert.match((await res.json()).error, /已创建/)
 
-  // 重名 → 409（新记录提交同名表单）
+  // 同名 → 允许继续创建（不同维护人各自管理版本）
   const other = await prisma.projectInterpretation.create({
     data: { userId, projectName: '光子芯片2', fileName: 'b.txt', fileUrl: '', fileType: 'text/plain', fileSize: 1, documentText: DOC_TEXT, verifyStatus: 'DONE', conclusionJson: '{}' },
   })
@@ -788,10 +788,10 @@ test('create-project：AI 按项目库模板提取并创建（主要产品/核�
     }),
     { params: { id: other.id } }
   )
-  assert.equal(res.status, 409)
+  assert.equal(res.status, 200)
   const dup = await res.json()
-  assert.match(dup.error, /已存在同名项目/)
-  assert.equal(dup.existingProjectId, body.projectId)
+  assert.ok(dup.projectId)
+  assert.notEqual(dup.projectId, body.projectId)
 })
 
 test('create-project：BP 原文自动转存到项目文档（ProjectDocument + 文件复制到 project-docs）', async () => {

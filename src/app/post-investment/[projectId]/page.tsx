@@ -156,6 +156,11 @@ export default function PostInvestmentDetailPage() {
 
   const [previewDoc, setPreviewDoc] = useState<{ fileName: string; fileUrl: string; fileType: string; textContent?: string; previewHtml?: string } | null>(null)
 
+  // 手动填写投后资料
+  const [manualOpen, setManualOpen] = useState(false)
+  const [manualText, setManualText] = useState('')
+  const [manualSaving, setManualSaving] = useState(false)
+
   // 投资信息录入（基金 / 金额 / 日期，确认后锁定）
   const [invFund, setInvFund] = useState('')
   const [invCustomMode, setInvCustomMode] = useState(false)
@@ -241,6 +246,28 @@ export default function PostInvestmentDetailPage() {
       }
       await load()
     } catch { setUploadErr('上传失败') } finally { setUploading(false) }
+  }
+
+  // 手动填写投后资料：文本直接保存为一份 txt 资料
+  const submitManual = async () => {
+    if (manualSaving) return
+    const content = manualText.trim()
+    if (!content) { setUploadErr('请填写投后信息'); return }
+    setManualSaving(true)
+    setUploadErr('')
+    try {
+      const fd = new FormData()
+      fd.append('projectId', params.projectId)
+      fd.append('period', uploadPeriod)
+      fd.append('docType', uploadType)
+      fd.append('text', content)
+      const res = await fetch('/api/post-investment/documents', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok) { setUploadErr(json.error || '保存失败'); return }
+      setManualOpen(false)
+      setManualText('')
+      await load()
+    } catch { setUploadErr('保存失败，请检查网络') } finally { setManualSaving(false) }
   }
 
   const deleteDoc = async (docId: string) => {
@@ -450,7 +477,14 @@ export default function PostInvestmentDetailPage() {
                     }}
                   />
                 </label>
-                <span className="text-[11px] text-ink-faint">支持 PDF / Word / Excel / PPT / txt（≤50MB），上传后可在线阅览；经营报告或财务报表任一项即可触发 AI 分析</span>
+                <button
+                  onClick={() => { setManualOpen(true); setManualText(''); setUploadErr('') }}
+                  disabled={uploading}
+                  className="btn-secondary"
+                >
+                  ✍️ 手动填写
+                </button>
+                <span className="text-[11px] text-ink-faint">支持 PDF / Word / Excel（不限大小）/ PPT / txt；也可手动填写投后信息。上传后可在线阅览，经营报告或财务报表任一项即可触发 AI 分析</span>
               </div>
               {uploadErr && <p className="mt-2.5 text-xs text-danger-600 bg-danger-50 rounded-xl px-3 py-2">{uploadErr}</p>}
             </div>
@@ -742,6 +776,59 @@ export default function PostInvestmentDetailPage() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* 手动填写投后资料弹窗 */}
+      {manualOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm"
+          onClick={() => { if (!manualSaving) setManualOpen(false) }}
+        >
+          <div className="w-full max-w-2xl bg-surface rounded-2xl shadow-soft-lg p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <h3 className="text-base font-bold text-ink">手动填写投后资料</h3>
+                <p className="text-xs text-ink-faint mt-1">
+                  报告期 {uploadPeriod} · 类型 {DOC_TYPE_META[uploadType]?.label || uploadType} · 保存后可参与 AI 分析
+                </p>
+              </div>
+              <button
+                onClick={() => { if (!manualSaving) setManualOpen(false) }}
+                className="text-ink-faint hover:text-ink text-lg leading-none"
+                title="关闭"
+              >
+                ✕
+              </button>
+            </div>
+            <textarea
+              value={manualText}
+              onChange={e => setManualText(e.target.value)}
+              rows={12}
+              autoFocus
+              placeholder="请输入投后信息，例如：本季度营收与同比、订单/客户进展、团队变化、融资进展、下季度计划等……"
+              className="w-full px-4 py-3 text-sm rounded-xl border border-hairline bg-surface text-ink placeholder:text-ink-faint focus:outline-none focus:border-primary-300 resize-y"
+            />
+            <div className="flex items-center justify-between gap-3 mt-4">
+              <span className="text-[11px] text-ink-faint">{manualText.trim().length} 字</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { if (!manualSaving) setManualOpen(false) }}
+                  disabled={manualSaving}
+                  className="btn-secondary disabled:opacity-50"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={submitManual}
+                  disabled={manualSaving || !manualText.trim()}
+                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {manualSaving ? '保存中...' : '保存资料'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

@@ -142,6 +142,14 @@ interface Project {
   canManageMaintainers: boolean
 }
 
+/** 同名项目版本（不同维护人各自创建） */
+interface ProjectVersion {
+  id: string
+  createdAt: string
+  createdById: string
+  createdBy: { id: string; name: string | null; email: string | null; username: string | null; avatar: string | null } | null
+}
+
 /**
  * 安全渲染 HTML 内容（富文本编辑器存储的 HTML）
  * - 过滤 <script> 标签防止 XSS
@@ -175,6 +183,7 @@ export default function ProjectDetailPage() {
   const { data: session } = useSession()
   const userRole = session?.user?.role as string | undefined
   const [project, setProject] = useState<Project | null>(null)
+  const [versions, setVersions] = useState<ProjectVersion[]>([])
   const [loading, setLoading] = useState(true)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [aiCard, setAiCard] = useState<AICard | null>(null)
@@ -255,6 +264,7 @@ export default function ProjectDetailPage() {
       const data = await response.json()
       const projectData = data.project as Project
       setProject(projectData)
+      setVersions(Array.isArray(data.versions) ? data.versions : [])
 
       if (projectData.aiCardJson) {
         try {
@@ -713,6 +723,8 @@ export default function ProjectDetailPage() {
     <DashboardLayout
       title={project.name}
       subtitle={followStageLabels[project.followStage]}
+      back
+      onBack={() => router.back()}
       actions={
         <div className="flex items-center gap-2">
           <button
@@ -762,15 +774,40 @@ export default function ProjectDetailPage() {
         </div>
       }
     >
-      {/* 返回链接 */}
-      <div className="mb-4">
-        <button onClick={() => router.back()} className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-primary-600 transition-colors">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-          返回
-        </button>
-      </div>
+      {/* 同名项目版本切换条：多个维护人创建同名项目时，在冻结栏下方显示 */}
+      {versions.length > 1 && (
+        <div className="mb-4 bg-surface rounded-2xl shadow-soft border border-hairline px-4 py-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold text-ink-muted flex-shrink-0">
+              同名版本（{versions.length}）
+            </span>
+            {versions.map(v => {
+              const active = v.id === project.id
+              const who = v.createdBy?.name || v.createdBy?.username || v.createdBy?.email || '未知维护人'
+              return (
+                <button
+                  key={v.id}
+                  onClick={() => { if (!active) router.push(`/projects/${v.id}`) }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs transition-all ${
+                    active
+                      ? 'bg-primary-600 border-primary-600 text-white shadow-sm'
+                      : 'bg-surface border-hairline text-ink hover:border-primary-200 hover:bg-primary-50'
+                  }`}
+                  title={active ? '当前版本' : `切换到 ${who} 的版本`}
+                >
+                  <span className="font-bold">{who}</span>
+                  <span className={active ? 'text-white/80' : 'text-ink-faint'}>
+                    {new Date(v.createdAt).toLocaleString('zh-CN', {
+                      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+                    })}
+                  </span>
+                  {active && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/20">当前</span>}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 阶段标签徽章 */}
       <div className="mb-6 flex items-center gap-3 flex-wrap">

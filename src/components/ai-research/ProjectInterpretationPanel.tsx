@@ -177,7 +177,12 @@ const MATCH_STYLES: Record<string, { label: string; cls: string }> = {
   UNCOVERED: { label: '访谈未涉及', cls: 'bg-gray-200 text-ink-muted' },
 }
 
-export default function ProjectInterpretationPanel() {
+interface ProjectInterpretationPanelProps {
+  /** 详情视图打开时把返回处理登记到外层冻结栏（null = 列表视图，不显示返回） */
+  onBackHandlerChange?: (handler: (() => void) | null) => void
+}
+
+export default function ProjectInterpretationPanel({ onBackHandlerChange }: ProjectInterpretationPanelProps = {}) {
   const [list, setList] = useState<InterpretationSummary[]>([])
   const [detail, setDetail] = useState<InterpretationDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -427,6 +432,13 @@ export default function ProjectInterpretationPanel() {
     fetchList()
   }
 
+  // 详情视图的「返回」移到外层冻结栏：打开详情时登记处理函数，关闭时注销
+  useEffect(() => {
+    onBackHandlerChange?.(detail ? () => { setAutoChainStep('idle'); backToList() } : null)
+    return () => onBackHandlerChange?.(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail, onBackHandlerChange])
+
   // ── 渲染 ──
 
   if (loading) {
@@ -446,7 +458,6 @@ export default function ProjectInterpretationPanel() {
       error={error}
       autoChainStep={autoChainStep}
       questionSkills={questionSkills}
-      onBack={() => { setAutoChainStep('idle'); backToList() }}
       onInterpret={() => runAction('interpret', '解读')}
       onQuestions={() => runAction('questions', '生成问题清单')}
       onVerifyClaims={() => runAction('verify-claims', '外部校验')}
@@ -822,7 +833,6 @@ function Detail({
   error,
   autoChainStep,
   questionSkills,
-  onBack,
   onInterpret,
   onQuestions,
   onVerifyClaims,
@@ -835,7 +845,6 @@ function Detail({
   error: string
   autoChainStep: 'idle' | 'interpret' | 'questions' | 'verify' | 'done' | 'error'
   questionSkills: string[]
-  onBack: () => void
   onInterpret: () => void
   onQuestions: () => void
   onVerifyClaims: () => Promise<void>
@@ -1025,15 +1034,9 @@ function Detail({
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-7xl mx-auto pb-6">
-        {/* ── 顶部管理栏（sticky）：返回 + 项目信息 + 操作按钮 ── */}
+        {/* ── 顶部管理栏（sticky）：项目信息 + 操作按钮（返回已移到页面冻结栏） ── */}
         <div className="sticky top-0 z-20 glass rounded-2xl shadow-soft px-5 py-3">
           <div className="flex items-center gap-3 flex-wrap">
-            <button
-              onClick={onBack}
-              className="btn-secondary text-xs flex-shrink-0"
-            >
-              ← 返回
-            </button>
             <div className="flex-1 min-w-[200px]">
               <h3 className="text-base font-bold text-ink truncate">{detail.projectName}</h3>
               <p className="text-[11px] text-ink-faint truncate">

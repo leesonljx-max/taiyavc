@@ -345,6 +345,7 @@ export async function POST(request: Request) {
       )
     }
 
+    // 同名项目仅作提示，不再阻止创建（允许多个维护人各自创建版本）
     if (checkDuplicate) {
       const existingProject = await prisma.project.findFirst({
         where: { name },
@@ -359,45 +360,8 @@ export async function POST(request: Request) {
         const protectionExpiresAt = existingProject.protectionExpiresAt
         const isProtected = protectionExpiresAt ? protectionExpiresAt > now : false
 
-        return NextResponse.json(
-          {
-            error: '项目名称已存在，不允许重复创建',
-            warning: '数据库中已存在同名项目，您可以申请接手',
-            existingProject: {
-              id: existingProject.id,
-              name: existingProject.name,
-              companyFullName: existingProject.companyFullName,
-              createdById: existingProject.createdById,
-              createdByName: existingProject.createdBy?.name || existingProject.createdBy?.email || '未知',
-              createdAt: existingProject.createdAt,
-              protectionExpiresAt: protectionExpiresAt,
-              isProtected, // true = 3个月保护期内，需审批；false = 已过期，可直接接手
-            }
-          },
-          { status: 409 }
-        )
-      }
-
-      return NextResponse.json({ exists: false })
-    }
-
-    // 实际创建前再次检查同名（防止并发）
-    const existingProject = await prisma.project.findFirst({
-      where: { name },
-      include: {
-        createdBy: { select: { id: true, name: true, email: true } },
-      },
-    })
-
-    if (existingProject) {
-      const now = new Date()
-      const protectionExpiresAt = existingProject.protectionExpiresAt
-      const isProtected = protectionExpiresAt ? protectionExpiresAt > now : false
-
-      return NextResponse.json(
-        {
-          error: '项目名称已存在，不允许重复创建',
-          warning: '数据库中已存在同名项目，您可以申请接手',
+        return NextResponse.json({
+          exists: true,
           existingProject: {
             id: existingProject.id,
             name: existingProject.name,
@@ -406,11 +370,12 @@ export async function POST(request: Request) {
             createdByName: existingProject.createdBy?.name || existingProject.createdBy?.email || '未知',
             createdAt: existingProject.createdAt,
             protectionExpiresAt: protectionExpiresAt,
-            isProtected,
-          }
-        },
-        { status: 409 }
-      )
+            isProtected, // true = 3个月保护期内，需审批；false = 已过期，可直接接手
+          },
+        })
+      }
+
+      return NextResponse.json({ exists: false })
     }
 
     // ── 项目线索重合检测与合并 ──

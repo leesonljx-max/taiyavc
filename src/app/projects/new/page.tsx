@@ -99,7 +99,6 @@ export default function NewProjectPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [duplicateWarning, setDuplicateWarning] = useState<DuplicateWarning | null>(null)
-  const [confirmedDuplicate, setConfirmedDuplicate] = useState(false)
   const [leadMatch, setLeadMatch] = useState<LeadMatch | null>(null)
   // 接手相关状态
   const [takeoverLoading, setTakeoverLoading] = useState(false)
@@ -329,13 +328,9 @@ export default function NewProjectPage() {
         body: JSON.stringify({ name: formData.name, checkDuplicate: true }),
       })
 
-      if (response.status === 409) {
-        const data = await response.json()
-        setDuplicateWarning(data.existingProject)
-        setConfirmedDuplicate(false)
-      } else {
-        setDuplicateWarning(null)
-      }
+      const data = await response.json()
+      // 同名只作提示：可继续创建自己的版本，也可申请接手
+      setDuplicateWarning(data.exists ? data.existingProject : null)
     } catch (error) {
       console.error('Failed to check duplicate:', error)
     }
@@ -415,12 +410,6 @@ export default function NewProjectPage() {
       return
     }
 
-    // 如果检测到同名项目，禁止创建（必须接手或改名）
-    if (duplicateWarning) {
-      setError('项目名称已存在，不允许重复创建。请修改名称，或点击下方"接手项目"按钮申请接手。')
-      return
-    }
-
     setLoading(true)
 
     try {
@@ -460,13 +449,7 @@ export default function NewProjectPage() {
       }
 
       if (!response.ok) {
-        if (response.status === 409) {
-          setDuplicateWarning(result.existingProject)
-          setConfirmedDuplicate(false)
-          setError('项目名称已存在，不允许重复创建。请修改名称，或点击下方"接手项目"按钮申请接手。')
-        } else {
-          setError(result.detail || result.error || '创建项目失败')
-        }
+        setError(result.detail || result.error || '创建项目失败')
         setLoading(false)
         return
       }
@@ -571,10 +554,11 @@ export default function NewProjectPage() {
                 </svg>
               </div>
               <div className="flex-1">
-                <h3 className="font-medium text-ink">项目名称已存在，不允许重复创建</h3>
+                <h3 className="font-medium text-ink">已存在同名项目（可继续创建）</h3>
                 <p className="text-sm text-ink-muted mt-1">
                   数据库中已存在名为「{duplicateWarning.name}」的项目
                   {duplicateWarning.companyFullName && `（${duplicateWarning.companyFullName}）`}
+                  。您可以继续创建自己的版本（每个维护人独立管理），也可以申请接手已有项目。
                 </p>
 
                 {/* 已有项目信息 */}
@@ -686,10 +670,10 @@ export default function NewProjectPage() {
                 )}
 
                 <p className="text-xs text-ink-muted mt-3">
-                  说明：项目名称相同的项目不允许重复创建。您可以选择修改项目名称，或通过"接手项目"功能成为该项目的新维护人。
+                  说明：同名项目不再限制创建，创建后会作为独立版本存在；项目详情页冻结栏下方可切换查看各维护人的版本。
                   {duplicateWarning.isProtected
-                    ? '当前项目处于3个月保护期内，接手需经原维护人审批同意。'
-                    : '当前项目已过保护期，可直接接手，无需审批。'}
+                    ? '如需成为该项目的新维护人，可在3个月保护期内提交接手申请，经原维护人审批同意后生效。'
+                    : '如需成为该项目的新维护人，因保护期已过，可直接接手，无需审批。'}
                 </p>
               </div>
             </div>
@@ -1044,9 +1028,8 @@ export default function NewProjectPage() {
             </Link>
             <button
               type="submit"
-              disabled={loading || !!duplicateWarning}
+              disabled={loading}
               className="btn-primary disabled:cursor-not-allowed"
-              title={duplicateWarning ? '项目名称已存在，请修改名称或接手已有项目' : ''}
             >
               {loading ? (
                 <>
@@ -1055,13 +1038,6 @@ export default function NewProjectPage() {
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
                   创建中...
-                </>
-              ) : duplicateWarning ? (
-                <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                  </svg>
-                  名称已存在，无法创建
                 </>
               ) : (
                 <>

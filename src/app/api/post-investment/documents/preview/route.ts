@@ -46,6 +46,8 @@ export async function GET(request: Request) {
 
     // pdf / txt / md：浏览器原生渲染，直接给文件地址（走 /api/uploads 白名单，生产可用）
     if (ext === '.pdf' || ext === '.txt' || ext === '.md') {
+      // 手动填写的资料无实体文件，直接返回文本
+      if (!doc.fileUrl) return NextResponse.json({ kind: 'text', text: doc.text || '' })
       return NextResponse.json({ kind: 'file', url: toPublicUrl(doc.fileUrl) })
     }
 

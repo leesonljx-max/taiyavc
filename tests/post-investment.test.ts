@@ -30,6 +30,17 @@ let managerId = ''
 let outsiderId = ''
 let projectId = ''
 
+/** 与 API 一致：季度结束后 45 天内仍算上一季度（季报宽限期） */
+function currentReportingQuarter(): string {
+  const now = new Date()
+  const q = Math.floor(now.getMonth() / 3)
+  const start = new Date(now.getFullYear(), q * 3, 1)
+  if (now.getTime() < start.getTime() + 45 * 24 * 60 * 60 * 1000) {
+    return q === 0 ? `${now.getFullYear() - 1}Q4` : `${now.getFullYear()}Q${q}`
+  }
+  return `${now.getFullYear()}Q${q + 1}`
+}
+
 beforeEach(async () => {
   resetMocks()
   await prisma.postInvestAnalysis.deleteMany({})
@@ -228,6 +239,34 @@ test('上传：txt 自动提取全文入库；无效报告期 400；路人 403�
   assert.equal(await prisma.postInvestDoc.count({ where: { projectId } }), 0)
 })
 
+// ── 手动填写投后资料 ──
+
+test('上传：手动填写投后资料（无文件、仅 text）→ 保存为 txt 资料，预览返回文本', async () => {
+  asManager()
+  const fd = new FormData()
+  fd.append('projectId', projectId)
+  fd.append('period', '2026Q3')
+  fd.append('docType', 'OPERATION_REPORT')
+  fd.append('text', '本季度营收 3000 万元，订单同比增长 60%。')
+
+  const res = await DOC_POST(new Request('http://t/api/post-investment/documents', { method: 'POST', body: fd }))
+  assert.equal(res.status, 200)
+  const body = await res.json()
+  assert.equal(body.doc.hasText, true)
+  assert.equal(body.doc.fileName, '手动填写-2026Q3.txt')
+
+  const doc = await prisma.postInvestDoc.findUnique({ where: { id: body.doc.id } })
+  assert.ok(doc)
+  assert.equal(doc!.fileUrl, '')
+  assert.ok(doc!.text!.includes('3000'))
+
+  // 无实体文件：预览直接返回文本
+  const preview = await DOC_PREVIEW(new Request(`http://t/api/post-investment/documents/preview?docId=${body.doc.id}`))
+  const pj = await preview.json()
+  assert.equal(pj.kind, 'text')
+  assert.match(pj.text, /3000/)
+})
+
 // ── AI 分析 ──
 
 test('AI 分析：提取指标入库 + 分析落库；无文档 400；runway 由程序计算', async () => {
@@ -291,9 +330,8 @@ test('列表：仅显示 POST_INVESTMENT 项目 + 最新分析摘要与风险', 
   })
 
   asManager()
-  // 用当前季度上传（列表的"本季已提交"按当前季度统计）
-  const now = new Date()
-  const currentQuarter = `${now.getFullYear()}Q${Math.floor(now.getMonth() / 3) + 1}`
+  // 用当前报告季度上传（列表的"本季已提交"按 45 天宽限期的报告季度统计）
+  const currentQuarter = currentReportingQuarter()
   await seedDoc(currentQuarter)
   mockPostInvestAI()
   await ANALYZE_POST(
@@ -327,9 +365,8 @@ test('合并分析：分析当期时补齐以往期指标入库 + 历史期文�
   asManager()
   // 补传以往期（2026Q1）经营报告
   await seedDoc('2026Q1', '2026Q1经营情况：营业收入2353万元，同比增长52%。经营现金流-2666万元。期末现金余额11700万元。')
-  // 当前季度文档（若当前即 Q1 则用 Q2 避免冲突）
-  const now = new Date()
-  let cur = `${now.getFullYear()}Q${Math.floor(now.getMonth() / 3) + 1}`
+  // 当前报告季度文档（若当前即 Q1 则用 Q2 避免冲突）
+  let cur = currentReportingQuarter()
   if (cur === '2026Q1') cur = '2026Q2'
   await seedDoc(cur, `${cur}经营情况：营业收入3856万元，同比增长48%。`)
 

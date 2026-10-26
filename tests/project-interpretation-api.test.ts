@@ -13,6 +13,7 @@ import prisma from '@/lib/prisma'
 import { POST as UPLOAD } from '@/app/api/project-interpretation/upload/route'
 import { GET as LIST } from '@/app/api/project-interpretation/route'
 import { GET as DETAIL, DELETE } from '@/app/api/project-interpretation/[id]/route'
+import { stripNul } from '@/lib/document-extract'
 import { resetMocks, mockState } from './helpers/setup'
 
 const USER_EMAIL = 'pi-user@test.com'
@@ -194,4 +195,23 @@ test('DELETE：本人删除记录与问题', async () => {
 
   // 不存在
   assert.equal((await DELETE(new Request('http://t/api/project-interpretation/nope', { method: 'DELETE' }), { params: { id: 'nope' } })).status, 404)
+})
+
+test('stripNul：剔除 NUL 字节，保留其余内容', () => {
+  assert.equal(stripNul('\u0000甲\u0000乙\u0000'), '甲乙')
+  assert.equal(stripNul('正常文本\n换行'), '正常文本\n换行')
+})
+
+test('POST 上传：文本含 NUL 字节时自动剔除（回归 Postgres 22021 invalid byte sequence 0x00）', async () => {
+  asUser(userId)
+  // 模拟 PDF 提取带出的 NUL（pdf.js 解析部分字体/CMap 会产生）
+  const dirty = `\u0000${DOC_TEXT}\u0000补充：\u0000本轮融资 2 亿元\u0000`
+  const res = await UPLOAD(uploadRequest('dirty.txt', dirty))
+  assert.equal(res.status, 201)
+
+  const body = await res.json()
+  const record = await prisma.projectInterpretation.findUnique({ where: { id: body.interpretation.id } })
+  assert.ok(record?.documentText)
+  assert.equal(record!.documentText!.includes('\u0000'), false)
+  assert.ok(record!.documentText!.includes('光子计算芯片'))
 })
