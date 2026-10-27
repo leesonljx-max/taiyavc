@@ -101,6 +101,8 @@ export async function GET(
       select: {
         id: true,
         createdAt: true,
+        // 版本卡片展示的是初聊日期（targetDate），不是创建时间
+        targetDate: true,
         createdById: true,
         createdBy: { select: { id: true, name: true, email: true, username: true, avatar: true } },
       },

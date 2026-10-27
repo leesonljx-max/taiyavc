@@ -123,14 +123,14 @@ test('checkDuplicate：同名仅提示（200 + exists），不再返回 409', as
   assert.equal((await createProjectApi(BASE_NAME)).status, 201)
 })
 
-test('项目详情：versions 返回全库同名版本（维护人 + 创建时间，升序）', async () => {
+test('项目详情：versions 返回全库同名版本（维护人 + 初聊日期，升序）', async () => {
   const first = await prisma.project.create({
     data: {
       name: BASE_NAME,
       industry: 'AI应用',
       companyPosition: 'AI 推理引擎',
       totalAmount: '5000万',
-      targetDate: new Date(),
+      targetDate: new Date('2026-09-11T13:15:00.000Z'),
       followStage: 'INITIAL_TALK',
       passedStages: JSON.stringify(['INITIAL_TALK']),
       createdById: m1Id,
@@ -143,7 +143,7 @@ test('项目详情：versions 返回全库同名版本（维护人 + 创建时�
       industry: 'AI应用',
       companyPosition: '硅光计算芯片',
       totalAmount: '8000万',
-      targetDate: new Date(),
+      targetDate: new Date('2026-10-27T08:00:00.000Z'),
       followStage: 'INITIAL_TALK',
       passedStages: JSON.stringify(['INITIAL_TALK']),
       createdById: m2Id,
@@ -164,6 +164,9 @@ test('项目详情：versions 返回全库同名版本（维护人 + 创建时�
   assert.equal(v2.createdBy.name, '维护人乙')
   assert.ok(v1.createdAt && v2.createdAt)
   assert.ok(new Date(v1.createdAt).getTime() <= new Date(v2.createdAt).getTime())
+  // 版本卡片展示初聊日期（targetDate），而不是创建时间
+  assert.equal(new Date(v1.targetDate).toISOString().slice(0, 10), '2026-09-11')
+  assert.equal(new Date(v2.targetDate).toISOString().slice(0, 10), '2026-10-27')
 
   // 从任一维护人的版本详情都能看到两条
   const res2 = await detail(first.id)

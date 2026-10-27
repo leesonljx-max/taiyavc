@@ -146,6 +146,8 @@ interface Project {
 interface ProjectVersion {
   id: string
   createdAt: string
+  /** 初聊日期（版本卡片按日期展示，不显示时分） */
+  targetDate: string | null
   createdById: string
   createdBy: { id: string; name: string | null; email: string | null; username: string | null; avatar: string | null } | null
 }
@@ -784,6 +786,7 @@ export default function ProjectDetailPage() {
             {versions.map(v => {
               const active = v.id === project.id
               const who = v.createdBy?.name || v.createdBy?.username || v.createdBy?.email || '未知维护人'
+              const chatDate = v.targetDate || v.createdAt
               return (
                 <button
                   key={v.id}
@@ -797,8 +800,8 @@ export default function ProjectDetailPage() {
                 >
                   <span className="font-bold">{who}</span>
                   <span className={active ? 'text-white/80' : 'text-ink-faint'}>
-                    {new Date(v.createdAt).toLocaleString('zh-CN', {
-                      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+                    {new Date(chatDate).toLocaleDateString('zh-CN', {
+                      year: 'numeric', month: '2-digit', day: '2-digit',
                     })}
                   </span>
                   {active && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/20">当前</span>}
