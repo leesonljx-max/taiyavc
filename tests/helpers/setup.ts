@@ -68,9 +68,9 @@ export function resetMocks(): void {
 }
 
 /** DeepSeek chat/completions 成功响应体 */
-export function chatCompletions(content: string): Record<string, unknown> {
+export function chatCompletions(content: string, finishReason = 'stop'): Record<string, unknown> {
   return {
-    choices: [{ message: { content } }],
+    choices: [{ message: { content }, finish_reason: finishReason }],
     usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
   }
 }

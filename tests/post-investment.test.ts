@@ -14,6 +14,8 @@ import { resetMocks, mockState, chatCompletions } from './helpers/setup'
 import {
   parsePeriod, prevQoQPeriod, prevYoYPeriod, calcChange, calcRunwayMonths, computeMetricsWithChange,
 } from '@/lib/post-investment/calc'
+import { CORE_METRIC_KEYS, METRIC_BY_KEY, sortMetricsByFramework } from '@/lib/post-investment/metrics'
+import { extractTextFromFile } from '@/lib/document-extract'
 
 import { GET as PI_LIST } from '@/app/api/post-investment/route'
 import { POST as DOC_POST, DELETE as DOC_DELETE } from '@/app/api/post-investment/documents/route'
@@ -83,32 +85,34 @@ function asUser(id: string, role: string) {
 }
 const asManager = () => asUser(managerId, 'INVESTMENT_MANAGER')
 
+/** 投后 AI mock 的固定返回：指标提取 4 项 / 经营分析完整结果 */
+const MOCK_METRICS_JSON = JSON.stringify({
+  metrics: [
+    { metricKey: 'revenue', value: 2353, unit: '万元', sourceText: '报告期累计实现营业收入2353万元，同比增长52%。' },
+    { metricKey: 'operating_cash_flow', value: -2666, unit: '万元', sourceText: '报告期经营现金流-2666万元。' },
+    { metricKey: 'cash_balance', value: 11700, unit: '万元', sourceText: '期末现金余额1.17亿元。' },
+    { metricKey: 'new_orders', value: 2488, unit: '万元', sourceText: '新签订单2488万元。' },
+  ],
+})
+
+const MOCK_ANALYSIS_OBJ = {
+  executive_summary: '收入增长明显，盈利能力有所改善，但经营现金流仍为负，需关注回款质量。',
+  financial_analysis: [{ metricName: '营业收入', value: '2353 万元', yoy: '+52%', qoq: '-', status: 'normal' }],
+  anomalies: [{ level: 'medium', title: '收入与现金流背离', detail: '收入同比+52%，经营现金流-2666万元。', evidence: '营业收入 2353 万元；经营现金流 -2666 万元' }],
+  cashflow_analysis: { cash_balance: '11700 万元', runway_months: 13.2, assessment: '现金余额可覆盖约 13 个月净消耗，短期安全。' },
+  business_progress: [{ area: '订单', rating: 4, detail: '新签订单 2488 万元。' }],
+  risk_alerts: [{ type: '现金流', level: 'medium', description: '经营现金流为负。', evidence: '经营现金流 -2666 万元' }],
+  // 技能独立模块（无技能时 AI 应输出空数组；此处 mock 带一项验证清洗与落库）
+  skill_modules: [{ skill_name: '融资窗口评估', title: '本轮融资窗口', content: '1. 窗口剩余约 **12 个月**\n2. 建议加快交割节奏' }],
+}
+const MOCK_ANALYSIS_JSON = JSON.stringify(MOCK_ANALYSIS_OBJ)
+
 /** mock 投后 AI：指标提取 + 经营分析 */
 function mockPostInvestAI() {
   mockState.fetchHandler = (url, body) => {
     const system = String((body.messages as Array<{ content: string }>)[0]?.content || '')
-    if (system.includes('投后数据抽取引擎')) {
-      return chatCompletions(JSON.stringify({
-        metrics: [
-          { metricKey: 'revenue', value: 2353, unit: '万元', sourceText: '报告期累计实现营业收入2353万元，同比增长52%。' },
-          { metricKey: 'operating_cash_flow', value: -2666, unit: '万元', sourceText: '报告期经营现金流-2666万元。' },
-          { metricKey: 'cash_balance', value: 11700, unit: '万元', sourceText: '期末现金余额1.17亿元。' },
-          { metricKey: 'new_orders', value: 2488, unit: '万元', sourceText: '新签订单2488万元。' },
-        ],
-      }))
-    }
-    if (system.includes('投后管理分析 Agent')) {
-      return chatCompletions(JSON.stringify({
-        executive_summary: '收入增长明显，盈利能力有所改善，但经营现金流仍为负，需关注回款质量。',
-        financial_analysis: [{ metricName: '营业收入', value: '2353 万元', yoy: '+52%', qoq: '-', status: 'normal' }],
-        anomalies: [{ level: 'medium', title: '收入与现金流背离', detail: '收入同比+52%，经营现金流-2666万元。', evidence: '营业收入 2353 万元；经营现金流 -2666 万元' }],
-        cashflow_analysis: { cash_balance: '11700 万元', runway_months: 13.2, assessment: '现金余额可覆盖约 13 个月净消耗，短期安全。' },
-        business_progress: [{ area: '订单', rating: 4, detail: '新签订单 2488 万元。' }],
-        risk_alerts: [{ type: '现金流', level: 'medium', description: '经营现金流为负。', evidence: '经营现金流 -2666 万元' }],
-        // 技能独立模块（无技能时 AI 应输出空数组；此处 mock 带一项验证清洗与落库）
-        skill_modules: [{ skill_name: '融资窗口评估', title: '本轮融资窗口', content: '1. 窗口剩余约 **12 个月**\n2. 建议加快交割节奏' }],
-      }))
-    }
+    if (system.includes('投后数据抽取引擎')) return chatCompletions(MOCK_METRICS_JSON)
+    if (system.includes('投后管理分析 Agent')) return chatCompletions(MOCK_ANALYSIS_JSON)
     return chatCompletions('{}')
   }
 }
@@ -190,6 +194,61 @@ test('批量同比环比：H1 不与 Q1 互算（环比 null）；Q→Q 正常',
 })
 
 // ── 上传 API ──
+
+test('指标框架：核心 12 项固定顺序；短期负债/应付账款纳入字典', () => {
+  // 乱序输入 → 按固定框架排序：核心项按既定顺序，业务指标追加在后
+  const shuffled = [
+    { metricKey: 'new_orders' },
+    { metricKey: 'inventory' },
+    { metricKey: 'revenue' },
+    { metricKey: 'financing_amount' },
+    { metricKey: 'net_profit' },
+  ]
+  assert.deepEqual(
+    sortMetricsByFramework(shuffled).map(m => m.metricKey),
+    ['revenue', 'net_profit', 'inventory', 'financing_amount', 'new_orders']
+  )
+
+  assert.deepEqual([...CORE_METRIC_KEYS], [
+    'revenue', 'net_profit', 'operating_cash_flow', 'cash_balance',
+    'total_assets', 'total_liabilities', 'net_assets', 'short_term_debt',
+    'accounts_receivable', 'accounts_payable', 'inventory', 'financing_amount',
+  ])
+  assert.equal(METRIC_BY_KEY.get('short_term_debt')!.name, '短期负债')
+  assert.equal(METRIC_BY_KEY.get('accounts_payable')!.name, '应付账款')
+})
+
+test('Excel 文本提取：多工作表 + 同一工作表多张表全部提取（保留列位置）', async () => {
+  const XLSX = await import('xlsx')
+  const wb = XLSX.utils.book_new()
+  // 工作表 1：利润表 + 空行分隔的现金流量表（同一 sheet 内两张表）
+  const ws1 = XLSX.utils.aoa_to_sheet([
+    ['利润表（万元）'],
+    ['项目', '本期', '上期'],
+    ['营业收入', 10571, 7000],
+    [],
+    ['现金流量表'],
+    ['经营现金流', -7328],
+  ])
+  // 工作表 2：资产负债表（标签/数值分散在整行）
+  const ws2 = XLSX.utils.aoa_to_sheet([
+    ['资产负债表'],
+    ['总资产', 45587, '', '总负债', 3335],
+  ])
+  XLSX.utils.book_append_sheet(wb, ws1, '利润表')
+  XLSX.utils.book_append_sheet(wb, ws2, '资产负债表')
+
+  const { text } = await extractTextFromFile(
+    XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+    '多表财务报表.xlsx',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  )
+  assert.ok(text.includes('【工作表：利润表】'), '应标注第一张工作表')
+  assert.ok(text.includes('【工作表：资产负债表】'), '应提取全部工作表')
+  assert.ok(text.includes('营业收入\t10571\t7000'), '同一工作表的首张表应完整保留')
+  assert.ok(text.includes('经营现金流\t-7328'), '空行分隔的第二张表也应提取')
+  assert.ok(text.includes('总资产\t45587\t\t总负债\t3335'), '分散标签/数值应保留列位置')
+})
 
 test('上传：txt 自动提取全文入库；无效报告期 400；路人 403；未登录 401', async () => {
   asManager()
@@ -317,8 +376,81 @@ test('AI 分析：提取指标入库 + 分析落库；无文档 400；runway 由
   const detail = await (await PI_DETAIL(new Request(`http://t/api/post-investment/${projectId}`), { params: { projectId } })).json()
   assert.equal(detail.periods.length, 1)
   assert.equal(detail.metricsByPeriod['2026Q3'].length, 4)
+  // 返回值按固定框架排序（营业收入 → 经营现金流 → 现金余额 → 业务指标）
+  assert.deepEqual(
+    detail.metricsByPeriod['2026Q3'].map((m: { metricKey: string }) => m.metricKey),
+    ['revenue', 'operating_cash_flow', 'cash_balance', 'new_orders']
+  )
   assert.equal(detail.analyses.length, 1)
   assert.equal(detail.canEdit, true)
+})
+
+test('AI 分析：输出被 max_tokens 截断时按最后一个完整字段兜底（不报"结果不完整"）', async () => {
+  asManager()
+  await seedDoc('2026Q3')
+
+  // 模拟模型输出在 risk_alerts 字段中途被截断（finish_reason=length）
+  const cut = MOCK_ANALYSIS_JSON.indexOf('"risk_alerts"') + 30
+  const truncated = MOCK_ANALYSIS_JSON.slice(0, cut)
+  mockState.fetchHandler = (_url, body) => {
+    const system = String((body.messages as Array<{ content: string }>)[0]?.content || '')
+    if (system.includes('投后数据抽取引擎')) return chatCompletions(MOCK_METRICS_JSON)
+    return chatCompletions(truncated, 'length')
+  }
+
+  const res = await ANALYZE_POST(
+    new Request(`http://t/api/post-investment/${projectId}/analyze`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ period: '2026Q3' }),
+    }),
+    { params: { projectId } }
+  )
+  assert.equal(res.status, 200, '截断输出应兜底成功，而不是 400「AI 分析结果不完整」')
+  const body = await res.json()
+  assert.equal(body.metricCount, 4)
+
+  const analysis = await prisma.postInvestAnalysis.findUnique({
+    where: { projectId_period: { projectId, period: '2026Q3' } },
+  })
+  assert.ok(analysis)
+  const parsed = JSON.parse(analysis.summaryJson)
+  assert.ok(parsed.executive_summary.includes('现金流'), '应保留截断前已完整的 executive_summary')
+  assert.equal(parsed.risk_alerts.length, 0, '截断的尾部字段应被丢弃')
+  assert.equal(parsed.skill_modules.length, 0)
+})
+
+test('AI 分析：输出完全无法解析时自动压缩重试一次', async () => {
+  asManager()
+  await seedDoc('2026Q3')
+
+  let analysisCalls = 0
+  mockState.fetchHandler = (_url, body) => {
+    const system = String((body.messages as Array<{ content: string }>)[0]?.content || '')
+    if (system.includes('投后数据抽取引擎')) return chatCompletions(MOCK_METRICS_JSON)
+    analysisCalls++
+    if (analysisCalls === 1) return chatCompletions('抱歉，本次无法生成结构化结果。')
+    return chatCompletions(MOCK_ANALYSIS_JSON)
+  }
+
+  const res = await ANALYZE_POST(
+    new Request(`http://t/api/post-investment/${projectId}/analyze`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ period: '2026Q3' }),
+    }),
+    { params: { projectId } }
+  )
+  assert.equal(res.status, 200, '首次输出不可解析时应自动重试')
+  assert.equal(analysisCalls, 2, '恰好压缩重试一次')
+
+  const retryBody = mockState.fetchCalls
+    .filter(c => String((c.body.messages as Array<{ content: string }>)[0]?.content || '').includes('投后管理分析 Agent'))[1]
+  const retryPrompt = String((retryBody.body.messages as Array<{ content: string }>)[1]?.content || '')
+  assert.ok(retryPrompt.includes('压缩重试'))
+
+  const analysis = await prisma.postInvestAnalysis.findUnique({
+    where: { projectId_period: { projectId, period: '2026Q3' } },
+  })
+  const parsed = JSON.parse(analysis!.summaryJson)
+  assert.ok(parsed.executive_summary.includes('现金流'))
+  assert.equal(parsed.risk_alerts.length, 1)
 })
 
 // ── 列表（仅投后阶段项目） ──
@@ -499,10 +631,13 @@ test('预览 API：docx→HTML、xlsx→HTML、pdf→文件地址、pptx→文�
   assert.equal(body.kind, 'html')
   assert.ok(body.html.includes('投后经营报告测试内容'), 'docx 预览 HTML 应包含文档文本')
 
-  // xlsx（新格式 fileUrl）→ SheetJS 转 HTML 表格
+  // xlsx（新格式 fileUrl）→ SheetJS 转 HTML 表格（多工作表 + 合并单元格）
   const XLSX = await import('xlsx')
   const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['指标', '数值'], ['营业收入', 2353]]), 'Sheet1')
+  const ws1 = XLSX.utils.aoa_to_sheet([['指标', '', '数值'], ['营业收入', '', 2353]])
+  ws1['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }]
+  XLSX.utils.book_append_sheet(wb, ws1, '利润表')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['总资产', 45587]]), '资产负债表')
   const xlsxName = await writeUploadFile(`test-${Date.now()}-b.xlsx`, XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer)
   const xlsxDoc = await seedDocWithName('2026Q3财务报表.xlsx', `/api/uploads/post-investment-docs/${xlsxName}`)
   res = await DOC_PREVIEW(new Request(`http://t/api/post-investment/documents/preview?docId=${xlsxDoc.id}`))
@@ -510,6 +645,8 @@ test('预览 API：docx→HTML、xlsx→HTML、pdf→文件地址、pptx→文�
   body = await res.json()
   assert.equal(body.kind, 'html')
   assert.ok(body.html.includes('营业收入') && body.html.includes('<td>'), 'xlsx 预览 HTML 应包含表格内容')
+  assert.ok(body.html.includes('利润表') && body.html.includes('资产负债表'), '应展示全部工作表')
+  assert.ok(body.html.includes('colspan="2"'), '合并单元格应保留 colspan')
 
   // pdf → 文件地址（/api/uploads 前缀，浏览器原生渲染）
   const pdfDoc = await seedDocWithName('2026Q3报告.pdf', '/post-investment-docs/legacy.pdf')

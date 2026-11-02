@@ -13,6 +13,7 @@ import DashboardLayout from '@/components/DashboardLayout'
 import { SkillPanelLauncher } from '@/components/SkillPanel'
 import DocumentPreviewModal from '@/components/DocumentPreviewModal'
 import RichText from '@/components/RichText'
+import { CORE_METRIC_KEYS, METRIC_BY_KEY } from '@/lib/post-investment/metrics'
 
 // ── 类型（与 API 对齐） ──
 
@@ -328,6 +329,12 @@ export default function PostInvestmentDetailPage() {
   const docsOfPeriod = data.docs.filter(d => d.period === activePeriod)
   const analysisOfActive = data.analyses.find(a => a.period === activePeriod)?.result || null
   const metricsOfActive = data.metricsByPeriod[activePeriod] || []
+  // 固定指标框架：核心 12 项始终按统一顺序展示（未提取到显示「—」），补充指标追加在后
+  const coreMetricRows = CORE_METRIC_KEYS.map(key => ({
+    def: METRIC_BY_KEY.get(key)!,
+    metric: metricsOfActive.find(m => m.metricKey === key),
+  }))
+  const extraMetrics = metricsOfActive.filter(m => !(CORE_METRIC_KEYS as readonly string[]).includes(m.metricKey))
   const analysis = analysisOfActive
 
   // 文档管理矩阵：行=年份（降序），列=Q1-Q4 + 全年/半年
@@ -550,7 +557,7 @@ export default function PostInvestmentDetailPage() {
           {/* ── 指标 Dashboard ── */}
           {metricsOfActive.length > 0 && (
             <div className="bg-surface rounded-2xl shadow-soft p-5">
-              <h3 className="text-sm font-bold text-ink mb-3">📊 核心指标 · {activePeriod}<span className="text-[10px] font-normal text-ink-faint ml-2">同比/环比由程序计算（半年报不与单季度环比）</span></h3>
+              <h3 className="text-sm font-bold text-ink mb-3">📊 核心指标 · {activePeriod}<span className="text-[10px] font-normal text-ink-faint ml-2">统一 12 项固定口径；同比/环比由程序计算（半年报不与单季度环比）</span></h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
@@ -563,7 +570,31 @@ export default function PostInvestmentDetailPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {metricsOfActive.map(m => (
+                    {coreMetricRows.map(({ def, metric }) => (
+                      <tr key={def.key} className={`border-b border-hairline ${metric ? 'hover:bg-gray-50' : ''}`}>
+                        <td className="px-2 py-2 font-bold text-ink">{def.name}</td>
+                        {metric ? (
+                          <>
+                            <td className="px-2 py-2 text-right font-bold text-ink">{metric.value.toLocaleString()} <span className="text-ink-faint font-normal">{metric.unit}</span></td>
+                            <td className={`px-2 py-2 text-right font-bold ${metric.yoy?.pct === null || !metric.yoy ? 'text-ink-faint' : metric.yoy.pct >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                              {metric.yoy ? fmtPct(metric.yoy.pct) : '-'}
+                            </td>
+                            <td className={`px-2 py-2 text-right font-bold ${metric.qoq?.pct === null || !metric.qoq ? 'text-ink-faint' : metric.qoq.pct >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                              {metric.qoq ? fmtPct(metric.qoq.pct) : '-'}
+                            </td>
+                            <td className="px-2 py-2 text-ink-faint text-[10px] max-w-[320px] truncate" title={metric.sourceText || ''}>{metric.sourceText || '—'}</td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-2 py-2 text-right text-ink-faint">—</td>
+                            <td className="px-2 py-2 text-right text-ink-faint">—</td>
+                            <td className="px-2 py-2 text-right text-ink-faint">—</td>
+                            <td className="px-2 py-2 text-ink-faint text-[10px]">未提取</td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                    {extraMetrics.map(m => (
                       <tr key={m.metricKey} className="border-b border-hairline hover:bg-gray-50">
                         <td className="px-2 py-2 font-bold text-ink">{m.metricName}</td>
                         <td className="px-2 py-2 text-right font-bold text-ink">{m.value.toLocaleString()} <span className="text-ink-faint font-normal">{m.unit}</span></td>

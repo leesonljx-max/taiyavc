@@ -8,6 +8,8 @@
  * 同比 = 上年同期（Q vs Q / H vs H / FY vs FY）
  */
 
+import { sortMetricsByFramework } from './metrics'
+
 export type PeriodType = 'Q' | 'H' | 'FY'
 
 export interface PeriodInfo {
@@ -95,7 +97,7 @@ export function computeMetricsWithChange(
   const yoyMap = yoyPeriod ? historyByPeriod.get(yoyPeriod) : undefined
   const qoqMap = qoqPeriod ? historyByPeriod.get(qoqPeriod) : undefined
 
-  return currentMetrics.map(m => {
+  return sortMetricsByFramework(currentMetrics).map(m => {
     const yoy = yoyMap ? calcChange(m.value, yoyMap.get(m.metricKey)) : null
     const qoq = qoqMap ? calcChange(m.value, qoqMap.get(m.metricKey)) : null
     return {

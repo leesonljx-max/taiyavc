@@ -66,10 +66,13 @@ ${'${METRIC_DICTIONARY}'}
 - 单位换算：文档金额单位为"亿元"时换算为万元（1亿=10000万）；"元"换算为万元
 - 报告中同一指标出现多个值（本期/累计/上年同期）时，提取本期值
 - sourceText 必须是原文摘录，用于溯源
-- 只提取文档中明确出现的数值，禁止推算`
+- 只提取文档中明确出现的数值，禁止推算
+- Excel 按「【工作表：名称】」分段，同一工作表内可能有多张表（空行分隔）→ 必须逐表读取，禁止只取第一张表或第一个工作表
+- 版式非常规（标签与数值分散、合并单元格、空列错位）→ 按「同一行标签 → 右侧最近数值」就近匹配，并参考表头单位；不得因排版跳行漏项
+- 同一工作簿多个工作表/多张表出现同名指标 → 按报告期列取值，只提取本期，不重复累加`
 
-/** DeepSeek 通用调用 */
-async function callDeepSeek(systemPrompt: string, userPrompt: string, maxTokens: number): Promise<string> {
+/** DeepSeek 通用调用（返回内容与结束原因，便于识别 max_tokens 截断） */
+async function callDeepSeek(systemPrompt: string, userPrompt: string, maxTokens: number): Promise<{ content: string; finishReason?: string }> {
   const apiKey = process.env.DEEPSEEK_API_KEY
   if (!apiKey) throw new Error('DeepSeek API Key 未配置')
   const controller = new AbortController()
@@ -94,9 +97,15 @@ async function callDeepSeek(systemPrompt: string, userPrompt: string, maxTokens:
       const errText = await response.text().catch(() => '')
       throw new Error(`DeepSeek 调用失败: ${response.status} ${errText.substring(0, 150)}`)
     }
-    const data = (await response.json()) as { usage?: unknown; choices?: Array<{ message?: { content?: string } }> }
+    const data = (await response.json()) as {
+      usage?: unknown
+      choices?: Array<{ message?: { content?: string }; finish_reason?: string }>
+    }
     recordTokenUsage('dd-harness', data.usage as Parameters<typeof recordTokenUsage>[1])
-    return data.choices?.[0]?.message?.content || ''
+    return {
+      content: data.choices?.[0]?.message?.content || '',
+      finishReason: data.choices?.[0]?.finish_reason,
+    }
   } finally {
     clearTimeout(timeoutId)
   }
@@ -106,7 +115,7 @@ async function callDeepSeek(systemPrompt: string, userPrompt: string, maxTokens:
 function buildDocsDigest(docs: Array<{ fileName: string; docType: string; text: string }>): string {
   const parts = docs.map(d => {
     const text = (d.text || '').replace(/<img[^>]*>/g, '[截图]').replace(/<[^>]+>/g, ' ').trim()
-    return `【${d.fileName}】\n${text ? text.slice(0, 20000) : '（未能提取文本）'}`
+    return `【${d.fileName}】\n${text ? text.slice(0, 40000) : '（未能提取文本）'}`
   })
   return parts.join('\n\n') || '（无文档）'
 }
@@ -116,7 +125,7 @@ async function extractMetricsForPeriod(projectId: string, period: string): Promi
   const docs = await prisma.postInvestDoc.findMany({ where: { projectId, period } })
   if (docs.length === 0) return 0
   const content = buildDocsDigest(docs)
-  const raw = await callDeepSeek(
+  const { content: raw } = await callDeepSeek(
     EXTRACT_SYSTEM_PROMPT.replace('${METRIC_DICTIONARY}', metricDictionaryText()),
     `报告期：${period}\n\n以下是本期上传的全部投后资料全文，请提取指标 JSON：\n\n${content}`,
     2500
@@ -197,6 +206,59 @@ function formatMetricsInput(metrics: MetricWithChange[]): string {
     .join('\n')
 }
 
+/**
+ * 截断 JSON 兜底：模型输出被 max_tokens 截断时，回退到最后一个完整字段并补全括号
+ * （低容错场景：宁可返回缺尾字段的部分结论，也不让用户看到「结果不完整」）
+ */
+function salvageTruncatedJson<T>(raw: string): T | null {
+  const start = raw.indexOf('{')
+  if (start < 0) return null
+  const src = raw.slice(start)
+
+  // 找最后一个安全断点：完整值结束（} / ]）或逗号之前（丢弃可能被截断的半个字段）
+  let inString = false
+  let escaped = false
+  let lastSafe = -1
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (ch === '\\') escaped = true
+      else if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') inString = true
+    else if (ch === '}' || ch === ']') lastSafe = i + 1
+    else if (ch === ',') lastSafe = i
+  }
+  if (lastSafe <= 0) return null
+
+  // 统计截断前缀内未闭合的括号，按逆序补全
+  const prefix = src.slice(0, lastSafe)
+  const stack: string[] = []
+  inString = false
+  escaped = false
+  for (let i = 0; i < prefix.length; i++) {
+    const ch = prefix[i]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (ch === '\\') escaped = true
+      else if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') inString = true
+    else if (ch === '{') stack.push('}')
+    else if (ch === '[') stack.push(']')
+    else if (ch === '}' || ch === ']') stack.pop()
+  }
+
+  try {
+    return JSON.parse(prefix + stack.reverse().join('')) as T
+  } catch {
+    return null
+  }
+}
+
 /** 投后分析主流程：补齐各期指标 → 计算同比环比 → 合并历史期文档做 AI 分析 → 落库
  *  分析任一期（当季或以往季）时，会把项目全部历史期文档纳入分析上下文（趋势与连续性判断）
  *  userId（P3.6）：传入时注入本人 CONFIRMED 技能（分析框架冲突时以用户技能为准） */
@@ -262,35 +324,71 @@ export async function runPostInvestAnalysis(projectId: string, period: string, u
   })
   const currentDocs = allDocs.filter(d => d.period === period)
   const historyDocs = allDocs.filter(d => d.period !== period)
-  const docsDigest = buildDocsDigest(currentDocs).slice(0, 12000)
+  const docsDigest = buildDocsDigest(currentDocs).slice(0, 40000)
   const historyDocsDigest = historyDocs.length > 0
     ? `\n\n【历史各期资料（合并分析：趋势与连续性判断）】\n${historyDocs
-        .map(d => `【${d.period}·${d.fileName}】\n${(d.text || '（未能提取文本）').replace(/<img[^>]*>/g, '[截图]').slice(0, 6000)}`)
-        .join('\n\n')}`.slice(0, 30000)
+        .map(d => `【${d.period}·${d.fileName}】\n${(d.text || '（未能提取文本）').replace(/<img[^>]*>/g, '[截图]').slice(0, 12000)}`)
+        .join('\n\n')}`.slice(0, 60000)
     : ''
 
   // 6. AI 分析（合并本期 + 历史期数据；本人技能仅挂载「投后管理」场景，框架优先于固定框架）
   const skillBlock = await buildUserSkillPromptBlock(userId, 'post-investment').catch(() => '')
-  const raw = await callDeepSeek(
-    ANALYSIS_SYSTEM_PROMPT + skillBlock,
-    `报告期：${period}\n\n【本期结构化指标（同比环比已由程序计算，直接引用，禁止自行计算）】\n${formatMetricsInput(metricsWithChange)}${historyMetricsText ? `\n\n【历史各期指标时序】\n${historyMetricsText}` : ''}\n\n【现金覆盖月数（程序计算）】${runway !== null ? `${runway} 个月` : '无法计算（现金余额或经营现金流缺失/为正）'}\n\n【本期上传文档全文】\n${docsDigest}${historyDocsDigest}`,
-    3500
-  )
-  const parsed = parseAgentJson<PostInvestAnalysisResult>(raw)
+  const analysisInput = `报告期：${period}\n\n【本期结构化指标（同比环比已由程序计算，直接引用，禁止自行计算）】\n${formatMetricsInput(metricsWithChange)}${historyMetricsText ? `\n\n【历史各期指标时序】\n${historyMetricsText}` : ''}\n\n【现金覆盖月数（程序计算）】${runway !== null ? `${runway} 个月` : '无法计算（现金余额或经营现金流缺失/为正）'}\n\n【本期上传文档全文】\n${docsDigest}${historyDocsDigest}`
+
+  // 首次调用：提高 max_tokens，避免长报告 + 技能模块导致 JSON 被截断
+  const first = await callDeepSeek(ANALYSIS_SYSTEM_PROMPT + skillBlock, analysisInput, 6000)
+  let parsed = parseAgentJson<PostInvestAnalysisResult>(first.content)
+  // 截断兜底：回退到最后一个完整字段（ex: 截在 risk_alerts 中间仍可保留 executive_summary）
+  if ((!parsed || !parsed.executive_summary) && first.content.trim()) {
+    const salvaged = salvageTruncatedJson<PostInvestAnalysisResult>(first.content)
+    if (salvaged?.executive_summary) {
+      console.warn(
+        `[post-invest] AI 输出被截断（finish_reason=${first.finishReason || 'unknown'}，${first.content.length} 字符），已按完整字段兜底`
+      )
+      parsed = salvaged
+    }
+  }
+  // 仍不可用：一次压缩重试（低容错场景，避免用户手动重新点分析）
   if (!parsed || !parsed.executive_summary) {
-    return { ok: false, error: 'AI 分析结果不完整，请重试' }
+    console.warn(
+      `[post-invest] AI 输出无法解析，发起压缩重试（finish_reason=${first.finishReason || 'unknown'}，${first.content.length} 字符）`
+    )
+    const retry = await callDeepSeek(
+      ANALYSIS_SYSTEM_PROMPT + skillBlock,
+      `【压缩重试】上次输出因长度限制被截断或结构不完整。请显著压缩篇幅并输出完整合法 JSON：executive_summary ≤ 100 字，financial_analysis ≤ 8 条，anomalies ≤ 5 条，business_progress ≤ 5 条，risk_alerts ≤ 5 条，skill_modules 每条 ≤ 300 字。\n\n${analysisInput}`,
+      8000
+    )
+    parsed = parseAgentJson<PostInvestAnalysisResult>(retry.content)
+    if (!parsed?.executive_summary && retry.content.trim()) {
+      parsed = salvageTruncatedJson<PostInvestAnalysisResult>(retry.content)
+    }
+    if (!parsed?.executive_summary) {
+      console.error(
+        `[post-invest] AI 输出最终无法解析（finish_reason=${retry.finishReason || 'unknown'}，${retry.content.length} 字符，尾部：${retry.content.slice(-80)}）`
+      )
+      return { ok: false, error: 'AI 分析结果不完整，请重试' }
+    }
   }
   const analysis: PostInvestAnalysisResult = {
     executive_summary: String(parsed.executive_summary),
-    financial_analysis: Array.isArray(parsed.financial_analysis) ? parsed.financial_analysis.slice(0, 16) : [],
-    anomalies: Array.isArray(parsed.anomalies) ? parsed.anomalies.slice(0, 10) : [],
+    // 截断兜底可能留下只写了一部分的条目 → 过滤缺少核心字段的残缺项
+    financial_analysis: Array.isArray(parsed.financial_analysis)
+      ? parsed.financial_analysis.filter(m => m && typeof m.metricName === 'string' && m.metricName.trim()).slice(0, 16)
+      : [],
+    anomalies: Array.isArray(parsed.anomalies)
+      ? parsed.anomalies.filter(a => a && typeof a.title === 'string' && a.title.trim() && typeof a.detail === 'string' && a.detail.trim()).slice(0, 10)
+      : [],
     cashflow_analysis: {
       cash_balance: String(parsed.cashflow_analysis?.cash_balance || '—'),
       runway_months: typeof parsed.cashflow_analysis?.runway_months === 'number' ? parsed.cashflow_analysis.runway_months : runway,
       assessment: String(parsed.cashflow_analysis?.assessment || '—'),
     },
-    business_progress: Array.isArray(parsed.business_progress) ? parsed.business_progress.slice(0, 8) : [],
-    risk_alerts: Array.isArray(parsed.risk_alerts) ? parsed.risk_alerts.slice(0, 10) : [],
+    business_progress: Array.isArray(parsed.business_progress)
+      ? parsed.business_progress.filter(b => b && typeof b.area === 'string' && b.area.trim()).slice(0, 8)
+      : [],
+    risk_alerts: Array.isArray(parsed.risk_alerts)
+      ? parsed.risk_alerts.filter(r => r && typeof r.description === 'string' && r.description.trim()).slice(0, 10)
+      : [],
     // 技能独立模块清洗（无技能/已融入时为空数组；最多 5 项，字段截断防溢出）
     skill_modules: (Array.isArray(parsed.skill_modules) ? parsed.skill_modules : [])
       .filter(

@@ -116,19 +116,53 @@ async function docxToHtml(buffer: Buffer): Promise<string> {
   return sanitizeHtml(result.value || '<p>（文档无文本内容）</p>')
 }
 
-/** xlsx → HTML 表格（逐 sheet，行数上限保护） */
+/** xlsx → HTML 表格（逐 sheet，保留合并单元格与单元格显示格式，行数上限保护） */
 async function xlsxToHtml(buffer: Buffer): Promise<string> {
   const XLSX = await import('xlsx')
   const workbook = XLSX.read(buffer, { type: 'buffer' })
   const parts: string[] = []
-  for (const sheetName of workbook.SheetNames.slice(0, 20)) {
+  for (const sheetName of workbook.SheetNames.slice(0, 30)) {
     const sheet = workbook.Sheets[sheetName]
     if (!sheet) continue
-    const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' }).slice(0, 500)
     parts.push(`<h3>${escapeHtml(sheetName)}</h3>`)
+
+    const ref = sheet['!ref']
+    if (!ref) {
+      parts.push('<p>（空工作表）</p>')
+      continue
+    }
+    const range = XLSX.utils.decode_range(ref)
+
+    // 合并单元格：起点记录 rowspan/colspan，被覆盖的单元格跳过不渲染
+    const merges = (sheet['!merges'] || []) as Array<{ s: { r: number; c: number }; e: { r: number; c: number } }>
+    const spanByStart = new Map<string, { rs: number; cs: number }>()
+    const covered = new Set<string>()
+    for (const m of merges) {
+      spanByStart.set(`${m.s.r},${m.s.c}`, { rs: m.e.r - m.s.r + 1, cs: m.e.c - m.s.c + 1 })
+      for (let r = m.s.r; r <= m.e.r; r++) {
+        for (let c = m.s.c; c <= m.e.c; c++) {
+          if (r !== m.s.r || c !== m.s.c) covered.add(`${r},${c}`)
+        }
+      }
+    }
+
     parts.push('<table>')
-    for (const row of rows) {
-      parts.push('<tr>' + row.map(c => `<td>${escapeHtml(String(c ?? ''))}</td>`).join('') + '</tr>')
+    const maxRow = Math.min(range.e.r, range.s.r + 499)
+    for (let r = range.s.r; r <= maxRow; r++) {
+      const cells: string[] = []
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        if (covered.has(`${r},${c}`)) continue
+        const cell = sheet[XLSX.utils.encode_cell({ r, c })]
+        // cell.w = Excel 中显示的格式化文本（日期/百分比/千分位与原件一致）
+        const text = cell ? escapeHtml(String(cell.w ?? cell.v ?? '')) : ''
+        const span = spanByStart.get(`${r},${c}`)
+        const attrs = [
+          span && span.rs > 1 ? ` rowspan="${span.rs}"` : '',
+          span && span.cs > 1 ? ` colspan="${span.cs}"` : '',
+        ].join('')
+        cells.push(`<td${attrs}>${text}</td>`)
+      }
+      parts.push('<tr>' + cells.join('') + '</tr>')
     }
     parts.push('</table>')
   }

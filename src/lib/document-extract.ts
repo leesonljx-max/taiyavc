@@ -9,8 +9,8 @@ import type { Buffer } from 'buffer'
 
 export type SupportedFileType = 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'unknown'
 
-/** 最大提取文本长度（避免超大文档消耗过多 token） */
-const MAX_EXTRACT_LENGTH = 30000
+/** 最大提取文本长度（避免超大文档消耗过多 token；Excel 多工作表/多表需完整提取） */
+const MAX_EXTRACT_LENGTH = 60000
 
 /**
  * 剔除 NUL 字节（\u0000）
@@ -60,7 +60,9 @@ async function extractDocx(buffer: Buffer): Promise<string> {
 
 /**
  * 提取 Excel(.xlsx) 文本（使用 xlsx/SheetJS）
- * 逐 sheet 逐行转换为文本
+ * 逐个工作表、逐行转换为文本；保留空列/空行以维持表格结构：
+ * - 同一工作表内可能有多张表（空行分隔），空行保留为分隔线
+ * - 使用 Excel 显示格式（raw:false），日期/百分比/千分位与用户看到的原表一致
  */
 async function extractXlsx(buffer: Buffer): Promise<string> {
   const XLSX = await import('xlsx')
@@ -70,12 +72,18 @@ async function extractXlsx(buffer: Buffer): Promise<string> {
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName]
     if (!sheet) continue
-    lines.push(`【${sheetName}】`)
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { header: 1, defval: '' })
+    lines.push(`【工作表：${sheetName}】`)
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+      header: 1,
+      defval: '',
+      raw: false,
+      blankrows: true,
+    })
     for (const row of rows) {
-      const cells = Object.values(row).map(c => String(c ?? '').trim())
-      const line = cells.filter(c => c).join(' | ')
-      if (line) lines.push(line)
+      const cells = (row || []).map(c => String(c ?? '').replace(/\s+/g, ' ').trim())
+      // 去掉行尾空列，保留中间空列（列位置不塌陷，便于 AI 对齐「标签 → 数值」）
+      while (cells.length > 0 && cells[cells.length - 1] === '') cells.pop()
+      lines.push(cells.join('\t'))
     }
     lines.push('')
   }
