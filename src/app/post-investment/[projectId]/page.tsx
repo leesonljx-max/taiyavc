@@ -96,20 +96,27 @@ const RISK_STYLES: Record<string, string> = {
   low: 'bg-emerald-50 text-emerald-700 border-emerald-200',
 }
 
-/** 报告期下拉选项：近 12 个季度 + 当前年 H1/FY（支持补传更早的以往季度） */
+/** 报告期下拉选项：仅已结束的报告期（近 12 个季度 + 最近已结束的半年/全年） */
 function periodOptions(): string[] {
   const now = new Date()
   const year = now.getFullYear()
-  const quarter = Math.floor(now.getMonth() / 3) + 1
+  const month = now.getMonth()
   const opts: string[] = []
+
+  // 最近已结束的季度：当前季度尚未结束，从上一季度倒推 12 期
   let y = year
-  let q = quarter
+  let q = Math.floor(month / 3) // 0-3；上一季度的 1-based 序号正好等于当前季度的索引（Q1 时回退到上年 Q4）
+  if (q === 0) { q = 4; y-- }
   for (let i = 0; i < 12; i++) {
     opts.push(`${y}Q${q}`)
     q--
     if (q === 0) { q = 4; y-- }
   }
-  opts.push(`${year}H1`, `${year}FY`)
+
+  // 最近已结束的半年：H1 于 7 月 1 日结束，H2 于次年 1 月 1 日结束
+  opts.push(month >= 6 ? `${year}H1` : `${year - 1}H2`)
+  // 全年报告需等次年才能上传
+  opts.push(`${year - 1}FY`)
   return opts
 }
 
@@ -258,7 +265,7 @@ export default function PostInvestmentDetailPage() {
       const json = await res.json()
       if (!res.ok) { setUploadErr(json.error || '上传失败'); return }
       if (json.doc && !json.doc.hasText) {
-        setUploadErr(`「${json.doc.fileName}」上传成功，但未能提取文本（扫描件暂不支持 AI 分析），AI 分析可能无法使用该文件`)
+        setUploadErr(`「${json.doc.fileName}」上传成功，但未能提取文本（扫描件会自动尝试 OCR；仍失败请确认扫描清晰度），AI 分析可能无法使用该文件`)
       }
       await load()
     } catch { setUploadErr('上传失败') } finally { setUploading(false) }
@@ -510,7 +517,7 @@ export default function PostInvestmentDetailPage() {
                 >
                   ✍️ 手动填写
                 </button>
-                <span className="text-[11px] text-ink-faint">支持 PDF / Word / Excel（xls/xlsx/xlsm，不限大小）/ PPT / txt；也可手动填写投后信息。上传后可在线阅览，经营报告或财务报表任一项即可触发 AI 分析</span>
+                <span className="text-[11px] text-ink-faint">支持 PDF（含扫描件 OCR）/ Word / Excel（xls/xlsx/xlsm，不限大小）/ PPT / txt；也可手动填写投后信息。报告期仅可选择已结束的季度/半年/全年，默认最近一期</span>
               </div>
               {uploadErr && <p className="mt-2.5 text-xs text-danger-600 bg-danger-50 rounded-xl px-3 py-2">{uploadErr}</p>}
             </div>

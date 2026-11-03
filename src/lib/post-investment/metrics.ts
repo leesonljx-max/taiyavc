@@ -75,3 +75,18 @@ export function sortMetricsByFramework<T extends { metricKey: string }>(metrics:
     (a, b) => (rank.get(a.metricKey) ?? POST_INVEST_METRICS.length) - (rank.get(b.metricKey) ?? POST_INVEST_METRICS.length)
   )
 }
+
+/**
+ * 金额统一换算为万元（所有金额类指标固定口径）
+ * 1亿元=10000万元；1百万元=100万元；1千元=0.1万元；1元=0.0001万元
+ */
+export function amountToWan(value: number, unit?: string | null): number {
+  const u = String(unit || '').replace(/\s/g, '')
+  let converted = value
+  if (/亿元|亿/.test(u)) converted = value * 10000
+  else if (/百万元|百万/.test(u)) converted = value * 100
+  else if (/万元|万/.test(u)) converted = value
+  else if (/千元|千/.test(u)) converted = value * 0.1
+  else if (/元/.test(u)) converted = value * 0.0001
+  return Math.round(converted * 100) / 100
+}

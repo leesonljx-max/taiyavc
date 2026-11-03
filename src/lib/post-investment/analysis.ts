@@ -10,7 +10,7 @@
 import prisma from '@/lib/prisma'
 import { parseAgentJson } from '@/lib/dd-harness/agent'
 import { recordTokenUsage } from '@/lib/token-accounting'
-import { METRIC_BY_KEY, metricDictionaryText } from './metrics'
+import { METRIC_BY_KEY, metricDictionaryText, amountToWan } from './metrics'
 import { computeMetricsWithChange, calcRunwayMonths, isValidPeriod, parsePeriod, type MetricWithChange } from './calc'
 import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 import { buildUserSkillPromptBlock } from '@/lib/skill-registry'
@@ -63,7 +63,7 @@ const EXTRACT_SYSTEM_PROMPT = `你是投资机构的投后数据抽取引擎。�
 ${'${METRIC_DICTIONARY}'}
 要求：
 - value 为纯数值（不带单位与千分位符）；亏损/流出为负数；毛利率/净利率为百分数值（38% → 38）
-- 单位换算：文档金额单位为"亿元"时换算为万元（1亿=10000万）；"元"换算为万元
+- 所有金额指标统一换算为万元（人民币）：原文单位为元/千元/百万元/亿元时先换算（1亿元=10000万元、1百万元=100万元、1千元=0.1万元、1元=0.0001万元），unit 固定输出"万元"；禁止同一指标混用单位
 - 报告中同一指标出现多个值（本期/累计/上年同期）时，提取本期值
 - sourceText 必须是原文摘录，用于溯源
 - 只提取文档中明确出现的数值，禁止推算
@@ -139,6 +139,8 @@ async function extractMetricsForPeriod(projectId: string, period: string): Promi
     const def = item?.metricKey ? METRIC_BY_KEY.get(String(item.metricKey)) : undefined
     const value = Number(item?.value)
     if (!def || !Number.isFinite(value)) continue
+    // 金额类指标统一换算为万元入库（元/千元/百万元/亿元 → 万元）
+    const normalizedValue = def.unit === '万元' ? amountToWan(value, item?.unit) : value
     await prisma.postInvestMetric.upsert({
       where: { projectId_period_metricKey: { projectId, period, metricKey: def.key } },
       create: {
@@ -148,12 +150,12 @@ async function extractMetricsForPeriod(projectId: string, period: string): Promi
         metricKey: def.key,
         metricName: def.name,
         category: def.category,
-        value,
-        unit: String(item.unit || def.unit),
+        value: normalizedValue,
+        unit: def.unit,
         sourceDocId: firstDocId,
         sourceText: String(item.sourceText || '').slice(0, 500) || null,
       },
-      update: { value, sourceText: String(item.sourceText || '').slice(0, 500) || null, sourceDocId: firstDocId },
+      update: { value: normalizedValue, unit: def.unit, sourceText: String(item.sourceText || '').slice(0, 500) || null, sourceDocId: firstDocId },
     })
     saved++
   }
@@ -193,7 +195,8 @@ skill_modules 字段说明：仅当挂载的用户技能分析视角超出上述
 4. 输入数据未覆盖的领域（如无订单信息），business_progress 中不输出该项
 5. 收入增长但经营现金流为负/下降时，必须提示"收入增长与现金流背离，关注回款质量"
 6. 结合历史各期数据做趋势判断：如经营现金流连续两期为负、收入持续增长、订单波动、亏损持续收窄/扩大等，趋势结论必须注明涉及的具体期数与数据
-7. 排版（所有分析文本字段统一执行）：内容分点展示——按 1. 2. 3. 编号（或 - 分条）每点独立一行，不要输出一整段文字；重点内容（关键数据/核心结论/重大风险）用 **加粗** 标注`
+7. 排版（所有分析文本字段统一执行）：内容分点展示——按 1. 2. 3. 编号（或 - 分条）每点独立一行，不要输出一整段文字；重点内容（关键数据/核心结论/重大风险）用 **加粗** 标注
+8. 单位统一：所有金额一律按万元理解与比较（输入指标已换算为万元）；原文里的元/千元/亿元等表述引用前先换算，禁止不同单位直接比较或混用单位`
 
 /** 格式化指标（带同比环比）为 AI 输入 */
 function formatMetricsInput(metrics: MetricWithChange[]): string {
@@ -289,11 +292,17 @@ export async function runPostInvestAnalysis(projectId: string, period: string, u
   // 2. 本期指标强制提取（重新分析覆盖刷新）
   const saved = await extractMetricsForPeriod(projectId, period)
   if (saved === 0 && (await prisma.postInvestMetric.count({ where: { projectId, period } })) === 0) {
-    return { ok: false, error: `未能从「${period}」的资料中提取出有效指标，请检查文档内容（扫描件暂不支持）` }
+    return { ok: false, error: `未能从「${period}」的资料中提取出有效指标，请检查文档内容（扫描件请确保清晰可读）` }
   }
 
-  // 3. 读全部历史指标 → 程序计算同比/环比
-  const allMetrics = await prisma.postInvestMetric.findMany({ where: { projectId } })
+  // 3. 读全部历史指标 → 程序计算同比/环比（旧数据若为元/千元等，统一换算为万元）
+  const allMetrics = (await prisma.postInvestMetric.findMany({ where: { projectId } })).map(m => {
+    const def = METRIC_BY_KEY.get(m.metricKey)
+    if (def?.unit === '万元' && m.unit !== '万元') {
+      return { ...m, value: amountToWan(m.value, m.unit), unit: '万元' }
+    }
+    return m
+  })
   const historyByPeriod = new Map<string, Map<string, number>>()
   for (const m of allMetrics) {
     if (!historyByPeriod.has(m.period)) historyByPeriod.set(m.period, new Map())

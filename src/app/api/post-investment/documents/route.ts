@@ -6,7 +6,7 @@ import prisma from '@/lib/prisma'
 import { authOptions, type UserRole } from '@/lib/auth'
 import type { PermissionUser } from '@/lib/permissions'
 import { canEditResearchProject } from '@/lib/research-permissions'
-import { isValidPeriod } from '@/lib/post-investment/calc'
+import { isValidPeriod, isCompletedPeriod } from '@/lib/post-investment/calc'
 import { extractTextFromFile, stripNul } from '@/lib/document-extract'
 import { writeFile, mkdir, unlink } from 'fs/promises'
 import { join } from 'path'
@@ -53,6 +53,9 @@ export async function POST(request: Request) {
     if (!projectId) return NextResponse.json({ error: '缺少 projectId' }, { status: 400 })
     if (!isValidPeriod(period)) {
       return NextResponse.json({ error: '无效的报告期（格式：2026Q1 / 2026H1 / 2026FY）' }, { status: 400 })
+    }
+    if (!isCompletedPeriod(period)) {
+      return NextResponse.json({ error: `「${period}」尚未结束，暂不能上传该期报告` }, { status: 400 })
     }
     if (!DOC_TYPES.includes(docType as typeof DOC_TYPES[number])) {
       return NextResponse.json({ error: '无效的文档类型' }, { status: 400 })

@@ -32,6 +32,18 @@ export function isValidPeriod(period: string): boolean {
   return parsePeriod(period) !== null
 }
 
+/**
+ * 报告期是否已结束（未结束的季度/半年/全年不允许上传，避免提前填报）
+ * Q4 需到次年 1 月 1 日、H2/FY 需到次年 1 月 1 日才算结束
+ */
+export function isCompletedPeriod(period: string, now: Date = new Date()): boolean {
+  const p = parsePeriod(period)
+  if (!p) return false
+  if (p.type === 'Q') return now.getTime() >= new Date(p.year, p.seq * 3, 1).getTime()
+  if (p.type === 'H') return now.getTime() >= new Date(p.year, p.seq === 1 ? 6 : 12, 1).getTime()
+  return now.getTime() >= new Date(p.year + 1, 0, 1).getTime()
+}
+
 /** 环比上期：Q→上一季（Q1 跨年到上年 Q4）；H→上一半年（H1 的上期为上年 H2）；FY→无 */
 export function prevQoQPeriod(period: string): string | null {
   const p = parsePeriod(period)

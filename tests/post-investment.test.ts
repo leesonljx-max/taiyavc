@@ -13,9 +13,10 @@ import prisma from '@/lib/prisma'
 import { resetMocks, mockState, chatCompletions } from './helpers/setup'
 import {
   parsePeriod, prevQoQPeriod, prevYoYPeriod, calcChange, calcRunwayMonths, computeMetricsWithChange,
+  isCompletedPeriod,
 } from '@/lib/post-investment/calc'
-import { CORE_METRIC_KEYS, METRIC_BY_KEY, sortMetricsByFramework } from '@/lib/post-investment/metrics'
-import { extractTextFromFile } from '@/lib/document-extract'
+import { CORE_METRIC_KEYS, METRIC_BY_KEY, sortMetricsByFramework, amountToWan } from '@/lib/post-investment/metrics'
+import { extractTextFromFile, shouldOcrPdf } from '@/lib/document-extract'
 
 import { GET as PI_LIST } from '@/app/api/post-investment/route'
 import { POST as DOC_POST, DELETE as DOC_DELETE } from '@/app/api/post-investment/documents/route'
@@ -41,6 +42,12 @@ function currentReportingQuarter(): string {
     return q === 0 ? `${now.getFullYear() - 1}Q4` : `${now.getFullYear()}Q${q}`
   }
   return `${now.getFullYear()}Q${q + 1}`
+}
+
+/** 当前尚未结束的季度（上传应被拒绝） */
+function currentUnfinishedQuarter(): string {
+  const now = new Date()
+  return `${now.getFullYear()}Q${Math.floor(now.getMonth() / 3) + 1}`
 }
 
 beforeEach(async () => {
@@ -191,6 +198,38 @@ test('批量同比环比：H1 不与 Q1 互算（环比 null）；Q→Q 正常',
   assert.equal(q1[0].qoq!.period, '2025Q4')
   assert.ok(Math.abs(q1[0].qoq!.pct! - 0.1765) < 0.001)
   assert.equal(q1[0].yoy, null) // 2025Q1 不存在
+})
+
+// ── 报告期约束 / 单位换算 / 扫描件识别 ──
+
+test('报告期：未结束的季度/半年/全年不可上传（Q4 需次年 1 月 1 日后）', () => {
+  const now = new Date(2026, 10, 3) // 2026-11-03，Q4 未结束
+  assert.equal(isCompletedPeriod('2026Q3', now), true)
+  assert.equal(isCompletedPeriod('2026Q4', now), false)
+  assert.equal(isCompletedPeriod('2026H1', now), true)
+  assert.equal(isCompletedPeriod('2026H2', now), false)
+  assert.equal(isCompletedPeriod('2025FY', now), true)
+  assert.equal(isCompletedPeriod('2026FY', now), false)
+
+  // 季末边界：10 月 1 日起 Q3 才算结束
+  assert.equal(isCompletedPeriod('2026Q3', new Date(2026, 9, 1)), true)
+  assert.equal(isCompletedPeriod('2026Q3', new Date(2026, 8, 30, 23, 59)), false)
+})
+
+test('金额单位：元/千元/百万元/亿元统一换算为万元', () => {
+  assert.equal(amountToWan(100000000, '元'), 10000)
+  assert.equal(amountToWan(1, '亿元'), 10000)
+  assert.equal(amountToWan(1.2, '亿元'), 12000)
+  assert.equal(amountToWan(500, '千元'), 50)
+  assert.equal(amountToWan(300, '百万元'), 30000)
+  assert.equal(amountToWan(2353, '万元'), 2353)
+  assert.equal(amountToWan(2353), 2353)
+})
+
+test('扫描件识别：无文字层的 PDF 触发 OCR，正常文本 PDF 不触发', () => {
+  assert.equal(shouldOcrPdf('', 3), true)
+  assert.equal(shouldOcrPdf('第1页', 10), true)
+  assert.equal(shouldOcrPdf('营业收入2353万元，同比增长52%。'.repeat(50), 3), false)
 })
 
 // ── 上传 API ──
@@ -345,6 +384,20 @@ test('上传：手动填写投后资料（无文件、仅 text）→ 保存为 t
   const pj = await preview.json()
   assert.equal(pj.kind, 'text')
   assert.match(pj.text, /3000/)
+})
+
+test('上传：未结束的报告期被拒绝（当前季度不能提前上传）', async () => {
+  asManager()
+  const fd = new FormData()
+  fd.append('projectId', projectId)
+  fd.append('period', currentUnfinishedQuarter())
+  fd.append('docType', 'OPERATION_REPORT')
+  fd.append('file', new File(['本季度经营情况'], 'report.txt', { type: 'text/plain' }))
+
+  const res = await DOC_POST(new Request('http://t/api/post-investment/documents', { method: 'POST', body: fd }))
+  assert.equal(res.status, 400)
+  const body = await res.json()
+  assert.match(body.error, /尚未结束/)
 })
 
 test('上传：手动填写富文本（含截图）→ 保存为 html 资料，预览返回 HTML 并保留图片、清理脚本', async () => {

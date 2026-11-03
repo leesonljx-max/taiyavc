@@ -6,6 +6,7 @@
  */
 
 import type { Buffer } from 'buffer'
+import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 
 export type SupportedFileType = 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'unknown'
 
@@ -40,18 +41,111 @@ export function detectFileType(fileName: string, mimeType?: string): SupportedFi
 
 /**
  * 提取 PDF 文本（使用 pdf-parse）
+ * 返回文本与页数（页数用于判断是否为扫描件：文字过少时走 OCR）
  */
-async function extractPdf(buffer: Buffer): Promise<string> {
+async function extractPdf(buffer: Buffer): Promise<{ text: string; total: number }> {
   // 动态 import 避免 Next.js 构建时加载
   // 注意：pdf-parse v2 API 变更为 PDFParse 类
   const { PDFParse } = await import('pdf-parse')
   const parser = new PDFParse({ data: buffer })
   try {
     const result = await parser.getText()
-    return result.text || ''
+    return { text: result.text || '', total: result.total || 0 }
   } finally {
     await parser.destroy().catch(() => {})
   }
+}
+
+/** OCR 最多转录页数（控制耗时与 token） */
+const OCR_MAX_PAGES = 6
+/** 单次多模态请求携带的页数 */
+const OCR_PAGES_PER_CALL = 3
+
+/** 文字过少的 PDF 视为扫描件（平均每页文字 < 40 且总量 < 60 时触发 OCR） */
+export function shouldOcrPdf(text: string, pageCount: number): boolean {
+  if (pageCount <= 0) return false
+  const chars = (text || '').replace(/\s+/g, '').length
+  return chars < Math.max(60, pageCount * 40)
+}
+
+const OCR_SYSTEM_PROMPT = `你是专业的文档 OCR 引擎。用户提供 PDF 页面截图，请逐页完整转录其中的文字与表格。
+要求：
+1. 表格必须保留行列结构：同一行的单元格用 | 分隔，表头与数值一一对应
+2. 数字、百分比、单位与原文完全一致，禁止四舍五入、改写、推算或补全
+3. 印章、手写批注、页眉页脚也尽量转录
+4. 每页以【第N页】开头；只输出转录文本，不要总结、不要解释`
+
+/**
+ * 扫描版 PDF OCR：把页面渲染成图片，调用 DeepSeek 多模态逐页转录
+ * 仅在提取不到文字时触发；无 API Key 或渲染失败时返回空字符串（不影响上传）
+ */
+async function ocrScannedPdf(buffer: Buffer, pageCount: number): Promise<string> {
+  const apiKey = process.env.DEEPSEEK_API_KEY
+  if (!apiKey) return ''
+
+  const pageUrls: string[] = []
+  const { PDFParse } = await import('pdf-parse')
+  const parser = new PDFParse({ data: buffer })
+  try {
+    const shot = await parser.getScreenshot({
+      first: Math.min(pageCount, OCR_MAX_PAGES),
+      desiredWidth: 1400,
+      imageDataUrl: true,
+      imageBuffer: false,
+    })
+    for (const page of shot.pages) {
+      if (page.dataUrl) pageUrls.push(page.dataUrl)
+    }
+  } catch (error) {
+    console.error('PDF 页面渲染失败，跳过 OCR:', error)
+    return ''
+  } finally {
+    await parser.destroy().catch(() => {})
+  }
+  if (pageUrls.length === 0) return ''
+
+  const textParts: string[] = []
+  for (let i = 0; i < pageUrls.length; i += OCR_PAGES_PER_CALL) {
+    const batch = pageUrls.slice(i, i + OCR_PAGES_PER_CALL)
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 120000)
+    try {
+      const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: DEEPSEEK_MODEL,
+          messages: [
+            { role: 'system', content: OCR_SYSTEM_PROMPT },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: `请完整转录第 ${i + 1}-${i + batch.length} 页（按顺序逐页输出，保留表格行列）。` },
+                ...batch.map(url => ({ type: 'image_url', image_url: { url } })),
+              ],
+            },
+          ],
+          temperature: 0.1,
+          max_tokens: 4000,
+          thinking: { type: 'disabled' },
+        }),
+        signal: controller.signal,
+      })
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '')
+        throw new Error(`${response.status} ${errText.slice(0, 150)}`)
+      }
+      const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
+      const content = data.choices?.[0]?.message?.content || ''
+      if (content.trim()) textParts.push(content.trim())
+    } catch (error) {
+      console.error(`扫描版 PDF OCR 失败（第 ${i + 1}-${i + batch.length} 页）:`, error)
+    } finally {
+      clearTimeout(timeoutId)
+    }
+  }
+
+  return textParts.join('\n\n')
 }
 
 /**
@@ -150,9 +244,16 @@ export async function extractTextFromFile(
 
   try {
     switch (fileType) {
-      case 'pdf':
-        text = await extractPdf(buffer)
+      case 'pdf': {
+        const pdf = await extractPdf(buffer)
+        text = pdf.text
+        // 扫描版 PDF：无文字层 → 渲染页面图片后 OCR
+        if (shouldOcrPdf(pdf.text, pdf.total)) {
+          const ocrText = await ocrScannedPdf(buffer, pdf.total)
+          if (ocrText) text = ocrText
+        }
         break
+      }
       case 'docx':
         text = await extractDocx(buffer)
         break
