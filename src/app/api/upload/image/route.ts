@@ -76,7 +76,7 @@ export async function POST(request: Request) {
     // OCR：识别截图中的数据，写入 img alt 供 AI 分析读取
     const ocr = await extractTextFromFile(buffer, file.name, file.type).catch(() => ({ text: '' }))
     const ocrText = (ocr.text || '').trim()
-    return NextResponse.json({ url: imageUrl, text: ocrText ? ocrText.slice(0, 500) : undefined })
+    return NextResponse.json({ url: imageUrl, text: ocrText || undefined })
   } catch (error) {
     console.error('Image upload error:', error)
     return NextResponse.json({ error: '图片上传失败' }, { status: 500 })

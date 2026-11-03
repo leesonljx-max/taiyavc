@@ -48,7 +48,7 @@ export async function buildPagedBpText(buffer: Buffer, fileName: string): Promis
     } catch {
       return null
     }
-    // 扫描版 BP：无文字层时按页 OCR（最多前 6 页）
+    // 扫描版 BP：无文字层时按页 OCR（全部分页）
     if (shouldOcrPdf(paged, pageCount)) {
       const ocr = await ocrPdfPagedText(buffer, pageCount)
       if (ocr) return ocr

@@ -58,10 +58,10 @@ async function extractPdf(buffer: Buffer): Promise<{ text: string; total: number
   }
 }
 
-/** OCR 最多转录页数（控制耗时与 token） */
-const OCR_MAX_PAGES = 6
-/** 单次多模态请求携带的页数 */
+/** 单次多模态请求携带的页数/图片数（仅分批，不限制总量） */
 const OCR_PAGES_PER_CALL = 3
+/** PDF 每块渲染页数（仅控制内存峰值，不限制总页数） */
+const PDF_RENDER_CHUNK = 6
 
 /** 文字过少的 PDF 视为扫描件（平均每页文字 < 40 且总量 < 60 时触发 OCR） */
 export function shouldOcrPdf(text: string, pageCount: number): boolean {
@@ -96,90 +96,102 @@ function imageMimeType(fileName: string, mimeType?: string): string | null {
  * 调用多模态模型转录图片
  * 无 API Key / 请求失败时返回空字符串（不影响上传）
  */
-async function callOcrModel(imageUrls: string[], instruction: string, maxTokens = 4000): Promise<string> {
+async function callOcrModel(imageUrls: string[], instruction: string, maxTokens = 8000): Promise<string> {
   const apiKey = process.env.DEEPSEEK_API_KEY
   if (!apiKey || imageUrls.length === 0) return ''
 
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 120000)
-  try {
-    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: DEEPSEEK_MODEL,
-        messages: [
-          { role: 'system', content: OCR_SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: instruction },
-              ...imageUrls.map(url => ({ type: 'image_url', image_url: { url } })),
-            ],
-          },
-        ],
-        temperature: 0.1,
-        max_tokens: maxTokens,
-        thinking: { type: 'disabled' },
-      }),
-      signal: controller.signal,
-    })
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '')
-      throw new Error(`${response.status} ${errText.slice(0, 150)}`)
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 120000)
+    try {
+      const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: DEEPSEEK_MODEL,
+          messages: [
+            { role: 'system', content: OCR_SYSTEM_PROMPT },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: instruction },
+                ...imageUrls.map(url => ({ type: 'image_url', image_url: { url } })),
+              ],
+            },
+          ],
+          temperature: 0.1,
+          max_tokens: maxTokens,
+          thinking: { type: 'disabled' },
+        }),
+        signal: controller.signal,
+      })
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '')
+        throw new Error(`${response.status} ${errText.slice(0, 150)}`)
+      }
+      const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
+      return (data.choices?.[0]?.message?.content || '').trim()
+    } catch (error) {
+      if (attempt === 2) {
+        console.error('OCR 识别失败（已重试）:', error)
+        return ''
+      }
+      // 503/超时等临时故障：等待后重试一次
+      console.warn(`OCR 识别失败，${attempt === 1 ? '2 秒后重试' : ''}:`, error)
+      await new Promise(resolve => setTimeout(resolve, 2000))
+    } finally {
+      clearTimeout(timeoutId)
     }
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
-    return (data.choices?.[0]?.message?.content || '').trim()
-  } catch (error) {
-    console.error('OCR 识别失败:', error)
-    return ''
-  } finally {
-    clearTimeout(timeoutId)
   }
+  return ''
 }
 
 /**
- * 扫描版 PDF OCR：把页面渲染成图片，调用多模态模型逐页转录
+ * 扫描版 PDF OCR：把全部页面渲染成图片，分批调用多模态模型逐页转录
  * 仅在提取不到文字时触发；无 API Key 或渲染失败时返回空字符串（不影响上传）
  */
-async function ocrScannedPdf(buffer: Buffer, pageCount: number, maxPages = OCR_MAX_PAGES): Promise<string> {
-  const pageUrls: string[] = []
+async function ocrScannedPdf(buffer: Buffer, pageCount: number): Promise<string> {
   const { PDFParse } = await import('pdf-parse')
   const parser = new PDFParse({ data: buffer })
+  const textParts: string[] = []
   try {
-    const shot = await parser.getScreenshot({
-      first: Math.min(pageCount, maxPages),
-      desiredWidth: 1400,
-      imageDataUrl: true,
-      imageBuffer: false,
-    })
-    for (const page of shot.pages) {
-      if (page.dataUrl) pageUrls.push(page.dataUrl)
+    // 分块渲染（每块 6 页）避免一次性生成大量图片占满内存；分块不是页数上限
+    for (let chunkStart = 1; chunkStart <= pageCount; chunkStart += PDF_RENDER_CHUNK) {
+      const chunkEnd = Math.min(chunkStart + PDF_RENDER_CHUNK - 1, pageCount)
+      const pageNumbers: number[] = []
+      for (let p = chunkStart; p <= chunkEnd; p++) pageNumbers.push(p)
+
+      const shot = await parser.getScreenshot({
+        partial: pageNumbers,
+        desiredWidth: 1400,
+        imageDataUrl: true,
+        imageBuffer: false,
+      })
+      const pageUrls = shot.pages.map(page => page.dataUrl).filter((url): url is string => Boolean(url))
+
+      for (let i = 0; i < pageUrls.length; i += OCR_PAGES_PER_CALL) {
+        const batch = pageUrls.slice(i, i + OCR_PAGES_PER_CALL)
+        const firstPage = chunkStart + i
+        const lastPage = firstPage + batch.length - 1
+        const text = await callOcrModel(
+          batch,
+          `请完整转录第 ${firstPage}-${lastPage} 页（按顺序逐页输出，使用绝对页码，保留表格行列）。`
+        )
+        if (text) textParts.push(text)
+      }
     }
   } catch (error) {
-    console.error('PDF 页面渲染失败，跳过 OCR:', error)
-    return ''
+    console.error('PDF 页面渲染/OCR 失败:', error)
   } finally {
     await parser.destroy().catch(() => {})
-  }
-  if (pageUrls.length === 0) return ''
-
-  const textParts: string[] = []
-  for (let i = 0; i < pageUrls.length; i += OCR_PAGES_PER_CALL) {
-    const batch = pageUrls.slice(i, i + OCR_PAGES_PER_CALL)
-    const text = await callOcrModel(
-      batch,
-      `请完整转录第 ${i + 1}-${i + batch.length} 页（按顺序逐页输出，使用绝对页码，保留表格行列）。`
-    )
-    if (text) textParts.push(text)
   }
 
   return textParts.join('\n\n')
 }
 
 /** 扫描版 PDF OCR（供 BP 按页预填等场景复用） */
-export async function ocrPdfPagedText(buffer: Buffer, pageCount: number, maxPages = OCR_MAX_PAGES): Promise<string> {
-  return ocrScannedPdf(buffer, pageCount, maxPages)
+export async function ocrPdfPagedText(buffer: Buffer, pageCount: number): Promise<string> {
+  return ocrScannedPdf(buffer, pageCount)
 }
 
 /** 单张图片 OCR */
@@ -194,15 +206,14 @@ async function ocrImage(buffer: Buffer, fileName: string, mimeType?: string): Pr
 
 /**
  * Office 文件内嵌图片 OCR（Word/PPT 里整页截图、扫描图片）
- * 过滤 <10KB 的小图标/装饰元素，最多识别 8 张
+ * 过滤 <10KB 的图标/装饰元素（噪音），正文图片全部识别
  */
-async function ocrZipMediaImages(buffer: Buffer, mediaRegex: RegExp, limit = 8): Promise<string> {
+async function ocrZipMediaImages(buffer: Buffer, mediaRegex: RegExp): Promise<string> {
   const JSZip = (await import('jszip')).default
   const zip = await JSZip.loadAsync(buffer)
   const imageUrls: string[] = []
   const names = Object.keys(zip.files).filter(name => mediaRegex.test(name)).sort()
   for (const name of names) {
-    if (imageUrls.length >= limit) break
     const mime = imageMimeType(name)
     if (!mime) continue
     const data = await zip.files[name].async('nodebuffer')
@@ -336,8 +347,8 @@ export async function extractTextFromFile(
         text = pdf.text
         // 扫描版 PDF：无文字层 → 渲染页面图片后 OCR
         if (shouldOcrPdf(pdf.text, pdf.total)) {
-          const ocrText = await ocrScannedPdf(buffer, pdf.total)
-          if (ocrText) text = ocrText
+          // OCR 失败时置空，避免把 pdf-parse 的页码占位符当成正文
+          text = await ocrScannedPdf(buffer, pdf.total)
         }
         break
       }
