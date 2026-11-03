@@ -64,7 +64,7 @@ export default function RichTextEditor({
       // 插入图片到光标位置（OCR 文本写入 alt，供 AI 分析读取）
       const img = document.createElement('img')
       img.src = data.url
-      img.alt = data.text ? String(data.text).replace(/\s+/g, ' ').slice(0, 120) : '截图'
+      img.alt = data.text ? String(data.text).replace(/\s+/g, ' ').slice(0, 500) : '截图'
       img.style.maxWidth = '100%'
       img.style.height = 'auto'
       img.style.borderRadius = '8px'
