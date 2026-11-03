@@ -835,29 +835,34 @@ export default function PostInvestmentDetailPage() {
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm"
           onClick={() => { if (!manualSaving) setManualOpen(false) }}
         >
-          <div className="w-full max-w-2xl bg-surface rounded-2xl shadow-soft-lg p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <div>
-                <h3 className="text-base font-bold text-ink">手动填写投后资料</h3>
-                <p className="text-xs text-ink-faint mt-1">
-                  报告期 {uploadPeriod} · 类型 {DOC_TYPE_META[uploadType]?.label || uploadType} · 保存后可参与 AI 分析
-                </p>
+          <div
+            className="w-full max-w-2xl max-h-[90vh] bg-surface rounded-2xl shadow-soft-lg flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex-1 overflow-y-auto p-6 pb-0">
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div>
+                  <h3 className="text-base font-bold text-ink">手动填写投后资料</h3>
+                  <p className="text-xs text-ink-faint mt-1">
+                    报告期 {uploadPeriod} · 类型 {DOC_TYPE_META[uploadType]?.label || uploadType} · 保存后可参与 AI 分析
+                  </p>
+                </div>
+                <button
+                  onClick={() => { if (!manualSaving) setManualOpen(false) }}
+                  className="text-ink-faint hover:text-ink text-lg leading-none"
+                  title="关闭"
+                >
+                  ✕
+                </button>
               </div>
-              <button
-                onClick={() => { if (!manualSaving) setManualOpen(false) }}
-                className="text-ink-faint hover:text-ink text-lg leading-none"
-                title="关闭"
-              >
-                ✕
-              </button>
+              <RichTextEditor
+                value={manualText}
+                onChange={setManualText}
+                rows={10}
+                placeholder="请输入投后信息，例如：本季度营收与同比、订单/客户进展、团队变化、融资进展、下季度计划等……（可粘贴截图）"
+              />
             </div>
-            <RichTextEditor
-              value={manualText}
-              onChange={setManualText}
-              rows={10}
-              placeholder="请输入投后信息，例如：本季度营收与同比、订单/客户进展、团队变化、融资进展、下季度计划等……（可粘贴截图）"
-            />
-            <div className="flex items-center justify-between gap-3 mt-4">
+            <div className="flex items-center justify-between gap-3 p-6 pt-4 flex-shrink-0">
               <span className="text-[11px] text-ink-faint">
                 {richTextPlain(manualText).length} 字{(manualText.match(/<img/g) || []).length > 0 ? ` · ${(manualText.match(/<img/g) || []).length} 张图片` : ''}
                 <span className="ml-2 text-ink-faint">支持粘贴截图或拖拽图片</span>
