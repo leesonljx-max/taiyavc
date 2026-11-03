@@ -28,7 +28,12 @@ export function detectFileType(fileName: string, mimeType?: string): SupportedFi
   const ext = fileName.toLowerCase().split('.').pop() || ''
   if (ext === 'pdf' || mimeType === 'application/pdf') return 'pdf'
   if (ext === 'docx' || mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx'
-  if (ext === 'xlsx' || mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return 'xlsx'
+  if (ext === 'xlsx' || ext === 'xls' || ext === 'xlsm') return 'xlsx'
+  if (
+    mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    mimeType === 'application/vnd.ms-excel' ||
+    mimeType === 'application/vnd.ms-excel.sheet.macroEnabled.12'
+  ) return 'xlsx'
   if (ext === 'pptx' || mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') return 'pptx'
   return 'unknown'
 }

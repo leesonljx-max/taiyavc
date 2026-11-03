@@ -64,8 +64,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ kind: 'text', text: doc.text || '（未能提取文本）' })
     }
 
-    // docx / xlsx：读取本地文件 → 服务端转 HTML
-    if (ext === '.docx' || ext === '.xlsx') {
+    // docx / xlsx（含旧版 xls / 宏格式 xlsm）：读取本地文件 → 服务端转 HTML
+    if (ext === '.docx' || ext === '.xlsx' || ext === '.xls' || ext === '.xlsm') {
       const buffer = await readDocFile(doc.fileUrl)
       if (!buffer) {
         // 文件丢失时回退提取文本

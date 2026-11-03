@@ -250,6 +250,27 @@ test('Excel 文本提取：多工作表 + 同一工作表多张表全部提取�
   assert.ok(text.includes('总资产\t45587\t\t总负债\t3335'), '分散标签/数值应保留列位置')
 })
 
+test('Excel 旧版 .xls：文本提取与上传均支持（不再因格式被拒绝）', async () => {
+  const XLSX = await import('xlsx')
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['营业收入', 10571], ['净利润', 500]]), '利润表')
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'biff8' }) as Buffer
+
+  const { text } = await extractTextFromFile(buf, '财务报表202609.xls', 'application/vnd.ms-excel')
+  assert.ok(text.includes('营业收入\t10571'), '旧版 .xls 应使用 SheetJS 提取')
+
+  asManager()
+  const fd = new FormData()
+  fd.append('projectId', projectId)
+  fd.append('period', '2026Q3')
+  fd.append('docType', 'FINANCIAL_STATEMENT')
+  fd.append('file', new File([new Uint8Array(buf.buffer as ArrayBuffer, buf.byteOffset, buf.byteLength)], '财务报表202609.xls', { type: 'application/vnd.ms-excel' }))
+  const res = await DOC_POST(new Request('http://t/api/post-investment/documents', { method: 'POST', body: fd }))
+  assert.equal(res.status, 200)
+  const body = await res.json()
+  assert.equal(body.doc.hasText, true)
+})
+
 test('上传：txt 自动提取全文入库；无效报告期 400；路人 403；未登录 401', async () => {
   asManager()
   const fd = new FormData()
