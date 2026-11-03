@@ -21,7 +21,7 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   BP: 'BP',
   OTHER: '其他',
 }
-const DOC_EXTENSIONS = ['.pdf', '.docx', '.xlsx', '.xls', '.xlsm', '.pptx', '.txt', '.md']
+const DOC_EXTENSIONS = ['.pdf', '.docx', '.xlsx', '.xls', '.xlsm', '.pptx', '.txt', '.md', '.png', '.jpg', '.jpeg', '.webp', '.gif']
 const EXCEL_EXTENSIONS = ['.xlsx', '.xls', '.xlsm']
 const MAX_SIZE = 50 * 1024 * 1024
 
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     if (file) {
       ext = '.' + (file.name.toLowerCase().split('.').pop() || '')
       if (!DOC_EXTENSIONS.includes(ext)) {
-        return NextResponse.json({ error: `不支持的文件类型: ${ext}，仅支持 PDF/Word/Excel/PPT/txt/md` }, { status: 400 })
+        return NextResponse.json({ error: `不支持的文件类型: ${ext}，仅支持 PDF/Word/Excel/PPT/txt/md/图片` }, { status: 400 })
       }
       // Excel 不限制文件大小（业务导出的大表常超过 50MB）
       if (!EXCEL_EXTENSIONS.includes(ext) && file.size > MAX_SIZE) {

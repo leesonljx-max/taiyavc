@@ -540,7 +540,7 @@ export default function ProjectInterpretationPanel({ onBackHandlerChange }: Proj
               <input
                 ref={uploadInputRef}
                 type="file"
-                accept=".pdf,.docx,.pptx,.xlsx,.txt,.md"
+                accept=".pdf,.docx,.pptx,.xlsx,.txt,.md,.png,.jpg,.jpeg,.webp,.gif"
                 multiple
                 className="hidden"
                 onChange={e => {
@@ -626,7 +626,7 @@ export default function ProjectInterpretationPanel({ onBackHandlerChange }: Proj
                 <input
                   ref={ivInputRef}
                   type="file"
-                  accept=".mp3,.wav,.m4a,.aac,.ogg,.flac,.pdf,.docx,.txt,.md,.pptx"
+                  accept=".mp3,.wav,.m4a,.aac,.ogg,.flac,.pdf,.docx,.txt,.md,.pptx,.png,.jpg,.jpeg,.webp,.gif"
                   className="hidden"
                   onChange={e => {
                     setIvFile(e.target.files?.[0] || null)
@@ -1356,7 +1356,7 @@ function Detail({
                         <input
                           ref={ivFileRef}
                           type="file"
-                          accept=".mp3,.wav,.m4a,.aac,.ogg,.flac,.pdf,.docx,.txt,.md,.pptx"
+                          accept=".mp3,.wav,.m4a,.aac,.ogg,.flac,.pdf,.docx,.txt,.md,.pptx,.png,.jpg,.jpeg,.webp,.gif"
                           className="hidden"
                           onChange={e => {
                             setIvFile(e.target.files?.[0] || null)
@@ -1378,7 +1378,7 @@ function Detail({
                         placeholder="或直接粘贴访谈纪要全文（音频转写内容/访谈记录）。粘贴文字可不选文件。"
                         className="w-full input-field text-xs"
                       />
-                      <p className="text-[10px] text-ink-faint">🎙️ 音频（mp3/m4a/wav 等，≤25MB）自动转写成文字校验，无需手动填写；也支持 pdf/docx/txt/pptx 自动提取</p>
+                      <p className="text-[10px] text-ink-faint">🎙️ 音频（mp3/m4a/wav 等，≤25MB）自动转写成文字校验，无需手动填写；也支持 pdf/docx/txt/pptx/图片 自动提取（扫描件 OCR）</p>
                       {ivErr && <p className="text-xs text-red-500">{ivErr}</p>}
                     </>
                   )}

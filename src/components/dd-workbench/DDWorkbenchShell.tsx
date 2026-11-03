@@ -1725,14 +1725,14 @@ function ResourceCenterModule({
           {/* 文档 */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-bold text-gray-500">上传文档（PDF/Word/Excel/PPT/txt，自动提取全文供报告使用）</span>
+              <span className="text-[11px] font-bold text-gray-500">上传文档（PDF/Word/Excel/PPT/txt/图片，扫描件与图片自动 OCR）</span>
               {canEdit && (
                 <label className={`px-2.5 py-1 bg-primary-50 text-primary-600 text-xs font-bold rounded-full cursor-pointer hover:bg-primary-100 ${uploadingDoc ? 'opacity-50 pointer-events-none' : ''}`}>
                   {uploadingDoc ? '上传中...' : '+ 上传文档'}
                   <input
                     ref={docInputRef}
                     type="file"
-                    accept=".pdf,.docx,.xlsx,.pptx,.txt,.md"
+                    accept=".pdf,.docx,.xlsx,.pptx,.txt,.md,.png,.jpg,.jpeg,.webp,.gif"
                     className="hidden"
                     onChange={e => {
                       const f = e.target.files?.[0]

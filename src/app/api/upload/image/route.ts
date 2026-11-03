@@ -7,12 +7,13 @@ import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { randomUUID } from 'crypto'
 import { isCosConfigured, uploadToCos } from '@/lib/cos'
+import { extractTextFromFile } from '@/lib/document-extract'
 
 /**
  * POST /api/upload/image
  * 上传富文本编辑器中粘贴的图片（项目字段截图）
  * 接收 FormData 格式，字段名 "file"
- * 返回 { url: string }
+ * 返回 { url: string, text?: string }（text 为 OCR 识别结果，前端写入图片 alt 供 AI 读取）
  */
 export async function POST(request: Request) {
   try {
@@ -72,7 +73,10 @@ export async function POST(request: Request) {
       imageUrl = `/project-images/${fileName}`
     }
 
-    return NextResponse.json({ url: imageUrl })
+    // OCR：识别截图中的数据，写入 img alt 供 AI 分析读取
+    const ocr = await extractTextFromFile(buffer, file.name, file.type).catch(() => ({ text: '' }))
+    const ocrText = (ocr.text || '').trim()
+    return NextResponse.json({ url: imageUrl, text: ocrText ? ocrText.slice(0, 500) : undefined })
   } catch (error) {
     console.error('Image upload error:', error)
     return NextResponse.json({ error: '图片上传失败' }, { status: 500 })

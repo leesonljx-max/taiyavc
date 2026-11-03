@@ -15,14 +15,14 @@ import { join } from 'path'
 /** 模块文档目录（与投研模块文档共用 research-docs，走 /api/uploads 白名单访问） */
 const UPLOAD_DIR = join(process.cwd(), 'public', 'research-docs')
 
-/** DD 资料文档支持的格式（比投研文档多 txt/md，纯文本纪要直接上传） */
-const DD_DOC_EXTENSIONS = ['.pdf', '.docx', '.xlsx', '.pptx', '.txt', '.md']
+/** DD 资料文档支持的格式（图片走 OCR） */
+const DD_DOC_EXTENSIONS = ['.pdf', '.docx', '.xlsx', '.pptx', '.txt', '.md', '.png', '.jpg', '.jpeg', '.webp', '.gif']
 const DD_DOC_MAX_SIZE = 50 * 1024 * 1024
 
 function validateDDDoc(fileName: string, fileSize: number): { valid: boolean; error?: string } {
   const ext = '.' + (fileName.toLowerCase().split('.').pop() || '')
   if (!DD_DOC_EXTENSIONS.includes(ext)) {
-    return { valid: false, error: `不支持的文件类型: ${ext}，仅支持 PDF/Word/Excel/PPT/txt/md` }
+    return { valid: false, error: `不支持的文件类型: ${ext}，仅支持 PDF/Word/Excel/PPT/txt/md/图片` }
   }
   if (fileSize > DD_DOC_MAX_SIZE) {
     return { valid: false, error: '文件大小超过 50MB 限制' }

@@ -60,14 +60,14 @@ export function isPIVerifyStatus(v: string): v is PIVerifyStatus {
 }
 
 // ── 上传限制 ──
-/** 项目文档：PDF / Word(docx) / PPT(pptx) / Excel / 文本（可提取文本的格式） */
+/** 项目文档：PDF / Word(docx) / PPT(pptx) / Excel / 文本 / 图片（均可提取文本） */
 export const PI_DOC_MAX_SIZE = 50 * 1024 * 1024 // 50MB（与项目文档一致）
-export const PI_DOC_ACCEPTED_EXTENSIONS = ['pdf', 'docx', 'pptx', 'xlsx', 'txt', 'md']
+export const PI_DOC_ACCEPTED_EXTENSIONS = ['pdf', 'docx', 'pptx', 'xlsx', 'txt', 'md', 'png', 'jpg', 'jpeg', 'webp', 'gif']
 
-/** 访谈文件：文档（自动提取文本）+ 音频（暂无 ASR，需粘贴转写文本） */
+/** 访谈文件：文档（自动提取文本）+ 图片（OCR）+ 音频（暂无 ASR，需粘贴转写文本） */
 export const PI_INTERVIEW_MAX_SIZE = 50 * 1024 * 1024
 export const PI_INTERVIEW_AUDIO_EXTENSIONS = ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac']
-export const PI_INTERVIEW_DOC_EXTENSIONS = ['pdf', 'docx', 'txt', 'md', 'pptx']
+export const PI_INTERVIEW_DOC_EXTENSIONS = ['pdf', 'docx', 'txt', 'md', 'pptx', 'png', 'jpg', 'jpeg', 'webp', 'gif']
 
 // ── 七维解读模板（interpretationJson 固定结构） ──
 

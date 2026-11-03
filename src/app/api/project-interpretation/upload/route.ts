@@ -85,7 +85,7 @@ export async function POST(request: Request) {
       const ext = fileExt(file.name)
       if (!PI_DOC_ACCEPTED_EXTENSIONS.includes(ext)) {
         return NextResponse.json(
-          { error: `不支持的文件类型 .${ext}，请上传 PDF / Word(docx) / PPT(pptx) / Excel / txt 文档` },
+          { error: `不支持的文件类型 .${ext}，请上传 PDF / Word / PPT / Excel / txt / 图片` },
           { status: 400 }
         )
       }

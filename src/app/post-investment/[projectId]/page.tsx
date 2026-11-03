@@ -501,7 +501,7 @@ export default function PostInvestmentDetailPage() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".pdf,.docx,.xlsx,.xls,.xlsm,.pptx,.txt,.md"
+                    accept=".pdf,.docx,.xlsx,.xls,.xlsm,.pptx,.txt,.md,.png,.jpg,.jpeg,.webp,.gif"
                     className="hidden"
                     onChange={e => {
                       const f = e.target.files?.[0]
@@ -517,7 +517,7 @@ export default function PostInvestmentDetailPage() {
                 >
                   ✍️ 手动填写
                 </button>
-                <span className="text-[11px] text-ink-faint">支持 PDF（含扫描件 OCR）/ Word / Excel（xls/xlsx/xlsm，不限大小）/ PPT / txt；也可手动填写投后信息。报告期仅可选择已结束的季度/半年/全年，默认最近一期</span>
+                <span className="text-[11px] text-ink-faint">支持 PDF（含扫描件 OCR）/ Word / Excel（xls/xlsx/xlsm，不限大小）/ PPT / txt / 图片（OCR）；也可手动填写投后信息。报告期仅可选择已结束的季度/半年/全年，默认最近一期</span>
               </div>
               {uploadErr && <p className="mt-2.5 text-xs text-danger-600 bg-danger-50 rounded-xl px-3 py-2">{uploadErr}</p>}
             </div>

@@ -1,6 +1,6 @@
 /**
  * 文档文本提取工具库
- * 支持 PDF / Word(.docx) / Excel(.xlsx) / PPT(.pptx) 四种格式
+ * 支持 PDF / Word(.docx) / Excel(.xlsx/.xls) / PPT(.pptx) / 图片；扫描件与图片自动 OCR
  *
  * 用于投研分析模块：上传文档时提取文本，供 DeepSeek 分析
  */
@@ -8,7 +8,7 @@
 import type { Buffer } from 'buffer'
 import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 
-export type SupportedFileType = 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'unknown'
+export type SupportedFileType = 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'image' | 'unknown'
 
 /** 最大提取文本长度（避免超大文档消耗过多 token；Excel 多工作表/多表需完整提取） */
 const MAX_EXTRACT_LENGTH = 60000
@@ -36,6 +36,8 @@ export function detectFileType(fileName: string, mimeType?: string): SupportedFi
     mimeType === 'application/vnd.ms-excel.sheet.macroEnabled.12'
   ) return 'xlsx'
   if (ext === 'pptx' || mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') return 'pptx'
+  if (IMAGE_MIME_BY_EXT[ext]) return 'image'
+  if (mimeType && ['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(mimeType)) return 'image'
   return 'unknown'
 }
 
@@ -68,27 +70,85 @@ export function shouldOcrPdf(text: string, pageCount: number): boolean {
   return chars < Math.max(60, pageCount * 40)
 }
 
-const OCR_SYSTEM_PROMPT = `你是专业的文档 OCR 引擎。用户提供 PDF 页面截图，请逐页完整转录其中的文字与表格。
+const OCR_SYSTEM_PROMPT = `你是专业的文档 OCR 引擎。用户提供文档页面或图片，请完整转录其中的文字与表格。
 要求：
 1. 表格必须保留行列结构：同一行的单元格用 | 分隔，表头与数值一一对应
 2. 数字、百分比、单位与原文完全一致，禁止四舍五入、改写、推算或补全
 3. 印章、手写批注、页眉页脚也尽量转录
-4. 每页以【第N页】开头；只输出转录文本，不要总结、不要解释`
+4. 多页文档每页以[第N页]开头（使用文档绝对页码）；只输出转录文本，不要总结、不要解释`
+
+const IMAGE_MIME_BY_EXT: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
+}
+
+/** 图片扩展名 / MIME 标准化 */
+function imageMimeType(fileName: string, mimeType?: string): string | null {
+  if (mimeType && mimeType.startsWith('image/')) return mimeType
+  const ext = fileName.toLowerCase().split('.').pop() || ''
+  return IMAGE_MIME_BY_EXT[ext] || null
+}
 
 /**
- * 扫描版 PDF OCR：把页面渲染成图片，调用 DeepSeek 多模态逐页转录
+ * 调用多模态模型转录图片
+ * 无 API Key / 请求失败时返回空字符串（不影响上传）
+ */
+async function callOcrModel(imageUrls: string[], instruction: string, maxTokens = 4000): Promise<string> {
+  const apiKey = process.env.DEEPSEEK_API_KEY
+  if (!apiKey || imageUrls.length === 0) return ''
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 120000)
+  try {
+    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: DEEPSEEK_MODEL,
+        messages: [
+          { role: 'system', content: OCR_SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: instruction },
+              ...imageUrls.map(url => ({ type: 'image_url', image_url: { url } })),
+            ],
+          },
+        ],
+        temperature: 0.1,
+        max_tokens: maxTokens,
+        thinking: { type: 'disabled' },
+      }),
+      signal: controller.signal,
+    })
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '')
+      throw new Error(`${response.status} ${errText.slice(0, 150)}`)
+    }
+    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
+    return (data.choices?.[0]?.message?.content || '').trim()
+  } catch (error) {
+    console.error('OCR 识别失败:', error)
+    return ''
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+/**
+ * 扫描版 PDF OCR：把页面渲染成图片，调用多模态模型逐页转录
  * 仅在提取不到文字时触发；无 API Key 或渲染失败时返回空字符串（不影响上传）
  */
-async function ocrScannedPdf(buffer: Buffer, pageCount: number): Promise<string> {
-  const apiKey = process.env.DEEPSEEK_API_KEY
-  if (!apiKey) return ''
-
+async function ocrScannedPdf(buffer: Buffer, pageCount: number, maxPages = OCR_MAX_PAGES): Promise<string> {
   const pageUrls: string[] = []
   const { PDFParse } = await import('pdf-parse')
   const parser = new PDFParse({ data: buffer })
   try {
     const shot = await parser.getScreenshot({
-      first: Math.min(pageCount, OCR_MAX_PAGES),
+      first: Math.min(pageCount, maxPages),
       desiredWidth: 1400,
       imageDataUrl: true,
       imageBuffer: false,
@@ -107,45 +167,60 @@ async function ocrScannedPdf(buffer: Buffer, pageCount: number): Promise<string>
   const textParts: string[] = []
   for (let i = 0; i < pageUrls.length; i += OCR_PAGES_PER_CALL) {
     const batch = pageUrls.slice(i, i + OCR_PAGES_PER_CALL)
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 120000)
-    try {
-      const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model: DEEPSEEK_MODEL,
-          messages: [
-            { role: 'system', content: OCR_SYSTEM_PROMPT },
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: `请完整转录第 ${i + 1}-${i + batch.length} 页（按顺序逐页输出，保留表格行列）。` },
-                ...batch.map(url => ({ type: 'image_url', image_url: { url } })),
-              ],
-            },
-          ],
-          temperature: 0.1,
-          max_tokens: 4000,
-          thinking: { type: 'disabled' },
-        }),
-        signal: controller.signal,
-      })
-      if (!response.ok) {
-        const errText = await response.text().catch(() => '')
-        throw new Error(`${response.status} ${errText.slice(0, 150)}`)
-      }
-      const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
-      const content = data.choices?.[0]?.message?.content || ''
-      if (content.trim()) textParts.push(content.trim())
-    } catch (error) {
-      console.error(`扫描版 PDF OCR 失败（第 ${i + 1}-${i + batch.length} 页）:`, error)
-    } finally {
-      clearTimeout(timeoutId)
-    }
+    const text = await callOcrModel(
+      batch,
+      `请完整转录第 ${i + 1}-${i + batch.length} 页（按顺序逐页输出，使用绝对页码，保留表格行列）。`
+    )
+    if (text) textParts.push(text)
   }
 
   return textParts.join('\n\n')
+}
+
+/** 扫描版 PDF OCR（供 BP 按页预填等场景复用） */
+export async function ocrPdfPagedText(buffer: Buffer, pageCount: number, maxPages = OCR_MAX_PAGES): Promise<string> {
+  return ocrScannedPdf(buffer, pageCount, maxPages)
+}
+
+/** 单张图片 OCR */
+async function ocrImage(buffer: Buffer, fileName: string, mimeType?: string): Promise<string> {
+  const mime = imageMimeType(fileName, mimeType)
+  if (!mime) return ''
+  return callOcrModel(
+    [`data:${mime};base64,${buffer.toString('base64')}`],
+    '请完整转录这张图片中的全部文字与表格（保留表格行列，数字与单位保持原文）。'
+  )
+}
+
+/**
+ * Office 文件内嵌图片 OCR（Word/PPT 里整页截图、扫描图片）
+ * 过滤 <10KB 的小图标/装饰元素，最多识别 8 张
+ */
+async function ocrZipMediaImages(buffer: Buffer, mediaRegex: RegExp, limit = 8): Promise<string> {
+  const JSZip = (await import('jszip')).default
+  const zip = await JSZip.loadAsync(buffer)
+  const imageUrls: string[] = []
+  const names = Object.keys(zip.files).filter(name => mediaRegex.test(name)).sort()
+  for (const name of names) {
+    if (imageUrls.length >= limit) break
+    const mime = imageMimeType(name)
+    if (!mime) continue
+    const data = await zip.files[name].async('nodebuffer')
+    if (data.length < 10 * 1024) continue
+    imageUrls.push(`data:${mime};base64,${data.toString('base64')}`)
+  }
+  if (imageUrls.length === 0) return ''
+
+  const parts: string[] = []
+  for (let i = 0; i < imageUrls.length; i += OCR_PAGES_PER_CALL) {
+    const batch = imageUrls.slice(i, i + OCR_PAGES_PER_CALL)
+    const text = await callOcrModel(
+      batch,
+      `请逐张完整转录以下第 ${i + 1}-${i + batch.length} 张图片中的文字与表格（保留行列结构，数字与单位保持原文）。`
+    )
+    if (text) parts.push(text)
+  }
+  return parts.join('\n\n')
 }
 
 /**
@@ -154,7 +229,13 @@ async function ocrScannedPdf(buffer: Buffer, pageCount: number): Promise<string>
 async function extractDocx(buffer: Buffer): Promise<string> {
   const mammoth = await import('mammoth')
   const result = await mammoth.extractRawText({ buffer })
-  return result.value || ''
+  const text = result.value || ''
+  // 纯截图/扫描图片的 Word：正文文字极少时 OCR 内嵌图片
+  if (text.replace(/\s/g, '').length < 100) {
+    const ocr = await ocrZipMediaImages(buffer, /^word\/media\//)
+    if (ocr) return text.trim() ? `${text}\n\n${ocr}` : ocr
+  }
+  return text
 }
 
 /**
@@ -224,7 +305,13 @@ async function extractPptx(buffer: Buffer): Promise<string> {
     }
   }
 
-  return lines.join('\n')
+  const plain = lines.join('\n')
+  // 图片型 BP/PPT：文字极少时 OCR 内嵌图片
+  if (slideFiles.length > 0 && plain.replace(/\s/g, '').length < slideFiles.length * 20) {
+    const ocr = await ocrZipMediaImages(buffer, /^ppt\/media\//)
+    if (ocr) return plain.trim() ? `${plain}\n\n${ocr}` : ocr
+  }
+  return plain
 }
 
 /**
@@ -263,6 +350,9 @@ export async function extractTextFromFile(
       case 'pptx':
         text = await extractPptx(buffer)
         break
+      case 'image':
+        text = await ocrImage(buffer, fileName, mimeType)
+        break
       default:
         text = ''
     }
@@ -282,7 +372,7 @@ export async function extractTextFromFile(
 /**
  * 允许上传的文件扩展名白名单
  */
-export const ALLOWED_RESEARCH_DOC_EXTENSIONS = ['.pdf', '.docx', '.xlsx', '.pptx']
+export const ALLOWED_RESEARCH_DOC_EXTENSIONS = ['.pdf', '.docx', '.xlsx', '.pptx', '.png', '.jpg', '.jpeg', '.webp', '.gif']
 
 /**
  * 允许上传的 MIME 类型白名单
@@ -292,6 +382,10 @@ export const ALLOWED_RESEARCH_DOC_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
 ]
 
 /**
@@ -308,7 +402,7 @@ export function validateResearchDoc(fileName: string, fileSize: number, mimeType
 } {
   const ext = '.' + (fileName.toLowerCase().split('.').pop() || '')
   if (!ALLOWED_RESEARCH_DOC_EXTENSIONS.includes(ext)) {
-    return { valid: false, error: `不支持的文件类型: ${ext}，仅支持 PDF/Word/Excel/PPT` }
+    return { valid: false, error: `不支持的文件类型: ${ext}，仅支持 PDF/Word/Excel/PPT/图片` }
   }
   if (fileSize > MAX_RESEARCH_DOC_SIZE) {
     return { valid: false, error: '文件大小超过 50MB 限制' }

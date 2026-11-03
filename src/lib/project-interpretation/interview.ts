@@ -55,7 +55,7 @@ export async function parseInterviewSource(
         fileName: null,
         fileUrl: null,
         needTranscript: false,
-        error: `不支持的访谈文件类型 .${ext}（支持音频 mp3/wav/m4a 或文档 pdf/docx/txt/pptx）`,
+        error: `不支持的访谈文件类型 .${ext}（支持音频 mp3/wav/m4a，或文档 pdf/docx/txt/pptx/图片）`,
       }
     }
     if (file.size > PI_INTERVIEW_MAX_SIZE) {

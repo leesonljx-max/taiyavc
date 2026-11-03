@@ -11,6 +11,7 @@
 import { Buffer } from 'buffer'
 import { mkdir, writeFile } from 'fs/promises'
 import { join } from 'path'
+import { shouldOcrPdf, ocrPdfPagedText } from '@/lib/document-extract'
 
 const IMAGES_DIR = join(process.cwd(), 'public', 'interpretation-images')
 const IMAGES_URL_PREFIX = '/api/uploads/interpretation-images'
@@ -29,13 +30,16 @@ export async function buildPagedBpText(buffer: Buffer, fileName: string): Promis
   const ext = fileName.toLowerCase().split('.').pop() || ''
 
   if (ext === 'pdf') {
+    let paged = ''
+    let pageCount = 0
     try {
       const { PDFParse } = await import('pdf-parse')
       const parser = new PDFParse({ data: buffer })
       try {
         const result = await parser.getText()
         if (!result.pages || result.pages.length === 0) return null
-        return result.pages
+        pageCount = result.pages.length
+        paged = result.pages
           .map(p => `[第${p.num}页]\n${(p.text || '').trim()}`)
           .join('\n\n')
       } finally {
@@ -44,6 +48,12 @@ export async function buildPagedBpText(buffer: Buffer, fileName: string): Promis
     } catch {
       return null
     }
+    // 扫描版 BP：无文字层时按页 OCR（最多前 6 页）
+    if (shouldOcrPdf(paged, pageCount)) {
+      const ocr = await ocrPdfPagedText(buffer, pageCount)
+      if (ocr) return ocr
+    }
+    return pageCount > 0 ? paged : null
   }
 
   if (ext === 'pptx') {

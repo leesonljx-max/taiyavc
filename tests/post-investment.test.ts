@@ -16,7 +16,7 @@ import {
   isCompletedPeriod,
 } from '@/lib/post-investment/calc'
 import { CORE_METRIC_KEYS, METRIC_BY_KEY, sortMetricsByFramework, amountToWan } from '@/lib/post-investment/metrics'
-import { extractTextFromFile, shouldOcrPdf } from '@/lib/document-extract'
+import { extractTextFromFile, shouldOcrPdf, validateResearchDoc } from '@/lib/document-extract'
 
 import { GET as PI_LIST } from '@/app/api/post-investment/route'
 import { POST as DOC_POST, DELETE as DOC_DELETE } from '@/app/api/post-investment/documents/route'
@@ -230,6 +230,19 @@ test('扫描件识别：无文字层的 PDF 触发 OCR，正常文本 PDF 不触
   assert.equal(shouldOcrPdf('', 3), true)
   assert.equal(shouldOcrPdf('第1页', 10), true)
   assert.equal(shouldOcrPdf('营业收入2353万元，同比增长52%。'.repeat(50), 3), false)
+})
+
+test('图片 OCR：上传图片自动识别文字（投研/投后/DD 共用提取器）', async () => {
+  // 1x1 PNG（内容无关，OCR 请求由 mock 返回）
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64'
+  )
+  mockState.fetchHandler = () => chatCompletions('营业收入 2353 万元\n净利润 512 万元')
+  const result = await extractTextFromFile(png, '财务截图.png', 'image/png')
+  assert.equal(result.fileType, 'image')
+  assert.match(result.text, /营业收入/)
+  assert.equal(validateResearchDoc('财务截图.png', png.length).valid, true)
 })
 
 // ── 上传 API ──
