@@ -13,6 +13,7 @@ import DashboardLayout from '@/components/DashboardLayout'
 import { SkillPanelLauncher } from '@/components/SkillPanel'
 import DocumentPreviewModal from '@/components/DocumentPreviewModal'
 import RichText from '@/components/RichText'
+import RichTextEditor from '@/components/RichTextEditor'
 import { CORE_METRIC_KEYS, METRIC_BY_KEY } from '@/lib/post-investment/metrics'
 
 // ── 类型（与 API 对齐） ──
@@ -129,6 +130,16 @@ function fmtInvestDate(ym: string | null): string {
   return m ? `${m[1]}年${m[2]}月` : ym
 }
 
+/** 富文本转纯文本（字数统计/空内容判断；图片单独判断） */
+function richTextPlain(html: string): string {
+  return html
+    .replace(/<img[^>]*>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 /** 下拉中的「新增基金」特殊值 */
 const NEW_FUND = '__NEW_FUND__'
 
@@ -193,10 +204,14 @@ export default function PostInvestmentDetailPage() {
     } catch { setInvErr('网络错误') } finally { setSavingInv(false) }
   }
 
-  /** 打开文档预览：调用预览 API（docx/xlsx→HTML、pptx→文本、pdf/txt→文件地址） */
+  /** 打开文档预览：调用预览 API（docx/xlsx→HTML、pptx→文本、pdf/txt→文件地址、手动资料→文本/HTML） */
   const openPreviewDoc = async (d: PIDoc) => {
-    // 兼容历史记录的 fileUrl（旧格式无 /api/uploads 前缀，生产环境不可直达）
-    const fileUrl = d.fileUrl.startsWith('/api/uploads/') || d.fileUrl.startsWith('http') ? d.fileUrl : `/api/uploads${d.fileUrl}`
+    // 手动填写的资料无实体文件，fileUrl 为空时不要拼成无效地址（否则 iframe 会 404）
+    const fileUrl = !d.fileUrl
+      ? ''
+      : d.fileUrl.startsWith('/api/uploads/') || d.fileUrl.startsWith('http')
+        ? d.fileUrl
+        : `/api/uploads${d.fileUrl}`
     let textContent: string | undefined
     let previewHtml: string | undefined
     try {
@@ -249,11 +264,15 @@ export default function PostInvestmentDetailPage() {
     } catch { setUploadErr('上传失败') } finally { setUploading(false) }
   }
 
-  // 手动填写投后资料：文本直接保存为一份 txt 资料
+  // 手动填写投后资料：富文本（支持粘贴截图）保存为一份资料
   const submitManual = async () => {
     if (manualSaving) return
     const content = manualText.trim()
-    if (!content) { setUploadErr('请填写投后信息'); return }
+    const hasImage = /<img[^>]*>/i.test(content)
+    if (!richTextPlain(content) && !hasImage) {
+      setUploadErr('请填写投后信息或上传图片')
+      return
+    }
     setManualSaving(true)
     setUploadErr('')
     try {
@@ -832,16 +851,17 @@ export default function PostInvestmentDetailPage() {
                 ✕
               </button>
             </div>
-            <textarea
+            <RichTextEditor
               value={manualText}
-              onChange={e => setManualText(e.target.value)}
-              rows={12}
-              autoFocus
-              placeholder="请输入投后信息，例如：本季度营收与同比、订单/客户进展、团队变化、融资进展、下季度计划等……"
-              className="w-full px-4 py-3 text-sm rounded-xl border border-hairline bg-surface text-ink placeholder:text-ink-faint focus:outline-none focus:border-primary-300 resize-y"
+              onChange={setManualText}
+              rows={10}
+              placeholder="请输入投后信息，例如：本季度营收与同比、订单/客户进展、团队变化、融资进展、下季度计划等……（可粘贴截图）"
             />
             <div className="flex items-center justify-between gap-3 mt-4">
-              <span className="text-[11px] text-ink-faint">{manualText.trim().length} 字</span>
+              <span className="text-[11px] text-ink-faint">
+                {richTextPlain(manualText).length} 字{(manualText.match(/<img/g) || []).length > 0 ? ` · ${(manualText.match(/<img/g) || []).length} 张图片` : ''}
+                <span className="ml-2 text-ink-faint">支持粘贴截图或拖拽图片</span>
+              </span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => { if (!manualSaving) setManualOpen(false) }}
@@ -852,7 +872,7 @@ export default function PostInvestmentDetailPage() {
                 </button>
                 <button
                   onClick={submitManual}
-                  disabled={manualSaving || !manualText.trim()}
+                  disabled={manualSaving || (!richTextPlain(manualText) && !/<img[^>]*>/i.test(manualText))}
                   className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {manualSaving ? '保存中...' : '保存资料'}

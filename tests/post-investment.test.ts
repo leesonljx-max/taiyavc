@@ -326,6 +326,31 @@ test('上传：手动填写投后资料（无文件、仅 text）→ 保存为 t
   assert.match(pj.text, /3000/)
 })
 
+test('上传：手动填写富文本（含截图）→ 保存为 html 资料，预览返回 HTML 并保留图片、清理脚本', async () => {
+  asManager()
+  const fd = new FormData()
+  fd.append('projectId', projectId)
+  fd.append('period', '2026Q3')
+  fd.append('docType', 'OPERATION_REPORT')
+  fd.append('text', '<p>本季度营收 3000 万元</p><p><img src="/project-images/abc.png" alt="截图"></p><script>alert(1)</script>')
+
+  const res = await DOC_POST(new Request('http://t/api/post-investment/documents', { method: 'POST', body: fd }))
+  assert.equal(res.status, 200)
+  const body = await res.json()
+  assert.equal(body.doc.fileName, '手动填写-2026Q3.html', '富文本资料应使用 html 后缀')
+
+  const doc = await prisma.postInvestDoc.findUnique({ where: { id: body.doc.id } })
+  assert.equal(doc!.fileUrl, '')
+  assert.equal(doc!.fileType, 'text/html')
+
+  const preview = await DOC_PREVIEW(new Request(`http://t/api/post-investment/documents/preview?docId=${body.doc.id}`))
+  const pj = await preview.json()
+  assert.equal(pj.kind, 'html')
+  assert.match(pj.html, /本季度营收/)
+  assert.match(pj.html, /<img[^>]+src="\/project-images\/abc\.png"/)
+  assert.ok(!pj.html.includes('<script'), '预览应清理脚本标签')
+})
+
 // ── AI 分析 ──
 
 test('AI 分析：提取指标入库 + 分析落库；无文档 400；runway 由程序计算', async () => {

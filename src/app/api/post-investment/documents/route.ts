@@ -24,6 +24,11 @@ const DOC_TYPE_LABELS: Record<string, string> = {
 const DOC_EXTENSIONS = ['.pdf', '.docx', '.xlsx', '.pptx', '.txt', '.md']
 const MAX_SIZE = 50 * 1024 * 1024
 
+/** 手动填写内容是否为富文本 HTML（含编辑器格式标签/截图） */
+function looksLikeRichHtml(s: string): boolean {
+  return /<(p|div|span|img|br|strong|em|b|i|u|ul|ol|li|h[1-6]|table|blockquote)\b/i.test(s)
+}
+
 /**
  * POST /api/post-investment/documents
  * 上传投后资料（formData: projectId / period / docType / file）
@@ -77,17 +82,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '无权上传该项目资料' }, { status: 403 })
     }
 
-    // ── 手动填写投后资料：文本作为一份 txt 文档直接入库（无需上传文件） ──
+    // ── 手动填写投后资料：文本/富文本（含截图）作为一份资料直接入库（无需上传文件） ──
     if (!file) {
       const content = stripNul(manualText).trim()
+      const isRich = looksLikeRichHtml(content)
       const doc = await prisma.postInvestDoc.create({
         data: {
           projectId,
           docType,
           period,
-          fileName: `手动填写-${period}.txt`,
+          fileName: `手动填写-${period}${isRich ? '.html' : '.txt'}`,
           fileUrl: '',
-          fileType: 'text/plain',
+          fileType: isRich ? 'text/html' : 'text/plain',
           fileSize: Buffer.byteLength(content, 'utf8'),
           text: content,
           uploadedById: session.user.id,

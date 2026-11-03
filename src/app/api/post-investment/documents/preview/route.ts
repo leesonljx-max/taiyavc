@@ -44,10 +44,18 @@ export async function GET(request: Request) {
 
     const ext = '.' + (doc.fileName.toLowerCase().split('.').pop() || '')
 
+    // 手动填写的资料无实体文件：富文本（含截图）→ HTML 渲染，纯文本 → 文本阅览
+    if (!doc.fileUrl) {
+      const text = doc.text || ''
+      return NextResponse.json(
+        looksLikeRichHtml(text)
+          ? { kind: 'html', html: sanitizeHtml(text) }
+          : { kind: 'text', text }
+      )
+    }
+
     // pdf / txt / md：浏览器原生渲染，直接给文件地址（走 /api/uploads 白名单，生产可用）
     if (ext === '.pdf' || ext === '.txt' || ext === '.md') {
-      // 手动填写的资料无实体文件，直接返回文本
-      if (!doc.fileUrl) return NextResponse.json({ kind: 'text', text: doc.text || '' })
       return NextResponse.json({ kind: 'file', url: toPublicUrl(doc.fileUrl) })
     }
 
@@ -97,6 +105,11 @@ async function readDocFile(fileUrl: string): Promise<Buffer | null> {
 /** HTML 转义 */
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+/** 手动填写内容是否为富文本 HTML */
+function looksLikeRichHtml(s: string): boolean {
+  return /<(p|div|span|img|br|strong|em|b|i|u|ul|ol|li|h[1-6]|table|blockquote)\b/i.test(s)
 }
 
 /** 清理 AI/转换器输出中的危险标签与属性 */

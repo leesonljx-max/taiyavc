@@ -51,6 +51,9 @@ export default function DocumentPreviewModal({
 
   const isPdf = fileType === 'application/pdf' || fileUrl.toLowerCase().endsWith('.pdf')
   const isText = isTextDoc(fileUrl, fileType)
+  // 手动填写的资料无实体文件（fileUrl 为空），只能展示服务端返回的文本/HTML
+  const hasFile = !!fileUrl
+  const isPptx = fileName.toLowerCase().endsWith('.pptx')
 
   return (
     <div
@@ -73,16 +76,18 @@ export default function DocumentPreviewModal({
             </h3>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <a
-              href={fileUrl}
-              download={fileName}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-50 text-primary-700 text-sm font-semibold rounded-full hover:bg-primary-100 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              下载
-            </a>
+            {hasFile && (
+              <a
+                href={fileUrl}
+                download={fileName}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-50 text-primary-700 text-sm font-semibold rounded-full hover:bg-primary-100 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                下载
+              </a>
+            )}
             <button
               onClick={onClose}
               className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
@@ -115,7 +120,17 @@ export default function DocumentPreviewModal({
               `}</style>
               <div className="preview-html" dangerouslySetInnerHTML={{ __html: previewHtml }} />
             </div>
-          ) : isPdf || isText ? (
+          ) : textContent ? (
+            /* PPT / 手动填写资料：提取文本阅览（pptx 按页展示，手动资料直接显示全文） */
+            <div className="flex flex-col h-full">
+              {(isPptx || !hasFile) && (
+                <p className="px-4 py-1.5 text-[11px] text-amber-600 bg-amber-50 border-b border-amber-100 flex-shrink-0">
+                  {isPptx ? '💡 该格式以提取文本方式阅览（PPT 按页展示文字内容）' : '✍️ 手动填写的资料，以文本方式阅览'}
+                </p>
+              )}
+              <pre className="flex-1 px-5 py-4 text-xs text-gray-700 whitespace-pre-wrap leading-relaxed font-sans overflow-auto">{textContent}</pre>
+            </div>
+          ) : hasFile && (isPdf || isText) ? (
             /* PDF / txt / md：浏览器原生渲染 */
             <iframe
               src={fileUrl}
@@ -123,14 +138,6 @@ export default function DocumentPreviewModal({
               className="w-full h-full border-0"
               style={{ minHeight: '100%' }}
             />
-          ) : textContent ? (
-            /* PPT 及其他：提取文本阅览（pptx 按页展示） */
-            <div className="flex flex-col h-full">
-              <p className="px-4 py-1.5 text-[11px] text-amber-600 bg-amber-50 border-b border-amber-100 flex-shrink-0">
-                💡 该格式以提取文本方式阅览（PPT 按页展示文字内容）
-              </p>
-              <pre className="flex-1 px-5 py-4 text-xs text-gray-700 whitespace-pre-wrap leading-relaxed font-sans overflow-auto">{textContent}</pre>
-            </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full p-8 text-center">
               <div className="w-20 h-20 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
