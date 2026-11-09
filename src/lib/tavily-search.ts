@@ -57,6 +57,8 @@ export type SearchModule =
   | 'dd-claim-verify' // 尽调/解读/行研 报告外部校验（ClaimVerifier）
   | 'ai-research'    // AI行研 ChatBot
   | 'project-interpretation' // 项目解读（融资案例智能检索）
+  | 'annual-report' // 年度报告（重点项目融资进展）
+  | 'dd-research'   // 尽调工作台全网资料检索
   | 'search-lib'     // 搜索库自身（归纳调用）
 
 /**

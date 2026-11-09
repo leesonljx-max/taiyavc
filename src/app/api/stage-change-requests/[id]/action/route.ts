@@ -54,6 +54,7 @@ export async function POST(
       const newStage = stageRequest.toStage
       const currentPassed = parsePassedStages(project.passedStages)
       const newPassed = computePassedStages(currentPassed, newStage as any)
+      const now = new Date()
 
       await prisma.$transaction([
         prisma.stageChangeRequest.update({
@@ -62,7 +63,7 @@ export async function POST(
             status: 'APPROVED',
             reviewerId: session.user.id,
             reviewerComment: comment || null,
-            reviewedAt: new Date(),
+            reviewedAt: now,
           },
         }),
         prisma.project.update({
@@ -70,10 +71,26 @@ export async function POST(
           data: {
             followStage: newStage,
             passedStages: JSON.stringify(newPassed),
-            stageChangedAt: new Date(),
+            stageChangedAt: now,
           },
         }),
       ])
+
+      // 年报时间线：审批通过即进入新阶段
+      try {
+        const { recordStageEvent } = await import('@/lib/annual-report/stage-events')
+        await recordStageEvent({
+          projectId: stageRequest.projectId,
+          fromStage: stageRequest.fromStage,
+          toStage: newStage,
+          occurredAt: now,
+          source: 'APPROVAL',
+          actorId: session.user.id,
+          requestId: params.id,
+        })
+      } catch (error) {
+        console.error('Record approval stage event error:', error)
+      }
 
       // 项目进入「尽调」阶段 → 后台自动触发尽调分析（Harness 架构，不阻塞审批响应）
       triggerDueDiligenceOnStage(

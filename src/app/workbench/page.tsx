@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import DashboardLayout from '@/components/DashboardLayout'
+import AnnualReportEntry from '@/components/AnnualReportEntry'
 import Pagination from '@/components/Pagination'
 import { followStageLabels, followStageColors, type FollowStage } from '../projects/types'
 // 服务端分页后工作台数据不再走前端缓存（卡片计数用 facets 轻量接口）
@@ -336,6 +337,8 @@ export default function WorkbenchPage() {
           </div>
         )}
       </div>
+
+      <AnnualReportEntry />
 
       {/* 阶段卡片栏：所有阶段（含已否）在同一行，点击筛选对应阶段项目 */}
       <div className="stat-3d-row flex gap-2 mb-6 overflow-x-auto pb-1">

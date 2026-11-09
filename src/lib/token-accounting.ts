@@ -18,6 +18,9 @@ export type TokenModule =
   | 'news'
   | 'research'
   | 'dd-harness'
+  | 'dd-research'
+  | 'dd-ingest'
+  | 'dd-deck'
   | 'search-lib'
   | 'other'
 

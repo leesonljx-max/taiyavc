@@ -8,6 +8,7 @@ import type { PermissionUser } from '@/lib/permissions'
 import { canEditResearchProject } from '@/lib/research-permissions'
 import { upsertModuleResource, isValidModuleKey } from '@/lib/dd-workbench/resources'
 import { maybeAutoGenerateTeamEvaluation } from '@/lib/dd-workbench/team-evaluation'
+import { refreshGapsForProject } from '@/lib/dd-research/gap'
 
 /**
  * PUT /api/dd/resources/[projectId]/[moduleKey]
@@ -55,6 +56,7 @@ export async function PUT(
         where: { id: record.id },
         data: { conclusion: body.conclusion.slice(0, 5000) },
       })
+      await refreshGapsForProject(projectId)
       return NextResponse.json({ ok: true })
     }
 
@@ -72,6 +74,7 @@ export async function PUT(
       where: { id: record.id },
       data: { textBlocks: JSON.stringify(textBlocks) },
     })
+    await refreshGapsForProject(projectId)
 
     // 团队与治理：识别到团队资料（含文本框粘贴的简历截图）且尚无评价表时，自动生成团队评分表（后台执行，不阻塞保存）
     if (moduleKey === 'TEAM_GOVERNANCE') {

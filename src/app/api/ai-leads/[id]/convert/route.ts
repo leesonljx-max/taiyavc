@@ -200,6 +200,20 @@ export async function POST(
       }),
     ])
 
+    // 年报时间线：记录项目初始进入初聊阶段
+    try {
+      const { recordStageEvent } = await import('@/lib/annual-report/stage-events')
+      await recordStageEvent({
+        projectId: project.id,
+        toStage: 'INITIAL_TALK',
+        occurredAt: initialTalkDate,
+        source: 'SYSTEM',
+        actorId: session.user.id,
+      })
+    } catch (error) {
+      console.error('Record initial stage event error:', error)
+    }
+
     return NextResponse.json(
       {
         success: true,

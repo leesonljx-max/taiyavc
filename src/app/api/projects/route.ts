@@ -441,6 +441,20 @@ export async function POST(request: Request) {
       },
     })
 
+    // 年报时间线：记录项目初始进入阶段（初聊日期以 targetDate 为准）
+    try {
+      const { recordStageEvent } = await import('@/lib/annual-report/stage-events')
+      await recordStageEvent({
+        projectId: project.id,
+        toStage: initialStage,
+        occurredAt: project.targetDate,
+        source: 'SYSTEM',
+        actorId: session.user.id,
+      })
+    } catch (error) {
+      console.error('Record initial stage event error:', error)
+    }
+
     // 创建成功后删除被合并的项目线索
     if (mergedLead) {
       try {

@@ -152,6 +152,20 @@ export async function POST(
       select: { id: true, name: true },
     })
 
+    // 年报时间线：记录项目初始进入初聊阶段
+    try {
+      const { recordStageEvent } = await import('@/lib/annual-report/stage-events')
+      await recordStageEvent({
+        projectId: project.id,
+        toStage: initialStage,
+        occurredAt: targetDate,
+        source: 'SYSTEM',
+        actorId: session.user.id,
+      })
+    } catch (error) {
+      console.error('Record initial stage event error:', error)
+    }
+
     // ── BP 原文自动转存到项目详情页"项目文档"（方便查阅） ──
     try {
       const bpPath = localBpPath(record.fileUrl)

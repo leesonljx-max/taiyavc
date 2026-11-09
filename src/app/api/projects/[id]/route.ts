@@ -387,6 +387,23 @@ export async function PUT(
       data,
     })
 
+    // 年报时间线：普通阶段变更写事件（立项/交割走审批，在审批通过时写入）
+    if (data.followStage && data.followStage !== project.followStage) {
+      try {
+        const { recordStageEvent } = await import('@/lib/annual-report/stage-events')
+        await recordStageEvent({
+          projectId: params.id,
+          fromStage: project.followStage,
+          toStage: data.followStage,
+          occurredAt: updatedProject.stageChangedAt ?? new Date(),
+          source: 'SYSTEM',
+          actorId: session.user.id,
+        })
+      } catch (error) {
+        console.error('Record stage event error:', error)
+      }
+    }
+
     return NextResponse.json(
       { project: { ...updatedProject, totalAmount: updatedProject.totalAmount, raisedAmount: updatedProject.raisedAmount } }
     )

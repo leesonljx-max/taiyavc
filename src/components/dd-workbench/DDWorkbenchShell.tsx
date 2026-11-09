@@ -19,6 +19,10 @@ import DocumentPreviewModal from '@/components/DocumentPreviewModal'
 import RichTextEditor from '@/components/RichTextEditor'
 import { ModuleVisual, MODULE_VISUAL_LABELS, type VisualTaskStats } from './ModuleVisuals'
 import TeamEvaluationCard from './TeamEvaluationCard'
+import DDResearchBar, { type ResearchModuleBadge } from './DDResearchBar'
+import DDGapDrawer, { type GapSummaryView, type GapItemView } from './DDGapDrawer'
+import DDUnclassifiedPanel from './DDUnclassifiedPanel'
+import DDDeckViewer from './DDDeckViewer'
 import { DD_EVIDENCE_GRADE_LABELS, DD_EVIDENCE_STATUS_LABELS } from '@/lib/dd-workbench/constants'
 
 // ── 类型（与后端 resources.ts 对齐） ──
@@ -165,6 +169,17 @@ export default function DDWorkbenchShell({
   const [decision, setDecision] = useState<DecisionState | null>(null)
   // 查看尽调报告全文弹窗
   const [showFullReport, setShowFullReport] = useState(false)
+  // 全网研究：每模块网络事实/来源数（来自 DDResearchBar 轮询）
+  const [researchModules, setResearchModules] = useState<ResearchModuleBadge[]>([])
+  // 缺口
+  const [gapSummary, setGapSummary] = useState<GapSummaryView | null>(null)
+  const [gaps, setGaps] = useState<GapItemView[]>([])
+  const [gapsLoading, setGapsLoading] = useState(false)
+  const [showGaps, setShowGaps] = useState(false)
+  // PPT 报告查看
+  const [activeDeckId, setActiveDeckId] = useState<string | null>(null)
+  // 资料中心分段：九大模块 / 非分类资料
+  const [centerTab, setCenterTab] = useState<'modules' | 'unclassified'>('modules')
 
   const fetchResources = useCallback(async () => {
     try {
@@ -184,13 +199,27 @@ export default function DDWorkbenchShell({
     } catch { /* 决策加载失败不阻塞 */ }
   }, [projectId])
 
+  const fetchGaps = useCallback(async () => {
+    setGapsLoading(true)
+    try {
+      const res = await fetch(`/api/dd/gaps/${projectId}`)
+      const data = await res.json()
+      if (res.ok) {
+        setGapSummary(data.summary || null)
+        setGaps(Array.isArray(data.gaps) ? data.gaps : [])
+      }
+    } catch { /* 缺口加载失败不阻塞工作台 */ } finally {
+      setGapsLoading(false)
+    }
+  }, [projectId])
+
   useEffect(() => {
-    Promise.all([fetchResources(), fetchDecision()]).finally(() => setLoading(false))
-  }, [fetchResources, fetchDecision])
+    Promise.all([fetchResources(), fetchDecision(), fetchGaps()]).finally(() => setLoading(false))
+  }, [fetchResources, fetchDecision, fetchGaps])
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([fetchResources(), fetchDecision()])
-  }, [fetchResources, fetchDecision])
+    await Promise.all([fetchResources(), fetchDecision(), fetchGaps()])
+  }, [fetchResources, fetchDecision, fetchGaps])
 
   // ── 生成尽调报告 ──
   const handleGenerateReport = async () => {
@@ -257,9 +286,9 @@ export default function DDWorkbenchShell({
                 <button
                   onClick={() => setShowFullReport(true)}
                   className="btn-primary"
-                  title="查看九大模块汇总的完整尽调报告"
+                  title="查看九大模块汇总文本（非 PPT 尽调报告）"
                 >
-                  📄 查看尽调报告
+                  📄 查看九模块汇总
                 </button>
               )}
               <button
@@ -270,9 +299,9 @@ export default function DDWorkbenchShell({
                     ? 'bg-primary-600 text-white hover:bg-primary-700'
                     : 'bg-gray-200 text-gray-500 cursor-not-allowed'
                 }`}
-                title={!allComplete ? '九大模块资料完整后变为蓝色可点击' : '按九大模块生成尽调报告'}
+                title={!allComplete ? '九大模块资料完整后变为蓝色可点击' : '按九大模块生成/刷新文本分析'}
               >
-                {generating ? '报告生成中...' : reportReady ? '🔄 重新生成尽调报告' : '生成尽调报告'}
+                {generating ? '九模块分析生成中...' : reportReady ? '🔄 重新生成九模块分析' : '生成九模块分析'}
               </button>
               <button
                 onClick={() => setFlipped(true)}
@@ -282,6 +311,16 @@ export default function DDWorkbenchShell({
               </button>
             </div>
           </div>
+
+          <DDResearchBar
+            projectId={projectId}
+            canEdit={canEdit}
+            gapSummary={gapSummary}
+            onGapClick={() => setShowGaps(true)}
+            onModules={mods => setResearchModules(mods)}
+            onResearchFinished={() => { void refreshAll() }}
+            onOpenDeck={deckId => setActiveDeckId(deckId)}
+          />
 
           {reportMsg && (
             <div className={`mb-4 p-3 rounded-xl text-xs border ${allComplete ? 'bg-primary-50 text-primary-700 border-primary-100' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>{reportMsg}</div>
@@ -303,6 +342,8 @@ export default function DDWorkbenchShell({
               const complete = isComplete(res)
               const analyzed = !!res.analysis
               const progress = moduleProgress(res)
+              const rm = researchModules.find(m => m.moduleKey === res.moduleKey)
+              const openGaps = gaps.filter(g => g.moduleKey === res.moduleKey && g.status === 'OPEN').length
               const active = selectedKey === res.moduleKey
               return (
                 <button
@@ -353,6 +394,9 @@ export default function DDWorkbenchShell({
                     {c.texts > 0 && <span className="px-1.5 py-0.5 bg-primary-50 text-primary-600 rounded">📝 {c.texts}</span>}
                     {c.shots > 0 && <span className="px-1.5 py-0.5 bg-primary-50 text-primary-600 rounded">🖼 {c.shots}</span>}
                     {res.report && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded">📊 报告</span>}
+                    {rm && rm.factCount > 0 && <span className="px-1.5 py-0.5 bg-teal-50 text-teal-600 rounded" title="全网检索抽取的事实数">🌐 {rm.factCount}</span>}
+                    {rm && rm.sourceCount > 0 && <span className="px-1.5 py-0.5 bg-sky-50 text-sky-600 rounded" title="公开来源数">🔗 {rm.sourceCount}</span>}
+                    {openGaps > 0 && <span className="px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded" title="待补充资料项">⚠ 缺 {openGaps}</span>}
                     {c.docs + c.texts + c.shots === 0 && <span className="text-gray-300">待补充</span>}
                   </div>
                 </button>
@@ -425,27 +469,49 @@ export default function DDWorkbenchShell({
                 </span>
                 资料中心 · {projectName}
               </h2>
-              <p className="text-xs text-gray-400 mt-1">九大模块的文档与文本都在这里管理（文本框支持直接粘贴截图） · 上传后前台模块与报告自动汇总</p>
+              <p className="text-xs text-gray-400 mt-1">九大模块的文档与文本都在这里管理（文本框支持直接粘贴截图） · 非分类资料自动 OCR 并推荐归类 · 上传后前台模块与报告自动汇总</p>
             </div>
             <button onClick={() => setFlipped(false)} className="px-4 py-2 bg-surface border border-hairline text-primary-600 text-sm font-bold rounded-full hover:bg-primary-50">
               ← 返回工作台
             </button>
           </div>
 
-          <div className="space-y-3">
-            {resources.map((res, i) => (
-              <ResourceCenterModule
-                key={res.moduleKey}
-                projectId={projectId}
-                index={i}
-                module={res}
-                canEdit={canEdit}
-                expanded={expandedKey === res.moduleKey}
-                onToggle={() => setExpandedKey(expandedKey === res.moduleKey ? null : res.moduleKey)}
-                onChanged={fetchResources}
-              />
-            ))}
+          <div className="flex items-center gap-2 flex-wrap mb-4">
+            <div className="inline-flex p-1 bg-gray-100 rounded-full">
+              <button
+                onClick={() => setCenterTab('modules')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-full transition-all ${centerTab === 'modules' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                九大模块资料
+              </button>
+              <button
+                onClick={() => setCenterTab('unclassified')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-full transition-all ${centerTab === 'unclassified' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                非分类资料（自动 OCR）
+              </button>
+            </div>
+            <span className="text-[11px] text-gray-400">不确定归属的文件先放这里，系统自动识别内容并推荐归类</span>
           </div>
+
+          {centerTab === 'unclassified' ? (
+            <DDUnclassifiedPanel projectId={projectId} canEdit={canEdit} onChanged={refreshAll} />
+          ) : (
+            <div className="space-y-3">
+              {resources.map((res, i) => (
+                <ResourceCenterModule
+                  key={res.moduleKey}
+                  projectId={projectId}
+                  index={i}
+                  module={res}
+                  canEdit={canEdit}
+                  expanded={expandedKey === res.moduleKey}
+                  onToggle={() => setExpandedKey(expandedKey === res.moduleKey ? null : res.moduleKey)}
+                  onChanged={refreshAll}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
       </div>
@@ -454,6 +520,27 @@ export default function DDWorkbenchShell({
       {showFullReport && reportReady && (
         <DDFullReportModal projectName={projectName} resources={resources} onClose={() => setShowFullReport(false)} />
       )}
+
+      {showGaps && (
+        <DDGapDrawer
+          projectId={projectId}
+          open={showGaps}
+          canEdit={canEdit}
+          userRole={userRole}
+          summary={gapSummary}
+          gaps={gaps}
+          loading={gapsLoading}
+          onClose={() => setShowGaps(false)}
+          onRefresh={fetchGaps}
+          onGoModule={moduleKey => {
+            setShowGaps(false)
+            setCenterTab('modules')
+            setExpandedKey(moduleKey)
+            setFlipped(true)
+          }}
+        />
+      )}
+      {activeDeckId && <DDDeckViewer deckId={activeDeckId} onClose={() => setActiveDeckId(null)} />}
     </>
   )
 }

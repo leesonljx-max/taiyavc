@@ -8,6 +8,7 @@ import type { PermissionUser } from '@/lib/permissions'
 import { canEditResearchProject } from '@/lib/research-permissions'
 import { upsertModuleResource, isValidModuleKey, type DDResourceDoc } from '@/lib/dd-workbench/resources'
 import { maybeAutoGenerateTeamEvaluation } from '@/lib/dd-workbench/team-evaluation'
+import { refreshGapsForProject } from '@/lib/dd-research/gap'
 import { extractTextFromFile } from '@/lib/document-extract'
 import { writeFile, mkdir, unlink } from 'fs/promises'
 import { join } from 'path'
@@ -128,6 +129,9 @@ export async function POST(
       void maybeAutoGenerateTeamEvaluation(projectId)
     }
 
+    // 新资料可能覆盖必备证据，自动关闭对应缺口
+    await refreshGapsForProject(projectId)
+
     return NextResponse.json({ ok: true, count: docs.length })
   } catch (error) {
     console.error('DD module document upload error:', error)
@@ -181,6 +185,9 @@ export async function DELETE(
     // 清理本地文件（失败不阻塞）
     const local = localFilePath(target.fileUrl)
     if (local) await unlink(local).catch(() => {})
+
+    // 资料移除后重新评估缺口
+    await refreshGapsForProject(projectId)
 
     return NextResponse.json({ ok: true, count: remaining.length })
   } catch (error) {

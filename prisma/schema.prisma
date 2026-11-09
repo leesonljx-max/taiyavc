@@ -72,6 +72,13 @@ model Project {
   postInvestDocs      PostInvestDoc[]
   postInvestMetrics   PostInvestMetric[]
   postInvestAnalyses  PostInvestAnalysis[]
+  // 阶段事件（年度报告的时间线基础）
+  stageEvents      ProjectStageEvent[]
+  // 尽调工作台：全网研究 / 非分类资料 / 缺口 / 幻灯片报告
+  ddResearchRuns       DDResearchRun[]
+  ddUnclassifiedAssets DDUnclassifiedAsset[]
+  ddGaps               DDGap[]
+  ddSlideDecks         DDSlideDeck[]
   createdBy        User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   @@index([name])
@@ -185,6 +192,66 @@ model User {
   projectInterpretations ProjectInterpretation[] @relation("ProjectInterpretations")
   // 技能层：创建的动态技能（P3.5 个人技能）
   agentSkills AgentSkill[]
+  // 阶段事件：操作人
+  stageEvents ProjectStageEvent[] @relation("ProjectStageEventActor")
+  // 年度报告：生成人 / 个人版归属人
+  annualReportsGenerated AnnualReport[] @relation("AnnualReportGenerator")
+  annualReportsOwned     AnnualReport[] @relation("AnnualReportOwner")
+}
+
+// 项目阶段事件（年度报告的数据地基）
+// - occurredAt 允许为空：历史数据只能确认「经过」而无法确认日期时，precision=UNKNOWN
+// - 只参与漏斗计数，不参与月度分布，避免伪造时间线
+model ProjectStageEvent {
+  id          String    @id @default(cuid())
+  projectId   String
+  fromStage   String?
+  toStage     String
+  occurredAt  DateTime?
+  precision   String    @default("DAY") // DAY / MONTH / UNKNOWN
+  source      String    @default("SYSTEM") // SYSTEM / APPROVAL / BACKFILL / MANUAL
+  actorId     String?
+  requestId   String?
+  note        String?
+  createdAt   DateTime  @default(now())
+
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actor       User?     @relation("ProjectStageEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, occurredAt])
+  @@index([toStage, occurredAt])
+  @@index([source])
+}
+
+// 年度报告快照（个人版 / 公司版）
+model AnnualReport {
+  id              String    @id @default(cuid())
+  year            Int
+  type            String // PERSONAL / COMPANY
+  ownerKey        String // userId 或 "__company__"
+  ownerId         String?
+  status          String    @default("QUEUED") // QUEUED / GENERATING / READY / FAILED
+  phase           String? // COLLECTING / RESEARCHING / COMPOSING
+  progress        Int       @default(0)
+  version         Int       @default(1)
+  templateVersion String    @default("v1")
+  dataJson        String?
+  summaryJson     String?
+  pageCount       Int       @default(0)
+  generatedById   String
+  generatedAt     DateTime?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  error           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  generatedBy     User      @relation("AnnualReportGenerator", fields: [generatedById], references: [id], onDelete: Cascade)
+  owner           User?     @relation("AnnualReportOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@unique([year, type, ownerKey, version])
+  @@index([year, type, ownerKey, status])
+  @@index([status, createdAt])
 }
 
 // 项目线索（用于在新建项目时进行重合检测和合并，也用于AI自动检索）
@@ -1053,4 +1120,194 @@ model AgentSkill {
 
   @@index([createdById, status])
   @@index([type, status])
+}
+
+// ═══════════════════════════════════════════════════════════
+// 尽调工作台 v3：全网资料自动尽调与 PPT 报告
+// 研究层（Run/Source/Fact）→ 缺口层（Gap）→ 幻灯片层（Deck/Slide）
+// 研究事实与正式证据分离：Fact 允许待确认/冲突，Deck 只引用有来源的事实
+// ═══════════════════════════════════════════════════════════
+
+// 项目级全网研究任务：覆盖九大模块，可关联一个尽调批次
+model DDResearchRun {
+  id         String    @id @default(cuid())
+  projectId  String
+  batchId    String?
+  status     String    @default("QUEUED") // QUEUED / RUNNING / PARTIAL / DONE / FAILED
+  phase      String    @default("PLAN") // PLAN / SEARCH / EXTRACT / SCORE / GAP
+  progress   Int       @default(0)
+  scopeJson  String? // { modules: string[], force: boolean }
+  statsJson  String? // { sourceCount, factCount, gapCount, coverage, searchCount }
+  error      String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  project Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  modules DDModuleResearch[]
+  sources DDResearchSource[]
+  facts   DDResearchFact[]
+
+  @@index([projectId, createdAt])
+  @@index([status])
+}
+
+// 单模块研究状态（覆盖度与计数）
+model DDModuleResearch {
+  id          String   @id @default(cuid())
+  runId       String
+  moduleKey   String
+  status      String   @default("PENDING") // PENDING / RUNNING / READY / PARTIAL / INSUFFICIENT / FAILED
+  coverage    Float    @default(0)
+  factCount   Int      @default(0)
+  sourceCount Int      @default(0)
+  gapCount    Int      @default(0)
+  error       String?
+  updatedAt   DateTime @updatedAt
+
+  run DDResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, moduleKey])
+  @@index([runId])
+}
+
+// 公开来源（同一轮内 URL 唯一）
+model DDResearchSource {
+  id          String    @id @default(cuid())
+  runId       String
+  moduleKey   String
+  url         String
+  title       String?
+  domain      String
+  publishedAt DateTime?
+  snippet     String?
+  content     String? // 截断正文，≤ 20k 字符
+  sourceType  String    @default("WEB") // WEB / OFFICIAL / MEDIA / REPORT
+  grade       String    @default("C") // A / B / C / D
+  contentHash String?
+  fetchedAt   DateTime  @default(now())
+
+  run   DDResearchRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  facts DDResearchFact[]
+
+  @@unique([runId, url])
+  @@index([runId, moduleKey])
+}
+
+// 研究事实：必须绑定来源与原文摘录；无来源不生成
+model DDResearchFact {
+  id         String   @id @default(cuid())
+  runId      String
+  moduleKey  String
+  fact       String
+  value      String?
+  unit       String?
+  period     String?
+  quote      String?
+  sourceId   String?
+  confidence Float    @default(0.5)
+  grade      String   @default("C")
+  importance String   @default("NORMAL") // CORE / NORMAL
+  status     String   @default("PENDING") // PENDING / CONFIRMED / REJECTED / CONFLICT
+  createdBy  String?
+  createdAt  DateTime @default(now())
+
+  run    DDResearchRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  source DDResearchSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  @@index([runId, moduleKey, status])
+  @@index([sourceId])
+}
+
+// 非分类资料池：上传快速入库，OCR 与归类异步完成
+model DDUnclassifiedAsset {
+  id                 String    @id @default(cuid())
+  projectId          String
+  fileName           String
+  fileUrl            String
+  fileType           String
+  fileSize           Int
+  text               String?
+  ocrStatus          String    @default("PENDING") // PENDING / PROCESSING / READY / FAILED
+  ocrConfidence      Float?
+  pageCount          Int?
+  classificationJson String? // [{ moduleKey, confidence, rationale }]
+  status             String    @default("UNCLASSIFIED") // UNCLASSIFIED / CLASSIFIED
+  moduleKey          String?
+  contentHash        String?
+  uploadedBy         String
+  error              String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, contentHash])
+  @@index([projectId, status])
+}
+
+// 缺口：模块必备证据与现有事实/资料的差距
+model DDGap {
+  id             String    @id @default(cuid())
+  projectId      String
+  moduleKey      String
+  gapKey         String
+  label          String
+  severity       String // BLOCKING / RECOMMENDED
+  reason         String?
+  suggestedTypes String?
+  status         String    @default("OPEN") // OPEN / RESOLVED / WAIVED
+  resolvedBy     String?
+  resolvedAssetId String?
+  resolvedAt     DateTime?
+  waivedBy       String?
+  waivedAt       DateTime?
+  waiveReason    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, moduleKey, gapKey])
+  @@index([projectId, status, severity])
+}
+
+// 幻灯片产物：同一份 SlideSpec 可渲染为在线预览 / PNG / PPTX
+model DDSlideDeck {
+  id              String    @id @default(cuid())
+  projectId       String
+  batchId         String?
+  type            String // BRIEF / FINAL
+  status          String    @default("QUEUED") // QUEUED / GENERATING / READY / FAILED
+  templateVersion String    @default("v1")
+  theme           String    @default("navy-gold")
+  slideCount      Int       @default(0)
+  specJson        String?
+  pptxUrl         String?
+  generatedBy     String
+  generatedAt     DateTime?
+  error           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  project Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  slides  DDSlide[]
+
+  @@index([projectId, type, createdAt])
+  @@index([status])
+}
+
+model DDSlide {
+  id          String @id @default(cuid())
+  deckId      String
+  slideNo     Int
+  layout      String
+  title       String
+  contentJson String
+  notes       String?
+
+  deck DDSlideDeck @relation(fields: [deckId], references: [id], onDelete: Cascade)
+
+  @@unique([deckId, slideNo])
 }
