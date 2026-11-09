@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
+import { Readable } from 'stream'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,10 +30,24 @@ const MIME_TYPES: Record<string, string> = {
 }
 
 // 只允许访问这些目录
-const ALLOWED_DIRS = new Set(['avatars', 'project-docs', 'project-images', 'research-docs', 'interpretation-docs', 'interpretation-images', 'post-investment-docs'])
+const ALLOWED_DIRS = new Set([
+  'avatars',
+  'project-docs',
+  'project-images',
+  'research-docs',
+  'interpretation-docs',
+  'interpretation-images',
+  'post-investment-docs',
+  'post-investment-thumbs',
+])
 
+/**
+ * 文件服务（流式 + Range）
+ * - 用 createReadStream 代替 readFileSync：读大文件时不再阻塞 Node 事件循环
+ * - 支持 Range（PDF 预览可分段加载，拖动进度条不用整文件重下）
+ */
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: { path: string[] } }
 ) {
   try {
@@ -54,27 +69,71 @@ export async function GET(
 
     const absolutePath = path.join(process.cwd(), 'public', filePath)
 
-    // 检查文件是否存在
-    if (!fs.existsSync(absolutePath)) {
+    let stat: fs.Stats
+    try {
+      stat = await fs.promises.stat(absolutePath)
+    } catch {
       return new NextResponse('Not Found', { status: 404 })
     }
-
-    const stat = fs.statSync(absolutePath)
     if (!stat.isFile()) {
       return new NextResponse('Not Found', { status: 404 })
     }
 
     const ext = path.extname(absolutePath).toLowerCase()
     const contentType = MIME_TYPES[ext] || 'application/octet-stream'
+    const baseHeaders = {
+      'Content-Type': contentType,
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    }
 
-    const fileBuffer = fs.readFileSync(absolutePath)
+    // Range 请求：bytes=start-end / bytes=start- / bytes=-suffix
+    const rangeHeader = request.headers.get('range')
+    const match = rangeHeader?.match(/^bytes=(\d*)-(\d*)$/)
+    if (match) {
+      const hasStart = match[1] !== ''
+      const hasEnd = match[2] !== ''
+      let start = hasStart ? Number(match[1]) : 0
+      let end = hasEnd ? Number(match[2]) : stat.size - 1
 
-    return new NextResponse(fileBuffer, {
+      // 后缀范围：bytes=-N 表示最后 N 字节
+      if (!hasStart && hasEnd) {
+        const suffixLength = Number(match[2])
+        start = Math.max(0, stat.size - suffixLength)
+        end = stat.size - 1
+      }
+
+      if (
+        !Number.isFinite(start) ||
+        !Number.isFinite(end) ||
+        start < 0 ||
+        start >= stat.size ||
+        end < start
+      ) {
+        return new NextResponse(null, {
+          status: 416,
+          headers: { 'Content-Range': `bytes */${stat.size}`, 'Accept-Ranges': 'bytes' },
+        })
+      }
+      end = Math.min(end, stat.size - 1)
+
+      const stream = fs.createReadStream(absolutePath, { start, end })
+      return new NextResponse(Readable.toWeb(stream) as unknown as ReadableStream, {
+        status: 206,
+        headers: {
+          ...baseHeaders,
+          'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+          'Content-Length': String(end - start + 1),
+        },
+      })
+    }
+
+    const stream = fs.createReadStream(absolutePath)
+    return new NextResponse(Readable.toWeb(stream) as unknown as ReadableStream, {
       status: 200,
       headers: {
-        'Content-Type': contentType,
-        'Content-Length': stat.size.toString(),
-        'Cache-Control': 'public, max-age=31536000, immutable',
+        ...baseHeaders,
+        'Content-Length': String(stat.size),
       },
     })
   } catch (error) {

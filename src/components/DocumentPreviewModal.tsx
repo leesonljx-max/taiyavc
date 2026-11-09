@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 interface DocumentPreviewModalProps {
   open: boolean
@@ -8,6 +8,8 @@ interface DocumentPreviewModalProps {
   fileName: string
   fileUrl: string
   fileType: string
+  /** PDF 首页缩略图：先显示缩略图，用户点击后再加载完整文件（省带宽） */
+  thumbUrl?: string | null
   /** 服务端提取的文档全文（pptx 等无法还原版式格式的文本阅览） */
   textContent?: string
   /** 服务端渲染的 HTML（docx/xlsx 在线阅览，自渲染不依赖外部服务） */
@@ -34,9 +36,19 @@ export default function DocumentPreviewModal({
   fileName,
   fileUrl,
   fileType,
+  thumbUrl,
   textContent,
   previewHtml,
 }: DocumentPreviewModalProps) {
+  // PDF：默认只加载首页缩略图，点击后才加载完整文件
+  const [showFull, setShowFull] = useState(false)
+  const [thumbFailed, setThumbFailed] = useState(false)
+
+  useEffect(() => {
+    setShowFull(false)
+    setThumbFailed(false)
+  }, [open, fileUrl])
+
   // ESC 关闭
   useEffect(() => {
     if (!open) return
@@ -131,13 +143,32 @@ export default function DocumentPreviewModal({
               <pre className="flex-1 px-5 py-4 text-xs text-gray-700 whitespace-pre-wrap leading-relaxed font-sans overflow-auto">{textContent}</pre>
             </div>
           ) : hasFile && (isPdf || isText) ? (
-            /* PDF / txt / md：浏览器原生渲染 */
-            <iframe
-              src={fileUrl}
-              title={fileName}
-              className="w-full h-full border-0"
-              style={{ minHeight: '100%' }}
-            />
+            isPdf && thumbUrl && !showFull && !thumbFailed ? (
+              /* PDF 先看首页缩略图，点击后再下载完整文件（避免一打开就占满服务器带宽） */
+              <div className="flex flex-col h-full">
+                <div className="flex-1 min-h-0 flex items-center justify-center p-6">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={thumbUrl}
+                    alt={`${fileName} 首页预览`}
+                    className="max-h-full max-w-full object-contain bg-white shadow-soft"
+                    onError={() => setThumbFailed(true)}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-hairline bg-surface flex-shrink-0">
+                  <span className="text-[11px] text-ink-faint">已加载首页缩略图，完整文档按需加载</span>
+                  <button onClick={() => setShowFull(true)} className="btn-primary">加载完整文档</button>
+                </div>
+              </div>
+            ) : (
+              /* PDF / txt / md：浏览器原生渲染（支持 Range 分段加载） */
+              <iframe
+                src={fileUrl}
+                title={fileName}
+                className="w-full h-full border-0"
+                style={{ minHeight: '100%' }}
+              />
+            )
           ) : (
             <div className="flex flex-col items-center justify-center h-full p-8 text-center">
               <div className="w-20 h-20 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">

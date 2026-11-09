@@ -93,6 +93,16 @@ function toPublicUrl(fileUrl: string): string {
 }
 
 async function readDocFile(fileUrl: string): Promise<Buffer | null> {
+  // COS/CDN 上的文件（服务端转换预览时按需拉取）
+  if (/^https?:\/\//i.test(fileUrl)) {
+    try {
+      const res = await fetch(fileUrl)
+      if (!res.ok) return null
+      return Buffer.from(await res.arrayBuffer())
+    } catch {
+      return null
+    }
+  }
   const m = fileUrl.match(/\/(?:api\/uploads\/)?post-investment-docs\/([A-Za-z0-9._-]+)$/)
   if (!m) return null
   try {

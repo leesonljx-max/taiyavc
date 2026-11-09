@@ -9,12 +9,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
+import dynamic from 'next/dynamic'
 import DashboardLayout from '@/components/DashboardLayout'
 import { SkillPanelLauncher } from '@/components/SkillPanel'
-import DocumentPreviewModal from '@/components/DocumentPreviewModal'
 import RichText from '@/components/RichText'
-import RichTextEditor from '@/components/RichTextEditor'
 import { CORE_METRIC_KEYS, METRIC_BY_KEY } from '@/lib/post-investment/metrics'
+
+// 首屏按需加载：预览弹窗与富文本编辑器只在打开时下载对应 chunk
+const DocumentPreviewModal = dynamic(() => import('@/components/DocumentPreviewModal'), { ssr: false })
+const RichTextEditor = dynamic(() => import('@/components/RichTextEditor'), { ssr: false })
 
 // ── 类型（与 API 对齐） ──
 
@@ -27,6 +30,9 @@ interface PIDoc {
   fileType: string
   fileSize: number
   hasText: boolean
+  textStatus?: 'PENDING' | 'PROCESSING' | 'READY' | 'FAILED'
+  textError?: string | null
+  thumbUrl?: string | null
   uploadedBy: string
   uploadedAt: string
 }
@@ -165,6 +171,7 @@ export default function PostInvestmentDetailPage() {
   const [uploadType, setUploadType] = useState('OPERATION_REPORT')
   const [uploading, setUploading] = useState(false)
   const [uploadErr, setUploadErr] = useState('')
+  const [uploadMsg, setUploadMsg] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // 期次选择与分析
@@ -173,7 +180,7 @@ export default function PostInvestmentDetailPage() {
   const [analyzeMsg, setAnalyzeMsg] = useState('')
   const [analyzeErr, setAnalyzeErr] = useState('')
 
-  const [previewDoc, setPreviewDoc] = useState<{ fileName: string; fileUrl: string; fileType: string; textContent?: string; previewHtml?: string } | null>(null)
+  const [previewDoc, setPreviewDoc] = useState<{ fileName: string; fileUrl: string; fileType: string; thumbUrl?: string | null; textContent?: string; previewHtml?: string } | null>(null)
 
   // 手动填写投后资料
   const [manualOpen, setManualOpen] = useState(false)
@@ -227,10 +234,10 @@ export default function PostInvestmentDetailPage() {
         const j = await r.json()
         if (j.kind === 'html' && j.html) previewHtml = j.html
         else if (j.kind === 'text' && j.text) textContent = j.text
-        else if (j.kind === 'file' && j.url) { setPreviewDoc({ fileName: d.fileName, fileUrl: j.url, fileType: d.fileType }); return }
+        else if (j.kind === 'file' && j.url) { setPreviewDoc({ fileName: d.fileName, fileUrl: j.url, fileType: d.fileType, thumbUrl: d.thumbUrl }); return }
       }
     } catch { /* 加载失败不阻塞预览 */ }
-    setPreviewDoc({ fileName: d.fileName, fileUrl, fileType: d.fileType, textContent, previewHtml })
+    setPreviewDoc({ fileName: d.fileName, fileUrl, fileType: d.fileType, thumbUrl: d.thumbUrl, textContent, previewHtml })
   }
 
   const load = useCallback(async () => {
@@ -251,10 +258,20 @@ export default function PostInvestmentDetailPage() {
     load()
   }, [status, load])
 
+  // 有资料在后台识别时，每 10 秒刷新一次状态（识别完成后自动消失）
+  useEffect(() => {
+    if (!data) return
+    const processing = data.docs.some(d => d.textStatus === 'PENDING' || d.textStatus === 'PROCESSING')
+    if (!processing) return
+    const timer = setTimeout(() => { load() }, 10000)
+    return () => clearTimeout(timer)
+  }, [data, load])
+
   const uploadFile = async (file: File) => {
     if (uploading) return
     setUploading(true)
     setUploadErr('')
+    setUploadMsg('')
     try {
       const fd = new FormData()
       fd.append('projectId', params.projectId)
@@ -264,7 +281,9 @@ export default function PostInvestmentDetailPage() {
       const res = await fetch('/api/post-investment/documents', { method: 'POST', body: fd })
       const json = await res.json()
       if (!res.ok) { setUploadErr(json.error || '上传失败'); return }
-      if (json.doc && !json.doc.hasText) {
+      if (json.doc?.textStatus === 'PENDING' || json.doc?.textStatus === 'PROCESSING') {
+        setUploadMsg(`「${json.doc.fileName}」已上传，正在后台识别（扫描件可能需要几分钟），识别完成后可参与 AI 分析`)
+      } else if (json.doc && !json.doc.hasText) {
         setUploadErr(`「${json.doc.fileName}」上传成功，但未能提取文本（扫描件会自动尝试 OCR；仍失败请确认扫描清晰度），AI 分析可能无法使用该文件`)
       }
       await load()
@@ -511,15 +530,16 @@ export default function PostInvestmentDetailPage() {
                   />
                 </label>
                 <button
-                  onClick={() => { setManualOpen(true); setManualText(''); setUploadErr('') }}
+                  onClick={() => { setManualOpen(true); setManualText(''); setUploadErr(''); setUploadMsg('') }}
                   disabled={uploading}
                   className="btn-secondary"
                 >
                   ✍️ 手动填写
                 </button>
-                <span className="text-[11px] text-ink-faint">支持 PDF（含扫描件 OCR）/ Word / Excel（xls/xlsx/xlsm，不限大小）/ PPT / txt / 图片（OCR）；也可手动填写投后信息。报告期仅可选择已结束的季度/半年/全年，默认最近一期</span>
+                <span className="text-[11px] text-ink-faint">支持 PDF（含扫描件 OCR）/ Word / Excel（xls/xlsx/xlsm，≤100MB）/ PPT / txt / 图片（OCR）；也可手动填写投后信息。报告期仅可选择已结束的季度/半年/全年，默认最近一期</span>
               </div>
               {uploadErr && <p className="mt-2.5 text-xs text-danger-600 bg-danger-50 rounded-xl px-3 py-2">{uploadErr}</p>}
+              {uploadMsg && <p className="mt-2.5 text-xs text-primary-700 bg-primary-50 rounded-xl px-3 py-2">{uploadMsg}</p>}
             </div>
           )}
 
@@ -568,6 +588,12 @@ export default function PostInvestmentDetailPage() {
                     <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${DOC_TYPE_META[d.docType]?.badge || ''}`}>{DOC_TYPE_META[d.docType]?.label || d.docType}</span>
                     <span className="text-ink truncate max-w-[200px]">{d.fileName}</span>
                     <span className="text-ink-faint">{fmtSize(d.fileSize)}</span>
+                    {(d.textStatus === 'PENDING' || d.textStatus === 'PROCESSING') && (
+                      <span className="text-[10px] text-amber-600 animate-pulse">识别中</span>
+                    )}
+                    {d.textStatus === 'FAILED' && (
+                      <span className="text-[10px] text-danger-600" title={d.textError || '识别失败'}>识别失败</span>
+                    )}
                     {canEdit && (
                       <span
                         onClick={e => { e.stopPropagation(); deleteDoc(d.id) }}
@@ -902,6 +928,7 @@ export default function PostInvestmentDetailPage() {
           fileName={previewDoc.fileName}
           fileUrl={previewDoc.fileUrl}
           fileType={previewDoc.fileType}
+          thumbUrl={previewDoc.thumbUrl}
           textContent={previewDoc.textContent}
           previewHtml={previewDoc.previewHtml}
         />
@@ -921,6 +948,12 @@ function DocChip({ doc, canEdit, label, onPreview, onDelete }: { doc: PIDoc; can
       <button onClick={onPreview} className="flex-1 text-left text-ink truncate text-[10px] hover:text-primary-600" title={doc.fileName}>
         {doc.fileName}
       </button>
+      {(doc.textStatus === 'PENDING' || doc.textStatus === 'PROCESSING') && (
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse flex-shrink-0" title="后台识别中" />
+      )}
+      {doc.textStatus === 'FAILED' && (
+        <span className="text-danger-600 text-[9px] font-bold flex-shrink-0" title={doc.textError || '识别失败'}>!</span>
+      )}
       {canEdit && (
         <button onClick={onDelete} className="text-ink-faint hover:text-danger-600 text-[10px] px-0.5 opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
       )}

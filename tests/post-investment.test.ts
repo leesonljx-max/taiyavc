@@ -24,6 +24,7 @@ import { GET as DOC_PREVIEW } from '@/app/api/post-investment/documents/preview/
 import { GET as PI_DETAIL } from '@/app/api/post-investment/[projectId]/route'
 import { POST as ANALYZE_POST } from '@/app/api/post-investment/[projectId]/analyze/route'
 import { POST as INVESTMENT_POST } from '@/app/api/post-investment/[projectId]/investment/route'
+import { GET as UPLOADS_GET } from '@/app/api/uploads/[...path]/route'
 
 const SUFFIX = String(Date.now()).slice(-6)
 const MANAGER_EMAIL = `d5-mgr-${SUFFIX}@test.com`
@@ -883,4 +884,88 @@ test('投资信息：录入确认后锁定不可更改；校验与权限；列�
   assert.equal(item.investment.fund, fundName)
   assert.equal(item.investment.amount, 2500)
   assert.ok(list.funds.includes(fundName))
+})
+
+// ── v2.7.0：后台识别（OCR 异步化）/ 流式文件服务 ──
+
+test('文件服务：流式返回并支持 Range；非法范围返回 416', async () => {
+  const name = `range-${SUFFIX}.txt`
+  await writeUploadFile(name, Buffer.from('0123456789abcdef'))
+
+  const partial = await UPLOADS_GET(
+    new Request(`http://t/api/uploads/post-investment-docs/${name}`, { headers: { Range: 'bytes=2-5' } }),
+    { params: { path: ['post-investment-docs', name] } }
+  )
+  assert.equal(partial.status, 206)
+  assert.equal(partial.headers.get('content-range'), 'bytes 2-5/16')
+  assert.equal(partial.headers.get('accept-ranges'), 'bytes')
+  assert.equal(await partial.text(), '2345')
+
+  const invalid = await UPLOADS_GET(
+    new Request(`http://t/api/uploads/post-investment-docs/${name}`, { headers: { Range: 'bytes=20-30' } }),
+    { params: { path: ['post-investment-docs', name] } }
+  )
+  assert.equal(invalid.status, 416)
+  assert.equal(invalid.headers.get('content-range'), 'bytes */16')
+
+  // 路径遍历被拒绝
+  const traversal = await UPLOADS_GET(
+    new Request('http://t/api/uploads/post-investment-docs/../.env'),
+    { params: { path: ['post-investment-docs', '..', '.env'] } }
+  )
+  assert.equal(traversal.status, 403)
+})
+
+test('上传图片：OCR 转后台，接口立即返回 textStatus=PENDING', async () => {
+  asManager()
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64'
+  )
+  const fd = new FormData()
+  fd.set('projectId', projectId)
+  fd.set('period', '2026Q3')
+  fd.set('docType', 'FINANCIAL_STATEMENT')
+  fd.set('file', new File([new Uint8Array(png)], `财务截图-${SUFFIX}.png`, { type: 'image/png' }))
+
+  const res = await DOC_POST(new Request('http://t/api/post-investment/documents', { method: 'POST', body: fd }))
+  assert.equal(res.status, 200)
+  const body = await res.json()
+  assert.equal(body.doc.textStatus, 'PENDING', '图片需要 OCR，应立即返回并转后台')
+  assert.equal(body.doc.hasText, false)
+
+  // 清理上传的真实文件
+  const doc = await prisma.postInvestDoc.findUnique({ where: { id: body.doc.id } })
+  const m = doc?.fileUrl.match(/post-investment-docs\/([A-Za-z0-9._-]+)$/)
+  if (m) writtenFiles.push(join(UPLOAD_DIR, m[1]))
+})
+
+test('AI 分析：仍有资料在后台识别时拒绝分析并给出提示', async () => {
+  asManager()
+  await prisma.postInvestDoc.create({
+    data: {
+      projectId,
+      docType: 'FINANCIAL_STATEMENT',
+      period: '2026Q3',
+      fileName: '待识别扫描件.pdf',
+      fileUrl: '',
+      fileType: 'application/pdf',
+      fileSize: 1024,
+      text: '',
+      textStatus: 'PENDING',
+      uploadedById: managerId,
+    },
+  })
+
+  const res = await ANALYZE_POST(
+    new Request(`http://t/api/post-investment/${projectId}/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ period: '2026Q3' }),
+    }),
+    { params: { projectId } }
+  )
+  assert.equal(res.status, 400)
+  const body = await res.json()
+  assert.match(body.error, /正在后台识别/)
 })

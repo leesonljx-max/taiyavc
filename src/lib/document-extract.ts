@@ -237,16 +237,17 @@ async function ocrZipMediaImages(buffer: Buffer, mediaRegex: RegExp): Promise<st
 /**
  * 提取 Word(.docx) 文本（使用 mammoth）
  */
-async function extractDocx(buffer: Buffer): Promise<string> {
+async function extractDocx(buffer: Buffer, allowOcr = true): Promise<{ text: string; needsOcr: boolean }> {
   const mammoth = await import('mammoth')
   const result = await mammoth.extractRawText({ buffer })
   const text = result.value || ''
   // 纯截图/扫描图片的 Word：正文文字极少时 OCR 内嵌图片
   if (text.replace(/\s/g, '').length < 100) {
+    if (!allowOcr) return { text, needsOcr: true }
     const ocr = await ocrZipMediaImages(buffer, /^word\/media\//)
-    if (ocr) return text.trim() ? `${text}\n\n${ocr}` : ocr
+    if (ocr) return { text: text.trim() ? `${text}\n\n${ocr}` : ocr, needsOcr: false }
   }
-  return text
+  return { text, needsOcr: false }
 }
 
 /**
@@ -286,7 +287,7 @@ async function extractXlsx(buffer: Buffer): Promise<string> {
  * 提取 PPT(.pptx) 文本（使用 jszip 解析 XML）
  * PPTX 是 ZIP 包，幻灯片文本在 ppt/slides/slideN.xml 的 <a:t> 标签内
  */
-async function extractPptx(buffer: Buffer): Promise<string> {
+async function extractPptx(buffer: Buffer, allowOcr = true): Promise<{ text: string; needsOcr: boolean }> {
   const JSZip = (await import('jszip')).default
   const zip = await JSZip.loadAsync(buffer)
   const lines: string[] = []
@@ -319,10 +320,11 @@ async function extractPptx(buffer: Buffer): Promise<string> {
   const plain = lines.join('\n')
   // 图片型 BP/PPT：文字极少时 OCR 内嵌图片
   if (slideFiles.length > 0 && plain.replace(/\s/g, '').length < slideFiles.length * 20) {
+    if (!allowOcr) return { text: plain, needsOcr: true }
     const ocr = await ocrZipMediaImages(buffer, /^ppt\/media\//)
-    if (ocr) return plain.trim() ? `${plain}\n\n${ocr}` : ocr
+    if (ocr) return { text: plain.trim() ? `${plain}\n\n${ocr}` : ocr, needsOcr: false }
   }
-  return plain
+  return { text: plain, needsOcr: false }
 }
 
 /**
@@ -330,15 +332,19 @@ async function extractPptx(buffer: Buffer): Promise<string> {
  * @param buffer 文件内容
  * @param fileName 文件名（用于判断类型）
  * @param mimeType MIME 类型（可选）
- * @returns 提取的文本（截断至 MAX_EXTRACT_LENGTH）
+ * @param options.skipOcr 跳过 OCR（上传接口走快路径，扫描件/图片留给后台队列识别）
+ * @returns 提取的文本（截断至 MAX_EXTRACT_LENGTH）；needsOcr=true 表示仍需后台 OCR
  */
 export async function extractTextFromFile(
   buffer: Buffer,
   fileName: string,
-  mimeType?: string
-): Promise<{ text: string; fileType: SupportedFileType; truncated: boolean }> {
+  mimeType?: string,
+  options: { skipOcr?: boolean } = {}
+): Promise<{ text: string; fileType: SupportedFileType; truncated: boolean; needsOcr: boolean }> {
   const fileType = detectFileType(fileName, mimeType)
+  const allowOcr = !options.skipOcr
   let text = ''
+  let needsOcr = false
 
   try {
     switch (fileType) {
@@ -347,22 +353,38 @@ export async function extractTextFromFile(
         text = pdf.text
         // 扫描版 PDF：无文字层 → 渲染页面图片后 OCR
         if (shouldOcrPdf(pdf.text, pdf.total)) {
-          // OCR 失败时置空，避免把 pdf-parse 的页码占位符当成正文
-          text = await ocrScannedPdf(buffer, pdf.total)
+          if (allowOcr) {
+            // OCR 失败时置空，避免把 pdf-parse 的页码占位符当成正文
+            text = await ocrScannedPdf(buffer, pdf.total)
+          } else {
+            // 快路径：不保留页码占位符，正文交给后台 OCR
+            text = ''
+            needsOcr = true
+          }
         }
         break
       }
-      case 'docx':
-        text = await extractDocx(buffer)
+      case 'docx': {
+        const docx = await extractDocx(buffer, allowOcr)
+        text = docx.text
+        needsOcr = docx.needsOcr
         break
+      }
       case 'xlsx':
         text = await extractXlsx(buffer)
         break
-      case 'pptx':
-        text = await extractPptx(buffer)
+      case 'pptx': {
+        const pptx = await extractPptx(buffer, allowOcr)
+        text = pptx.text
+        needsOcr = pptx.needsOcr
         break
+      }
       case 'image':
-        text = await ocrImage(buffer, fileName, mimeType)
+        if (allowOcr) {
+          text = await ocrImage(buffer, fileName, mimeType)
+        } else {
+          needsOcr = true
+        }
         break
       default:
         text = ''
@@ -377,7 +399,7 @@ export async function extractTextFromFile(
     text = text.substring(0, MAX_EXTRACT_LENGTH)
   }
 
-  return { text: stripNul(text).trim(), fileType, truncated }
+  return { text: stripNul(text).trim(), fileType, truncated, needsOcr }
 }
 
 /**

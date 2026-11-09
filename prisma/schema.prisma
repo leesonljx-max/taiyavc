@@ -888,14 +888,19 @@ model PostInvestDoc {
   fileType     String
   fileSize     Int
   text         String   // 提取全文（指标提取输入 + 证据溯源）
+  textStatus   String   @default("READY") // PENDING / PROCESSING / READY / FAILED（OCR/解析异步状态）
+  textError    String?  // 识别失败原因
+  thumbUrl     String?  // 首页缩略图（PDF 预览按需加载用）
   uploadedById String
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user    User    @relation("PostInvestUploads", fields: [uploadedById], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@index([projectId, period])
+  @@index([textStatus])
 }
 
 // 投后指标时序库（每项目×报告期×指标 唯一，含原文证据）

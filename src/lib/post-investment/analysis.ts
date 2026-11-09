@@ -278,6 +278,13 @@ export async function runPostInvestAnalysis(projectId: string, period: string, u
   if (docCount === 0) {
     return { ok: false, error: `「${period}」尚未上传任何投后资料（经营报告 / 财务报表，任一项即可）` }
   }
+  // 扫描件/图片仍在后台 OCR：此时分析会漏掉这些资料
+  const pendingCount = await prisma.postInvestDoc.count({
+    where: { projectId, period, textStatus: { in: ['PENDING', 'PROCESSING'] } },
+  })
+  if (pendingCount > 0) {
+    return { ok: false, error: `「${period}」还有 ${pendingCount} 份资料正在后台识别，请等识别完成后再分析` }
+  }
 
   // 1. 补齐历史期指标：以往季上传的报告（如补传 2026Q1）在分析时任一期都会被提取入库，形成完整时序
   const allDocPeriods = await prisma.postInvestDoc.groupBy({ by: ['period'], where: { projectId } })
