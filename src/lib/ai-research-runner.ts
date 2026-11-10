@@ -17,6 +17,7 @@ import { webSearchTool } from '@/lib/dd-harness/tools'
 import { recallMemories, formatMemoriesForPrompt, extractAndSaveMemories } from '@/lib/ai-memory'
 import { recallKnowledge, formatKnowledgeForPrompt } from '@/lib/knowledge-base'
 import { listActiveDynamicSkills, buildRunSkillTool } from '@/lib/skill-registry'
+import { listEnabledPluginBriefs, buildRunPluginTool } from '@/lib/plugin-runtime'
 import { recordTokenUsage } from '@/lib/token-accounting'
 
 // ── System Prompt（一级市场投资人视角 + 三原则 + 模板契约） ──
@@ -109,17 +110,29 @@ export async function runAIResearchChat(
         .join('\n')}\n技能结果的组织方式：调用技能后，若该技能的分析视角与本问题的固定分析框架相似，将技能结果融入对应分析点；若是固定框架未覆盖的独立视角，则在回答中以独立小节展示该技能的分析（小标题注明技能名），分点+加粗排版。\n`
     : ''
 
-  // 2. 构建 system prompt：核心契约 + 历史记忆 + 已核验知识库 + 可用技能 + 工作记忆
+  // 插件中心：已启用插件挂载为 run_plugin 工具（官网深读/专利/招投标/舆情/财务/自定义分析）
+  const activePlugins = await listEnabledPluginBriefs('ai-research').catch(() => [])
+  const pluginBlock = activePlugins.length > 0
+    ? `\n## 可用插件（需要外部检索或专题分析时调用 run_plugin 工具，传入插件标识与检索主体）\n${activePlugins
+        .map(p => `- ${p.key}：${p.name}——${p.description}`)
+        .join('\n')}\n插件结果的组织方式：将插件返回的来源与结论融入对应分析点；引用来源时保留 URL，不得编造。\n`
+    : ''
+
+  // 2. 构建 system prompt：核心契约 + 历史记忆 + 已核验知识库 + 可用技能 + 可用插件 + 工作记忆
   const systemPrompt = [
     AI_RESEARCH_SYSTEM_PROMPT,
     `\n## 历史记忆\n${memoryBlock}`,
     knowledgeBlock,
     skillBlock,
+    pluginBlock,
   ].join('\n')
 
   const tools: HarnessTool[] = [searchProjectsTool, webSearchTool]
   if (activeSkills.length > 0) {
     tools.push(buildRunSkillTool(opts.userId))
+  }
+  if (activePlugins.length > 0) {
+    tools.push(buildRunPluginTool())
   }
 
   // 工作记忆：最近 2 轮原文（拼入首条 user 消息，保持 Agent 单次调用上下文精简）

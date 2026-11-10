@@ -77,7 +77,7 @@ async function runWithConcurrency<T, R>(
 
 /**
  * 执行查询计划，返回按模块分组的来源。
- * 全局按规范化 URL 去重；单模块最多保留 8 条。
+ * 全局按规范化 URL 去重；单模块最多保留 DD_SEARCH_BUDGET.maxSourcesPerModule 条。
  */
 export async function searchModuleSources(
   plan: DDModuleQueryPlan[],

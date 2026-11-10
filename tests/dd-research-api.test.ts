@@ -24,6 +24,8 @@ import { POST as ASSET_POST } from '@/app/api/dd/unclassified/[projectId]/route'
 import { PATCH as ASSET_PATCH, DELETE as ASSET_DELETE } from '@/app/api/dd/unclassified/[projectId]/[assetId]/route'
 import { POST as DECK_POST } from '@/app/api/dd/decks/[projectId]/route'
 import { GET as PPTX_GET } from '@/app/api/dd/deck/[deckId]/pptx/route'
+import { computeDeckFingerprint, computeResearchFingerprint } from '@/lib/dd-research/fingerprint'
+import { createDeck } from '@/lib/dd-deck/queue'
 
 const SUFFIX = String(Date.now()).slice(-6)
 const PREFIX = `D4测试项目${SUFFIX}`
@@ -222,6 +224,30 @@ test('POST run：24h 内已有 DONE Run 时幂等返回 existing=true', async ()
   assert.equal(count, 1)
 })
 
+test('POST run：同指纹复用 Run；项目资料变化后生成新版本', async () => {
+  asManager()
+  const fingerprint = await computeResearchFingerprint(projectId)
+  const seeded = await prisma.dDResearchRun.create({
+    data: { projectId, status: 'DONE', phase: 'GAP', progress: 100, inputFingerprint: fingerprint },
+  })
+
+  let res = await RUN_POST(new Request(runUrl(), { method: 'POST' }), { params: { projectId } })
+  assert.equal(res.status, 200)
+  let body = await res.json()
+  assert.equal(body.existing, true)
+  assert.equal(body.runId, seeded.id)
+
+  // 项目核心字段变化 → 指纹变化 → 必须重新研究
+  await prisma.project.update({ where: { id: projectId }, data: { mainProducts: '新一代AI芯片' } })
+  res = await RUN_POST(new Request(runUrl(), { method: 'POST' }), { params: { projectId } })
+  assert.equal(res.status, 200)
+  body = await res.json()
+  assert.equal(body.existing, false)
+  assert.notEqual(body.runId, seeded.id)
+
+  await waitForTerminal(body.runId)
+})
+
 // ── 事实确认 ──
 
 test('PATCH 事实：CONFIRMED 落库；非法 status → 400', async () => {
@@ -397,7 +423,7 @@ test('非分类资料：上传 txt → READY；归类后写入模块 documents�
 
 // ── 报告生成拦截 ──
 
-test('POST decks：存在阻塞缺口时生成 FINAL 返回 400 且带 gaps 数组', async () => {
+test('POST decks：存在阻塞缺口时仍生成 FINAL 草稿并返回 gaps 提示', async () => {
   asManager()
   await seedDoneRun()
   const gap = await prisma.dDGap.create({
@@ -419,14 +445,50 @@ test('POST decks：存在阻塞缺口时生成 FINAL 返回 400 且带 gaps 数�
     }),
     { params: { projectId } }
   )
-  assert.equal(res.status, 400)
+  assert.equal(res.status, 200)
   const body = await res.json()
   assert.ok(Array.isArray(body.gaps))
   assert.equal(body.gaps[0].id, gap.id)
-  assert.ok(body.error.includes('阻塞缺口'))
+  assert.ok(body.warnings.some((w: string) => w.includes('待补充资料')))
 
-  // 不应创建 Deck
-  assert.equal(await prisma.dDSlideDeck.count({ where: { projectId } }), 0)
+  // 零补充资料也允许生成草稿版本
+  const decks = await prisma.dDSlideDeck.findMany({ where: { projectId } })
+  assert.equal(decks.length, 1)
+  assert.equal(decks[0].type, 'FINAL')
+})
+
+test('createDeck：同指纹 READY 报告直接复用；force 生成新版本', async () => {
+  asManager()
+  const run = await seedDoneRun()
+  const { fingerprint } = await computeDeckFingerprint(projectId, 'BRIEF')
+  const ready = await prisma.dDSlideDeck.create({
+    data: {
+      projectId,
+      type: 'BRIEF',
+      status: 'READY',
+      version: 1,
+      templateVersion: 'v2.8',
+      inputFingerprint: fingerprint,
+      researchRunId: run.id,
+      generatedBy: managerId,
+    },
+  })
+
+  // 资料未变化：直接复用，不新建
+  const reused = await createDeck(projectId, 'BRIEF', managerId)
+  assert.equal(reused.existing, true)
+  assert.equal(reused.deckId, ready.id)
+  assert.equal(reused.version, 1)
+  assert.equal(await prisma.dDSlideDeck.count({ where: { projectId, type: 'BRIEF' } }), 1)
+
+  // force：生成新版本，版本号递增
+  const forced = await createDeck(projectId, 'BRIEF', managerId, { force: true })
+  assert.equal(forced.existing, false)
+  assert.equal(forced.version, 2)
+  const created = await prisma.dDSlideDeck.findUnique({ where: { id: forced.deckId } })
+  assert.equal(created?.status, 'QUEUED')
+  assert.equal(created?.version, 2)
+  assert.equal(created?.researchRunId, run.id)
 })
 
 test('GET pptx：Deck 仍为 QUEUED 时返回 400', async () => {

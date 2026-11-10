@@ -11,10 +11,14 @@ import { searchModuleSources, type ResearchSourceDraft } from './search'
 import { extractModuleFacts } from './extract'
 import { computeModuleCoverage } from './coverage'
 import { rebuildGaps } from './gap'
+import { computeResearchFingerprint } from './fingerprint'
+import { collectPluginResearchSources } from '@/lib/plugin-runtime'
 
 export interface CreateResearchRunOptions {
   modules?: string[]
   force?: boolean
+  /** 检索完成后自动生成资料简报与尽调报告 */
+  autoDeck?: boolean
   userId: string
 }
 
@@ -34,16 +38,30 @@ export async function createResearchRun(
   })
   if (!project) throw new Error('项目不存在')
 
+  const inputFingerprint = await computeResearchFingerprint(projectId)
+
   if (!options.force) {
-    const recent = await prisma.dDResearchRun.findFirst({
+    const sameVersion = await prisma.dDResearchRun.findFirst({
       where: {
         projectId,
-        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-        status: { in: ['QUEUED', 'RUNNING', 'DONE', 'PARTIAL'] },
+        inputFingerprint,
+        status: { in: ['DONE', 'PARTIAL'] },
       },
       orderBy: { createdAt: 'desc' },
     })
-    if (recent) return { runId: recent.id, existing: true, status: recent.status }
+    if (sameVersion) return { runId: sameVersion.id, existing: true, status: sameVersion.status }
+
+    // 旧版本 Run 没有指纹：24h 内仍视为可复用，避免升级后首次点击立即重跑
+    const legacyRecent = await prisma.dDResearchRun.findFirst({
+      where: {
+        projectId,
+        inputFingerprint: null,
+        status: { in: ['DONE', 'PARTIAL'] },
+        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (legacyRecent) return { runId: legacyRecent.id, existing: true, status: legacyRecent.status }
   }
 
   const active = await prisma.dDResearchRun.findFirst({
@@ -62,7 +80,13 @@ export async function createResearchRun(
       status: 'QUEUED',
       phase: 'PLAN',
       progress: 0,
-      scopeJson: JSON.stringify({ modules, force: Boolean(options.force), userId: options.userId }),
+      inputFingerprint,
+      scopeJson: JSON.stringify({
+        modules,
+        force: Boolean(options.force),
+        autoDeck: Boolean(options.autoDeck),
+        userId: options.userId,
+      }),
     },
   })
 
@@ -78,14 +102,79 @@ interface ModuleState {
   errors: string[]
 }
 
-function parseScope(raw: string | null): { modules?: string[] } {
+function parseScope(raw: string | null): { modules?: string[]; autoDeck?: boolean } {
   if (!raw) return {}
   try {
-    const parsed = JSON.parse(raw) as { modules?: unknown }
-    return { modules: Array.isArray(parsed.modules) ? parsed.modules.map(String) : undefined }
+    const parsed = JSON.parse(raw) as { modules?: unknown; autoDeck?: unknown }
+    return {
+      modules: Array.isArray(parsed.modules) ? parsed.modules.map(String) : undefined,
+      autoDeck: parsed.autoDeck === true,
+    }
   } catch {
     return {}
   }
+}
+
+/** 从来源正文提取可用于兜底的事实句（避免抽取失败时模块完全空白） */
+function digestSentences(content: string): string[] {
+  const clean = content
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const noise = /登录|注册|首页|版权所有|cookie|浏览器|下载APP|扫码|关注我们/i
+  return clean
+    .split(/(?<=[。！？；])/)
+    .map(s => s.trim())
+    .filter(s => s.length >= 30 && s.length <= 220 && !noise.test(s))
+}
+
+function buildDigestFacts(
+  state: ModuleState,
+  sourceIdByUrl: Map<string, string>
+): Array<{
+  runId: string
+  moduleKey: string
+  fact: string
+  quote: string
+  sourceId: string
+  confidence: number
+  grade: string
+  importance: string
+  status: string
+}> {
+  const rows: Array<{
+    runId: string
+    moduleKey: string
+    fact: string
+    quote: string
+    sourceId: string
+    confidence: number
+    grade: string
+    importance: string
+    status: string
+  }> = []
+  for (const source of state.sources.slice(0, 4)) {
+    const sourceId = sourceIdByUrl.get(source.url)
+    if (!sourceId) continue
+    const sentence = digestSentences(source.content)[0]
+    if (!sentence) continue
+    rows.push({
+      runId: '',
+      moduleKey: state.moduleKey,
+      fact: sentence.slice(0, 220),
+      quote: sentence.slice(0, 400),
+      sourceId,
+      confidence: 0.35,
+      grade: source.grade,
+      importance: 'NORMAL',
+      status: 'PENDING',
+    })
+    if (rows.length >= 4) break
+  }
+  return rows
 }
 
 async function setRunProgress(runId: string, phase: string, progress: number): Promise<void> {
@@ -158,6 +247,29 @@ export async function runResearch(runId: string): Promise<void> {
       await setRunProgress(runId, 'SEARCH', progress)
     }
 
+    // ── 插件补充来源（项目启用的检索渠道插件；与常规检索共用 URL 去重）──
+    try {
+      const pluginResult = await collectPluginResearchSources(
+        {
+          id: run.project.id,
+          name: run.project.name,
+          companyFullName: run.project.companyFullName,
+          industry: run.project.industry,
+          mainProducts: run.project.mainProducts,
+        },
+        { seenUrls, scene: 'dd-workbench' }
+      )
+      for (const state of states) {
+        const extra = pluginResult.sourcesByModule[state.moduleKey] || []
+        if (extra.length > 0) state.sources.push(...extra)
+      }
+      if (pluginResult.pluginRuns.length > 0) {
+        console.log(`[DDResearch] 插件补充来源：${pluginResult.pluginRuns.map(p => `${p.name}:${p.sourceCount}`).join('，')}`)
+      }
+    } catch (error) {
+      console.warn('插件来源汇总失败（不影响主流程）:', error instanceof Error ? error.message : error)
+    }
+
     const sourceRows = states.flatMap(s => s.sources.map(src => ({
       runId,
       moduleKey: s.moduleKey,
@@ -201,7 +313,8 @@ export async function runResearch(runId: string): Promise<void> {
             state.moduleKey,
             state.moduleName,
             state.coreQuestion,
-            state.sources
+            state.sources,
+            { name: run.project.name, fullName: run.project.companyFullName }
           )
           if (extraction.error) extractError = extraction.error
 
@@ -231,14 +344,25 @@ export async function runResearch(runId: string): Promise<void> {
         } catch (error) {
           extractError = error instanceof Error ? error.message : String(error)
         }
+
+        // 事实抽取失败/为空时，用来源原文摘要兜底，保证报告有可核验内容
+        if (factCount === 0) {
+          const digest = buildDigestFacts(state, sourceIdByUrl)
+          if (digest.length > 0) {
+            await prisma.dDResearchFact.createMany({
+              data: digest.map(f => ({ ...f, runId })),
+            })
+            factCount = digest.length
+            state.errors.push('事实抽取为空，已使用来源原文摘要兜底')
+            extractError = null
+          }
+        }
       }
 
-      const factsForCoverage = extractError && factCount === 0
-        ? []
-        : await prisma.dDResearchFact.findMany({
-            where: { runId, moduleKey: state.moduleKey },
-            select: { importance: true, confidence: true, status: true },
-          })
+      const factsForCoverage = await prisma.dDResearchFact.findMany({
+        where: { runId, moduleKey: state.moduleKey },
+        select: { importance: true, confidence: true, status: true },
+      })
 
       const coverage = computeModuleCoverage(state.moduleKey, factsForCoverage, state.sources)
       const status = state.sources.length === 0

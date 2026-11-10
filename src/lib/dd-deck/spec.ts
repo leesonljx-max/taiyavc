@@ -77,8 +77,8 @@ function isNonEmptyString(v: unknown): v is string {
 
 export function validateDeckSpec(spec: DeckSpec, options: ValidationOptions): ValidationResult {
   const issues: string[] = []
-  const min = options.type === 'BRIEF' ? 12 : 22
-  const max = options.type === 'BRIEF' ? 15 : 26
+  const min = options.type === 'BRIEF' ? 14 : 30
+  const max = options.type === 'BRIEF' ? 20 : 42
 
   if (!spec || !Array.isArray(spec.slides)) {
     return { ok: false, issues: ['幻灯片数据缺失'] }

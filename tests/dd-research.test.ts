@@ -47,7 +47,7 @@ const PROJECT: ResearchProjectInput = {
 
 // ── 查询规划 ──
 
-test('buildQueryPlan：九大模块、每模块 4–6 条、总量不超过预算、含公司名与行业词', () => {
+test('buildQueryPlan：九大模块、每模块 4–8 条、总量不超过预算、含公司名与行业词', () => {
   const plan = buildQueryPlan(PROJECT)
 
   assert.equal(plan.length, 9)
@@ -55,7 +55,7 @@ test('buildQueryPlan：九大模块、每模块 4–6 条、总量不超过预�
 
   for (const item of plan) {
     assert.ok(item.queries.length >= 4, `${item.moduleKey} 查询过少`)
-    assert.ok(item.queries.length <= 6, `${item.moduleKey} 查询过多`)
+    assert.ok(item.queries.length <= 8, `${item.moduleKey} 查询过多`)
     assert.ok(item.moduleName.length > 0)
     assert.ok(item.coreQuestion.length > 0)
   }
@@ -77,7 +77,7 @@ test('buildQueryPlan：指定模块只返回该模块；重复调用结果稳定
   const single = buildQueryPlan(PROJECT, ['PRODUCT_TECHNOLOGY'])
   assert.equal(single.length, 1)
   assert.equal(single[0].moduleKey, 'PRODUCT_TECHNOLOGY')
-  assert.ok(single[0].queries.length >= 4 && single[0].queries.length <= 6)
+  assert.ok(single[0].queries.length >= 4 && single[0].queries.length <= 8)
 
   const a = buildQueryPlan(PROJECT, undefined, { year: 2025 })
   const b = buildQueryPlan(PROJECT, undefined, { year: 2025 })
@@ -204,8 +204,12 @@ function mockExtraction(payload: unknown) {
   mockState.fetchHandler = () => chatCompletions(JSON.stringify(payload))
 }
 
-test('extractModuleFacts：丢弃越界/空引用/重复，置信度截断，结果不超过 14 条', async () => {
-  const sources = [draft('https://www.gov.cn/a', 'A'), draft('https://36kr.com/b', 'B')]
+test('extractModuleFacts：丢弃越界/空引用/重复，置信度截断，结果不超过 24 条', async () => {
+  const extraQuotes = Array.from({ length: 30 }, (_, i) => `扩展事实编号${i}的原文摘录内容片段`).join('。')
+  const sources = [
+    draft('https://www.gov.cn/a', 'A', `公司注册资本为1000万元人民币。${extraQuotes}`),
+    draft('https://36kr.com/b', 'B', '该来源明确写出的事实内容'),
+  ]
   mockExtraction({
     facts: [
       {
@@ -222,7 +226,7 @@ test('extractModuleFacts：丢弃越界/空引用/重复，置信度截断，结
       { fact: '引用过短事实', quote: '短', sourceIdx: 0, confidence: 0.8 },
       { fact: '引用为空事实', quote: '', sourceIdx: 0, confidence: 0.8 },
       { fact: '置信度为负的事实', quote: '该来源明确写出的事实内容', sourceIdx: 1, confidence: -5 },
-      ...Array.from({ length: 14 }, (_, i) => ({
+      ...Array.from({ length: 30 }, (_, i) => ({
         fact: `扩展事实编号${i}的描述内容`,
         quote: `扩展事实编号${i}的原文摘录内容片段`,
         sourceIdx: 0,
@@ -233,7 +237,8 @@ test('extractModuleFacts：丢弃越界/空引用/重复，置信度截断，结
 
   const result = await extractModuleFacts('PRODUCT_TECHNOLOGY', '产品与技术', '技术是否可验证？', sources)
   assert.equal(result.error, undefined)
-  assert.ok(result.facts.length <= 14, `事实数 ${result.facts.length} 超过上限 14`)
+  assert.ok(result.facts.length <= 24, `事实数 ${result.facts.length} 超过上限 24`)
+  assert.equal(result.facts.length, 24, '超出上限时应截断到 24 条')
 
   const texts = result.facts.map(f => f.fact)
   assert.ok(!texts.includes('越界来源事实'), '越界 sourceIdx 应被丢弃')
@@ -255,6 +260,56 @@ test('extractModuleFacts：丢弃越界/空引用/重复，置信度截断，结
     assert.equal(f.grade, sources[f.sourceIdx].grade)
     assert.ok(f.confidence >= 0.05 && f.confidence <= 0.99)
   }
+})
+
+test('extractModuleFacts：来源未提及目标主体时降级为行业背景', async () => {
+  const sources = [
+    draft('https://36kr.com/other', 'B', '另一家公司星河智能2024年营业收入为5亿元，已获得12项专利。'),
+    draft('https://www.gov.cn/target', 'A', '无涯智远科技有限公司2024年营业收入为8000万元，已获得3项发明专利。'),
+  ]
+  mockExtraction({
+    facts: [
+      {
+        fact: '目标公司2024年营收5亿元',
+        value: '5',
+        unit: '亿元',
+        period: '2024',
+        quote: '另一家公司星河智能2024年营业收入为5亿元',
+        sourceIdx: 0,
+        confidence: 0.9,
+        importance: 'CORE',
+        scope: 'COMPANY',
+      },
+      {
+        fact: '目标公司已获得3项发明专利',
+        value: '3',
+        unit: '项',
+        quote: '无涯智远科技有限公司2024年营业收入为8000万元，已获得3项发明专利',
+        sourceIdx: 1,
+        confidence: 0.9,
+        importance: 'CORE',
+        scope: 'COMPANY',
+      },
+    ],
+  })
+
+  const result = await extractModuleFacts(
+    'PRODUCT_TECHNOLOGY',
+    '产品与技术',
+    '技术是否可验证？',
+    sources,
+    { name: '无涯智远', fullName: '无涯智远科技有限公司' }
+  )
+
+  const industry = result.facts.find(f => f.quote.includes('星河智能'))
+  assert.ok(industry, '其他公司事实应保留为行业背景')
+  assert.equal(industry?.importance, 'NORMAL')
+  assert.ok(industry?.fact.startsWith('行业背景：'), '非目标主体事实必须标注为行业背景')
+
+  const company = result.facts.find(f => f.quote.includes('无涯智远'))
+  assert.ok(company)
+  assert.equal(company?.importance, 'CORE')
+  assert.ok(!company?.fact.startsWith('行业背景：'), '明确指向目标公司的事实不应降级')
 })
 
 test('extractModuleFacts：同一指标差异超过 20% 时标记 CONFLICT', async () => {
@@ -341,10 +396,10 @@ test('validateDeckSpec：FINAL 模块页无证据引用且未声明公开信息�
   const slides: SlideSpec[] = [
     mkSlide(1, 'cover', { subtitle: '副标题' }),
     mkSlide(2, 'section', { sectionNo: '01' }),
-    ...Array.from({ length: 19 }, (_, i) => mkSlide(i + 3, 'summary')),
-    mkSlide(22, 'module', { bullets: ['要点一', '要点二'] }),
+    ...Array.from({ length: 27 }, (_, i) => mkSlide(i + 3, 'summary')),
+    mkSlide(30, 'module', { bullets: ['要点一', '要点二'] }),
   ]
-  assert.equal(slides.length, 22)
+  assert.equal(slides.length, 30)
   const result = validateDeckSpec(mkDeck('FINAL', slides), { type: 'FINAL' })
   assert.equal(result.ok, false)
   assert.ok(

@@ -79,6 +79,8 @@ model Project {
   ddUnclassifiedAssets DDUnclassifiedAsset[]
   ddGaps               DDGap[]
   ddSlideDecks         DDSlideDeck[]
+  // 插件中心：项目级插件启用覆盖
+  plugins              ProjectPlugin[]
   createdBy        User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   @@index([name])
@@ -1123,6 +1125,50 @@ model AgentSkill {
 }
 
 // ═══════════════════════════════════════════════════════════
+// 插件中心（P4）：受控插件目录 + 项目级启用
+// - SEARCH_CHANNEL：外部检索渠道插件（官网深读/专利/招投标/舆情/财务），产出可溯源来源
+// - PROMPT：自定义提示词插件（二期），基于输入与检索资料产出专题结论
+// ═══════════════════════════════════════════════════════════
+model AgentPlugin {
+  id            String   @id @default(cuid())
+  key           String   @unique // 稳定标识（与内置目录对齐）
+  name          String
+  description   String
+  category      String   @default("research") // research / data / monitor / analysis
+  kind          String   @default("SEARCH_CHANNEL") // SEARCH_CHANNEL / PROMPT
+  version       String   @default("1.0.0")
+  capabilities  String[] @default([]) // OFFICIAL_SITE / PATENT / BIDDING / NEWS / FINANCIAL
+  scenes        String[] @default([]) // project-interpretation / dd-workbench / ai-research
+  modules       String[] @default([]) // 尽调模块 key（首个为主归属）
+  configJson    String?
+  content       String? // PROMPT 插件提示词正文
+  isActive      Boolean  @default(true)
+  runCount      Int      @default(0)
+  successCount  Int      @default(0)
+  lastRunAt     DateTime?
+  installedById String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([kind, isActive])
+}
+
+model ProjectPlugin {
+  id         String   @id @default(cuid())
+  projectId  String
+  pluginKey  String
+  enabled    Boolean  @default(true)
+  configJson String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, pluginKey])
+  @@index([pluginKey])
+}
+
+// ═══════════════════════════════════════════════════════════
 // 尽调工作台 v3：全网资料自动尽调与 PPT 报告
 // 研究层（Run/Source/Fact）→ 缺口层（Gap）→ 幻灯片层（Deck/Slide）
 // 研究事实与正式证据分离：Fact 允许待确认/冲突，Deck 只引用有来源的事实
@@ -1136,7 +1182,8 @@ model DDResearchRun {
   status     String    @default("QUEUED") // QUEUED / RUNNING / PARTIAL / DONE / FAILED
   phase      String    @default("PLAN") // PLAN / SEARCH / EXTRACT / SCORE / GAP
   progress   Int       @default(0)
-  scopeJson  String? // { modules: string[], force: boolean }
+  scopeJson  String? // { modules: string[], force: boolean, autoDeck: boolean }
+  inputFingerprint String? // 项目字段 + 资料指纹；用于版本复用
   statsJson  String? // { sourceCount, factCount, gapCount, coverage, searchCount }
   error      String?
   startedAt  DateTime?
@@ -1150,6 +1197,7 @@ model DDResearchRun {
   facts   DDResearchFact[]
 
   @@index([projectId, createdAt])
+  @@index([projectId, inputFingerprint])
   @@index([status])
 }
 
@@ -1281,6 +1329,9 @@ model DDSlideDeck {
   type            String // BRIEF / FINAL
   status          String    @default("QUEUED") // QUEUED / GENERATING / READY / FAILED
   templateVersion String    @default("v1")
+  version         Int       @default(1)
+  inputFingerprint String? // 研究运行 + 资料 + 模板版本指纹
+  researchRunId   String?
   theme           String    @default("navy-gold")
   slideCount      Int       @default(0)
   specJson        String?
@@ -1295,6 +1346,7 @@ model DDSlideDeck {
   slides  DDSlide[]
 
   @@index([projectId, type, createdAt])
+  @@index([projectId, type, inputFingerprint])
   @@index([status])
 }
 

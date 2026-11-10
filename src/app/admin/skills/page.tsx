@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import DashboardLayout from '@/components/DashboardLayout'
+import PluginManager from '@/components/admin/PluginManager'
 
 interface SkillView {
   id: string | null
@@ -58,6 +59,8 @@ export default function AdminSkillsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [msg, setMsg] = useState('')
+  /** 一级栏目「插件中心」两个模块：插件 / 技术 */
+  const [tab, setTab] = useState<'plugins' | 'tech'>('plugins')
 
   // 编辑/新建表单
   const [formOpen, setFormOpen] = useState(false)
@@ -75,7 +78,7 @@ export default function AdminSkillsPage() {
   const isAdmin = session?.user?.role === 'ADMIN'
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/auth/login?callbackUrl=/admin/skills')
+    if (status === 'unauthenticated') router.push('/auth/login?callbackUrl=/admin/plugins')
   }, [status, router])
 
   // 我的技能（所有登录账号）：个人技能接口，天然只返回本人创建的技能
@@ -191,7 +194,7 @@ export default function AdminSkillsPage() {
 
   if (status !== 'authenticated') {
     return (
-      <DashboardLayout title="技能管理" subtitle="请先登录后管理你的 AI 分析技能">
+      <DashboardLayout title="插件中心" subtitle="请先登录后管理插件与 AI 技术能力">
         <div className="p-10 text-center text-ink-faint text-sm">{loading ? '加载中...' : '请先登录后管理你的技能'}</div>
       </DashboardLayout>
     )
@@ -201,8 +204,28 @@ export default function AdminSkillsPage() {
   const builtin = builtinSkills
 
   return (
-    <DashboardLayout title="技能管理" subtitle="AI 能力注册表 · 动态技能自动挂载到 AI行研">
+    <DashboardLayout title="插件中心" subtitle="受控插件目录 × AI 技术能力注册表">
       <div className="max-w-5xl mx-auto space-y-5 pb-6">
+        {/* 一级栏目两个模块切换 */}
+        <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+          <button
+            onClick={() => setTab('plugins')}
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${tab === 'plugins' ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink'}`}
+          >
+            插件
+          </button>
+          <button
+            onClick={() => setTab('tech')}
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${tab === 'tech' ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink'}`}
+          >
+            技术
+          </button>
+        </div>
+
+        {tab === 'plugins' ? (
+          <PluginManager isAdmin={isAdmin} />
+        ) : (
+          <>
         {msg && <div className="p-3 rounded-xl text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-between">
           <span>✓ {msg}</span>
           <button onClick={() => setMsg('')} className="text-emerald-500 hover:text-emerald-700">✕</button>
@@ -404,6 +427,8 @@ export default function AdminSkillsPage() {
               ))}
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
     </DashboardLayout>

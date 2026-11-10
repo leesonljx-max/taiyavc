@@ -10,6 +10,8 @@ import { assembleBriefSpec, assembleFinalSpec, generateNarratives } from './writ
 import { critiqueDeck } from './critic'
 import { coerceDeckSpec } from './spec'
 import { renderDeckPptx } from './render-pptx'
+import { DD_DECK_VERSION } from '@/lib/dd-research/constants'
+import { computeDeckFingerprint } from '@/lib/dd-research/fingerprint'
 
 const CONCURRENCY = 1
 const POLL_MS = 20_000
@@ -25,25 +27,46 @@ let recovering: Promise<void> | null = null
 export async function createDeck(
   projectId: string,
   type: 'BRIEF' | 'FINAL',
-  userId: string
-): Promise<{ deckId: string; existing: boolean }> {
+  userId: string,
+  options?: { force?: boolean }
+): Promise<{ deckId: string; existing: boolean; version: number }> {
   const activeDeck = await prisma.dDSlideDeck.findFirst({
     where: { projectId, type, status: { in: ['QUEUED', 'GENERATING'] } },
     orderBy: { createdAt: 'desc' },
   })
-  if (activeDeck) return { deckId: activeDeck.id, existing: true }
+  if (activeDeck) return { deckId: activeDeck.id, existing: true, version: activeDeck.version }
 
+  const { fingerprint, researchRunId } = await computeDeckFingerprint(projectId, type)
+
+  // 资料与研究未变化时直接复用最新已生成版本，避免每次点击都重跑
+  if (!options?.force) {
+    const reusable = await prisma.dDSlideDeck.findFirst({
+      where: {
+        projectId,
+        type,
+        status: 'READY',
+        inputFingerprint: fingerprint,
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (reusable) return { deckId: reusable.id, existing: true, version: reusable.version }
+  }
+
+  const version = await prisma.dDSlideDeck.count({ where: { projectId, type } }) + 1
   const deck = await prisma.dDSlideDeck.create({
     data: {
       projectId,
       type,
       status: 'QUEUED',
-      templateVersion: 'v1',
+      templateVersion: DD_DECK_VERSION,
+      version,
+      inputFingerprint: fingerprint,
+      researchRunId,
       theme: 'navy-gold',
       generatedBy: userId,
     },
   })
-  return { deckId: deck.id, existing: false }
+  return { deckId: deck.id, existing: false, version }
 }
 
 export function enqueueDeck(deckId: string): void {

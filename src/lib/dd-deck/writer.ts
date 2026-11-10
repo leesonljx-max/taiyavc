@@ -13,8 +13,12 @@ export interface ModuleNarrative {
   moduleKey: string
   headline: string
   bullets: string[]
+  /** 第二页：这意味着什么（投资含义、驱动、反证） */
+  analysisHeadline?: string
+  analysis?: string[]
   opportunity?: string
   risk?: string
+  unknown?: string
   evidenceRefs?: string[]
 }
 
@@ -23,6 +27,16 @@ export interface DeckNarratives {
     headline: string
     bullets: string[]
     conclusion: string
+  }
+  /** 行业发展与政策环境（综合市场、竞争、商业化模块） */
+  industry: {
+    headline: string
+    bullets: string[]
+  }
+  /** 时机窗口：为什么是现在 */
+  timing: {
+    headline: string
+    bullets: string[]
   }
   modules: ModuleNarrative[]
   opportunities: Array<{ title: string; detail: string; evidenceRefs?: string[] }>
@@ -43,9 +57,11 @@ const SYSTEM_PROMPT = [
   '你是风险投资机构的尽调报告主笔，服务投委会。写作要求：',
   '1. 结论先行：每页标题就是该页结论，不是栏目名。',
   '2. 层层递进：先回答「是什么」，再回答「为什么可能成」「为什么可能不成」，最后给估值、条款与结论。',
-  '3. 只用给定事实；每条事实带 F 编号，引用时在句末写 [F3]。没有事实就写「公开信息不足，需补充」。',
-  '4. 风险与机会必须成对出现，风险要写缓释与验证动作。',
-  '5. 不写空话、不堆形容词、不编造数字。',
+  '3. 公司具体数据只能用给定事实，引用时在句末写 [F3]；不得编造公司收入、订单、客户与估值数字。',
+  '4. 允许使用公开行业常识补充行业背景与竞争逻辑，但必须写成分析判断（如「行业通常…」），不得伪装成公司事实。',
+  '5. 每个模块写两组内容：先写「事实与发现」，再写「这意味着什么」；后者要包含驱动因素、反证条件与待验证项。',
+  '6. 风险与机会必须成对出现，风险要写缓释与验证动作。',
+  '7. 不写空话、不堆形容词；内容要具体到业务、客户、技术、竞争与交易。',
   '只输出 JSON，不要输出 Markdown。',
 ].join('\n')
 
@@ -89,47 +105,98 @@ function buildPromptContext(context: DeckContext, type: DeckType): string {
 
   for (const module of context.modules) {
     lines.push('', `【${module.moduleKey} ${module.moduleName}】核心问题：${module.coreQuestion}`)
-    if (module.report?.summary) lines.push(`模块报告结论：${truncate(module.report.summary, 160)}`)
+    if (module.report?.summary) lines.push(`模块报告结论：${truncate(module.report.summary, 180)}`)
+    if (module.report?.opportunities?.length) {
+      lines.push(`模块机会：${module.report.opportunities.slice(0, 2).map(o => truncate(o, 60)).join('；')}`)
+    }
+    if (module.report?.risks?.length) {
+      lines.push(`模块风险：${module.report.risks.slice(0, 2).map(r => truncate(r, 60)).join('；')}`)
+    }
     if (module.facts.length === 0) {
-      lines.push('公开事实：无（必须写“公开信息不足，需补充”）')
+      lines.push('公开事实：无（写「公开信息不足」，但仍需基于行业常识给出分析判断与验证路径）')
     } else {
       lines.push('公开事实：')
-      for (const f of module.facts.slice(0, 6)) lines.push(`- ${factLine(f)}`)
+      for (const f of module.facts.slice(0, 10)) lines.push(`- ${factLine(f)}`)
     }
+    const moduleSources = module.sources.slice(0, 5).map(s => `${s.ref}｜${truncate(s.title, 24)}｜${s.domain}（${s.grade}）`)
+    if (moduleSources.length > 0) lines.push(`主要来源：${moduleSources.join('；')}`)
     const openGaps = module.gaps.filter(g => g.status === 'OPEN').map(g => g.label)
-    if (openGaps.length > 0) lines.push(`该模块缺口：${openGaps.slice(0, 4).join('、')}`)
+    if (openGaps.length > 0) lines.push(`该模块缺口：${openGaps.slice(0, 5).join('、')}`)
   }
 
   lines.push('', '请输出 JSON：')
   lines.push(`{
-  "executiveSummary": {"headline":"一句话投资判断（≤28字）","bullets":["3条核心理由，每条≤55字，带F编号"],"conclusion":"一句话结论（≤45字）"},
-  "modules": [{"moduleKey":"PROJECT_ENTITY","headline":"该模块结论（≤28字）","bullets":["3条，每条≤55字，带F编号"],"opportunity":"一句机会","risk":"一句风险","evidenceRefs":["F1"]}],
-  "opportunities": [{"title":"机会标题（≤16字）","detail":"为什么是机会（≤55字，带F编号）","evidenceRefs":["F1"]}],
-  "risks": [{"title":"风险标题（≤16字）","detail":"风险机制（≤55字）","mitigation":"缓释或验证动作（≤45字）","evidenceRefs":["F1"]}],
-  "valuation": {"headline":"估值判断（≤28字）","bullets":["3条，≤55字"],"stats":[{"label":"指标","value":"数值","hint":"口径"}]},
-  "conclusion": {"headline":"最终建议（≤28字）","conditions":["3条投放条件，每条≤45字"],"nextSteps":["3条投后验证，每条≤45字"]}
+  "executiveSummary": {"headline":"一句话投资判断（≤30字）","bullets":["4条核心理由，每条≤85字，尽量带F编号"],"conclusion":"一句话结论（≤50字）"},
+  "industry": {"headline":"行业阶段与格局判断（≤30字）","bullets":["5条：行业规模/增速、政策、产业链位置、竞争集中度、关键变量，每条≤85字"]},
+  "timing": {"headline":"时机窗口判断（≤30字）","bullets":["4条：为什么是现在/为什么可能太早或太晚，每条≤85字，尽量带F编号"]},
+  "opportunities": [{"title":"机会标题（≤16字）","detail":"为什么是机会（≤80字，带F编号）","evidenceRefs":["F1"]}],
+  "risks": [{"title":"风险标题（≤16字）","detail":"风险机制（≤80字）","mitigation":"缓释或验证动作（≤65字）","evidenceRefs":["F1"]}],
+  "valuation": {"headline":"估值判断（≤30字）","bullets":["4条估值/回报判断，每条≤85字"],"stats":[{"label":"指标","value":"数值","hint":"口径"}]},
+  "conclusion": {"headline":"最终建议（≤30字）","conditions":["4条投放条件，每条≤65字"],"nextSteps":["4条投后验证，每条≤65字"]}
 }`)
-  lines.push('modules 必须覆盖全部 9 个 moduleKey，顺序与上文一致。')
+  lines.push('opportunities 和 risks 各 4–5 条；valuation.stats 3–4 个。')
+  return lines.join('\n')
+}
+
+function buildModulePrompt(context: DeckContext, type: DeckType): string {
+  const lines = [buildPromptContext(context, type), '', '现在只输出 9 个模块的深度内容，不要输出其他字段：']
+  lines.push(`{
+  "modules": [{
+    "moduleKey": "PROJECT_ENTITY",
+    "headline": "事实页结论（≤30字）",
+    "bullets": ["5条事实与发现，每条≤85字，尽量带F编号"],
+    "analysisHeadline": "分析页结论（≤30字）",
+    "analysis": ["4条投资含义：驱动因素/反证条件/竞争影响/待验证项，每条≤85字"],
+    "opportunity": "该模块最重要的机会（≤70字）",
+    "risk": "该模块最重要的风险（≤70字）",
+    "unknown": "公开信息无法回答、必须补充资料的问题（≤70字）",
+    "evidenceRefs": ["F1","F2"]
+  }]
+}`)
+  lines.push('modules 必须覆盖全部 9 个 moduleKey，顺序与上文一致；每页 4–5 条，不要只写 2 条。')
   return lines.join('\n')
 }
 
 function fallbackNarratives(context: DeckContext): DeckNarratives {
   const modules: ModuleNarrative[] = context.modules.map(m => {
+    const facts = m.facts.slice(0, 5)
     const bullets: string[] = []
-    if (m.report?.summary) bullets.push(truncate(m.report.summary, 70))
-    for (const f of m.facts.slice(0, 3)) bullets.push(factLine(f))
-    if (bullets.length < 2) bullets.push(`公开信息不足，需补充资料后形成结论（当前覆盖 ${Math.round(m.coverage * 100)}%）`)
+    if (m.report?.summary) bullets.push(truncate(m.report.summary, 85))
+    for (const f of facts) bullets.push(factLine(f))
+    if (bullets.length < 2) {
+      bullets.push(`${m.moduleName}公开信息不足，当前覆盖 ${Math.round(m.coverage * 100)}%`)
+      bullets.push(`已检索 ${m.sources.length} 条来源，需补充资料后形成确定结论`)
+    }
+
+    const analysis: string[] = []
+    if (m.report?.opportunities?.[0]) analysis.push(`机会：${truncate(m.report.opportunities[0], 80)}`)
+    if (m.report?.risks?.[0]) analysis.push(`风险：${truncate(m.report.risks[0], 80)}`)
+    const openGap = m.gaps.find(g => g.status === 'OPEN')
+    if (openGap) analysis.push(`待验证：${truncate(openGap.label, 80)}`)
+    if (m.facts.length === 0) analysis.push('本模块公开信息不足，结论待资料补齐后更新')
+    analysis.push(`投资含义：本模块覆盖 ${Math.round(m.coverage * 100)}%，需结合交易资料复核后纳入决策`)
+    if (analysis.length < 4) analysis.push('验证路径：补充原始合同/台账/访谈记录，逐条核对关键假设')
+
     return {
       moduleKey: m.moduleKey,
       headline: m.report?.summary
-        ? truncate(m.report.summary, 26)
+        ? truncate(m.report.summary, 30)
         : `${m.moduleName}：公开信息覆盖 ${Math.round(m.coverage * 100)}%`,
-      bullets: bullets.slice(0, 3),
+      bullets: bullets.slice(0, 5),
+      analysisHeadline: m.report?.risks?.[0]
+        ? `关键在验证：${truncate(m.report.risks[0], 24)}`
+        : `${m.moduleName}的投资含义与待验证项`,
+      analysis: analysis.slice(0, 4),
       opportunity: m.report?.opportunities?.[0],
       risk: m.report?.risks?.[0] || m.gaps.find(g => g.status === 'OPEN')?.label,
-      evidenceRefs: m.facts.slice(0, 4).map(f => f.ref),
+      unknown: m.gaps.find(g => g.status === 'OPEN')?.label,
+      evidenceRefs: m.facts.slice(0, 6).map(f => f.ref),
     }
   })
+
+  const marketModule = context.modules.find(m => m.moduleKey === 'MARKET_CUSTOMERS')
+  const competitionModule = context.modules.find(m => m.moduleKey === 'COMPETITION_MOATS')
+  const commercializationModule = context.modules.find(m => m.moduleKey === 'COMMERCIALIZATION')
 
   const topFacts = context.facts.slice(0, 3)
   const blocking = context.gaps.items.filter(g => g.status === 'OPEN' && g.severity === 'BLOCKING')
@@ -137,38 +204,56 @@ function fallbackNarratives(context: DeckContext): DeckNarratives {
 
   const opportunities = context.modules
     .flatMap(m => (m.report?.opportunities || []).map(text => ({ module: m, text })))
-    .slice(0, 3)
+    .slice(0, 4)
     .map(x => ({
       title: truncate(x.module.moduleName, 14),
-      detail: truncate(x.text, 55),
-      evidenceRefs: x.module.facts.slice(0, 2).map(f => f.ref),
+      detail: truncate(x.text, 80),
+      evidenceRefs: x.module.facts.slice(0, 3).map(f => f.ref),
     }))
 
   const risks = [
     ...context.modules.flatMap(m => (m.report?.risks || []).map(text => ({ module: m, text }))),
     ...blocking.map(g => ({ module: { moduleName: g.label, facts: [] as DeckFact[] }, text: g.reason || '关键交易资料缺失' })),
-  ].slice(0, 3).map(x => ({
+  ].slice(0, 4).map(x => ({
     title: truncate(x.module.moduleName, 14),
-    detail: truncate(x.text, 55),
+    detail: truncate(x.text, 80),
     mitigation: '列入投前条件，交割前补充并复核',
-    evidenceRefs: x.module.facts.slice(0, 2).map(f => f.ref),
+    evidenceRefs: x.module.facts.slice(0, 3).map(f => f.ref),
   }))
 
   const valuationModule = context.modules.find(m => m.moduleKey === 'VALUATION_DEAL')
-  const valuationFacts = valuationModule?.facts.slice(0, 3) || []
+  const valuationFacts = valuationModule?.facts.slice(0, 4) || []
 
   const opportunityPool = [
     ...opportunities,
-    { title: '资料补充后重估', detail: '当前公开信息不足，补充资料后再形成机会判断', evidenceRefs: [] as string[] },
-    { title: '客户验证窗口', detail: '若核心客户复购得到验证，增长确定性将提升', evidenceRefs: [] as string[] },
-  ].slice(0, 3)
+    { title: '资料补充后重估', detail: '当前公开信息仍有缺口，补充订单/财务资料后可重估增长与估值', evidenceRefs: [] as string[] },
+    { title: '客户验证窗口', detail: '若核心客户复购与交付得到验证，增长确定性将显著提升', evidenceRefs: [] as string[] },
+  ].slice(0, 5)
 
   const riskPool = [
     ...risks,
     { title: '信息不足风险', detail: '公开信息与上传资料不足，无法形成完整判断', mitigation: '先完成资料补充与客户访谈', evidenceRefs: [] as string[] },
     { title: '商业化不及预期', detail: '订单转化与回款节奏可能低于预测', mitigation: '按月跟踪订单与回款，设置里程碑', evidenceRefs: [] as string[] },
     { title: '估值与条款风险', detail: '可比交易不足导致定价缺乏锚点', mitigation: '补充可比融资并谈判下行保护条款', evidenceRefs: [] as string[] },
-  ].slice(0, 3)
+  ].slice(0, 5)
+
+  const industryBullets: string[] = []
+  if (marketModule?.report?.summary) industryBullets.push(truncate(marketModule.report.summary, 85))
+  for (const f of marketModule?.facts.slice(0, 4) || []) industryBullets.push(factLine(f))
+  if (competitionModule?.report?.summary) industryBullets.push(`竞争格局：${truncate(competitionModule.report.summary, 78)}`)
+  if (industryBullets.length < 4) {
+    industryBullets.push(`行业：${context.project.industry || '未填写'}，需结合公开市场数据判断规模与增速`)
+    industryBullets.push('竞争集中度、政策周期与产业链位置是判断行业阶段的关键变量')
+  }
+
+  const timingBullets: string[] = []
+  for (const f of commercializationModule?.facts.slice(0, 3) || []) timingBullets.push(factLine(f))
+  if (commercializationModule?.report?.summary) timingBullets.push(truncate(commercializationModule.report.summary, 85))
+  if (timingBullets.length < 4) {
+    timingBullets.push('需求侧：客户预算与采购周期决定放量时点')
+    timingBullets.push('供给侧：产品成熟度、交付能力与成本曲线决定能否承接需求')
+    timingBullets.push('资本侧：当前融资窗口与可比估值决定交易性价比')
+  }
 
   return {
     executiveSummary: {
@@ -177,10 +262,22 @@ function fallbackNarratives(context: DeckContext): DeckNarratives {
         : `${context.project.name}：公开信息不足，建议先补充资料`,
       bullets: topFacts.length > 0
         ? topFacts.map(f => factLine(f))
-        : ['尚未完成全网研究，结论仅基于已上传资料'],
+        : [
+            '尚未完成全网研究，结论仅基于已上传资料',
+            '九大模块的判断需在公开检索完成并补充交易资料后复核',
+            '当前版本用于识别信息缺口并形成下一步验证清单',
+          ],
       conclusion: blocking.length > 0
         ? `存在 ${blocking.length} 项阻塞缺口，建议补充后再上会`
         : '可进入下一轮尽调，重点验证收入与订单',
+    },
+    industry: {
+      headline: `${context.project.industry || '所处行业'}：行业阶段与竞争格局决定增长天花板`,
+      bullets: industryBullets.slice(0, 5),
+    },
+    timing: {
+      headline: '时机判断：需求、供给与资本窗口三者是否同时成立',
+      bullets: timingBullets.slice(0, 5),
     },
     modules,
     opportunities: opportunityPool,
@@ -191,21 +288,26 @@ function fallbackNarratives(context: DeckContext): DeckNarratives {
         : '估值缺乏公开可比，需补充本轮定价依据',
       bullets: valuationFacts.length > 0
         ? valuationFacts.map(f => factLine(f))
-        : ['未检索到可比融资与估值信息', '需补充 Term sheet 与可比交易清单'],
+        : [
+            '未检索到可比融资与估值信息，无法形成可靠估值锚点',
+            '需补充 Term sheet、老股转让价格与可比公司融资数据',
+            '建议用 PS/PE 与里程碑对赌组合替代单点估值判断',
+          ],
       stats: [
         { label: '本轮融资', value: context.project.totalAmount || '未填写' },
         { label: '投资估值', value: context.project.investmentValuation ? `${context.project.investmentValuation} 亿` : '未填写' },
         { label: '研究覆盖', value: `${Math.round(context.research.coverage * 100)}%` },
+        { label: '阻塞缺口', value: String(blocking.length) },
       ],
     },
     conclusion: {
       headline: blocking.length > 0 ? '有条件推进' : '建议推进至投委会',
       conditions: blocking.length > 0
-        ? blocking.slice(0, 3).map(g => `补充：${truncate(g.label, 30)}`)
-        : ['完成财务与法务正式尽调', '核心客户访谈验证复购', '条款谈判确认下行保护'],
+        ? blocking.slice(0, 4).map(g => `补充：${truncate(g.label, 30)}`)
+        : ['完成财务与法务正式尽调', '核心客户访谈验证复购', '条款谈判确认下行保护', '设定里程碑与分期交割'],
       nextSteps: recommended.length > 0
-        ? recommended.slice(0, 3).map(g => `核验：${truncate(g.label, 30)}`)
-        : ['按月跟踪订单与回款', '季度复核毛利与现金 runway', '下一轮融资前复盘估值假设'],
+        ? recommended.slice(0, 4).map(g => `核验：${truncate(g.label, 30)}`)
+        : ['按月跟踪订单与回款', '季度复核毛利与现金 runway', '下一轮融资前复盘估值假设', '关键假设触发阈值即启动条款保护'],
     },
   }
 }
@@ -217,37 +319,46 @@ function sanitizeNarratives(raw: Partial<DeckNarratives> | null, fallback: DeckN
   const modules = fallback.modules.map(fb => {
     const found = (raw.modules || []).find(m => m?.moduleKey === fb.moduleKey)
     if (!found) return fb
-    const bullets = asStringArray(found.bullets, 4, 80)
+    const bullets = asStringArray(found.bullets, 5, 85)
+    const analysis = asStringArray(found.analysis, 4, 85)
     return {
       moduleKey: fb.moduleKey,
       headline: truncate(String(found.headline || fb.headline), 30),
       bullets: bullets.length >= 2 ? bullets : fb.bullets,
-      opportunity: found.opportunity ? truncate(String(found.opportunity), 60) : fb.opportunity,
-      risk: found.risk ? truncate(String(found.risk), 60) : fb.risk,
-      evidenceRefs: asStringArray(found.evidenceRefs, 6, 8).length > 0
-        ? asStringArray(found.evidenceRefs, 6, 8)
+      analysisHeadline: found.analysisHeadline
+        ? truncate(String(found.analysisHeadline), 30)
+        : fb.analysisHeadline,
+      analysis: analysis.length >= 2 ? analysis : fb.analysis,
+      opportunity: found.opportunity ? truncate(String(found.opportunity), 70) : fb.opportunity,
+      risk: found.risk ? truncate(String(found.risk), 70) : fb.risk,
+      unknown: found.unknown ? truncate(String(found.unknown), 70) : fb.unknown,
+      evidenceRefs: asStringArray(found.evidenceRefs, 8, 8).length > 0
+        ? asStringArray(found.evidenceRefs, 8, 8)
         : fb.evidenceRefs,
     }
   })
 
   const opportunities = (raw.opportunities || [])
     .filter(o => o && typeof o.title === 'string')
-    .slice(0, 3)
+    .slice(0, 5)
     .map(o => ({
       title: truncate(String(o.title), 18),
-      detail: truncate(String(o.detail || ''), 60),
+      detail: truncate(String(o.detail || ''), 80),
       evidenceRefs: asStringArray(o.evidenceRefs, 3, 8),
     }))
 
   const risks = (raw.risks || [])
     .filter(r => r && typeof r.title === 'string')
-    .slice(0, 3)
+    .slice(0, 5)
     .map(r => ({
       title: truncate(String(r.title), 18),
-      detail: truncate(String(r.detail || ''), 60),
-      mitigation: truncate(String(r.mitigation || ''), 50),
+      detail: truncate(String(r.detail || ''), 80),
+      mitigation: truncate(String(r.mitigation || ''), 65),
       evidenceRefs: asStringArray(r.evidenceRefs, 3, 8),
     }))
+
+  const industryRaw = raw.industry
+  const timingRaw = raw.timing
 
   const valuation = raw.valuation
   return {
@@ -260,9 +371,29 @@ function sanitizeNarratives(raw: Partial<DeckNarratives> | null, fallback: DeckN
           conclusion: truncate(String(summary.conclusion || fallback.executiveSummary.conclusion), 50),
         }
       : fallback.executiveSummary,
+    industry: industryRaw && typeof industryRaw.headline === 'string'
+      ? {
+          headline: truncate(industryRaw.headline, 30),
+          bullets: asStringArray(industryRaw.bullets, 5, 85).length >= 2
+            ? asStringArray(industryRaw.bullets, 5, 85)
+            : fallback.industry.bullets,
+        }
+      : fallback.industry,
+    timing: timingRaw && typeof timingRaw.headline === 'string'
+      ? {
+          headline: truncate(timingRaw.headline, 30),
+          bullets: asStringArray(timingRaw.bullets, 5, 85).length >= 2
+            ? asStringArray(timingRaw.bullets, 5, 85)
+            : fallback.timing.bullets,
+        }
+      : fallback.timing,
     modules,
-    opportunities: opportunities.length > 0 ? opportunities : fallback.opportunities,
-    risks: risks.length > 0 ? risks : fallback.risks,
+    opportunities: opportunities.length >= 3
+      ? opportunities
+      : [...opportunities, ...fallback.opportunities].slice(0, 5),
+    risks: risks.length >= 3
+      ? risks
+      : [...risks, ...fallback.risks].slice(0, 5),
     valuation: valuation && typeof valuation.headline === 'string'
       ? {
           headline: truncate(valuation.headline, 30),
@@ -297,25 +428,44 @@ export async function generateNarratives(
   type: DeckType
 ): Promise<DeckNarratives> {
   const fallback = fallbackNarratives(context)
-  const prompt = buildPromptContext(context, type)
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const raw = await callDeepSeekJson<Partial<DeckNarratives>>({
-        system: SYSTEM_PROMPT,
-        user: prompt,
-        module: 'dd-deck',
-        maxTokens: 6000,
-        timeoutMs: 150_000,
-        temperature: 0.25,
-      })
-      if (raw) return sanitizeNarratives(raw, fallback)
-    } catch (error) {
-      console.error(`[dd-deck] 文案生成失败（第 ${attempt + 1} 次）:`, error)
-    }
+  // 分两次调用：全局判断与九模块分开，避免单次输出过长被截断导致整份报告退化为模板
+  let globalRaw: Partial<DeckNarratives> | null = null
+  let moduleRaw: Partial<DeckNarratives> | null = null
+
+  try {
+    globalRaw = await callDeepSeekJson<Partial<DeckNarratives>>({
+      system: SYSTEM_PROMPT,
+      user: buildPromptContext(context, type),
+      module: 'dd-deck',
+      maxTokens: 5000,
+      timeoutMs: 180_000,
+      temperature: 0.25,
+    })
+  } catch (error) {
+    console.error('[dd-deck] 全局文案生成失败:', error)
   }
 
-  return fallback
+  try {
+    moduleRaw = await callDeepSeekJson<Partial<DeckNarratives>>({
+      system: SYSTEM_PROMPT,
+      user: buildModulePrompt(context, type),
+      module: 'dd-deck',
+      maxTokens: 6000,
+      timeoutMs: 180_000,
+      temperature: 0.25,
+    })
+  } catch (error) {
+    console.error('[dd-deck] 模块文案生成失败:', error)
+  }
+
+  const merged: Partial<DeckNarratives> | null = (globalRaw || moduleRaw)
+    ? {
+        ...(globalRaw || {}),
+        modules: moduleRaw?.modules || globalRaw?.modules || [],
+      }
+    : null
+  return sanitizeNarratives(merged, fallback)
 }
 
 // ── 模板组装 ──
@@ -350,6 +500,38 @@ function moduleSlide(
     title: narrative.headline,
     bullets: narrative.bullets,
     callout: calloutParts.join('｜'),
+    evidenceRefs,
+    footer,
+  }
+}
+
+/** 第二页：从事实走向投资含义，保证每模块至少两页、逻辑递进 */
+function moduleAnalysisSlide(
+  module: DeckModuleContext,
+  narrative: ModuleNarrative,
+  slideNo: number,
+  footer: string
+): SlideSpec {
+  const refsFromBullets = (narrative.analysis || []).flatMap(b => b.match(/\[([EF]\d+)\]/g) || [])
+    .map(r => r.replace(/[[\]]/g, ''))
+  const refs = [...new Set([...(narrative.evidenceRefs || []), ...refsFromBullets])].slice(0, 6)
+  const factRefs = module.facts.slice(0, 4).map(f => f.ref)
+  const evidenceRefs = refs.length > 0 ? refs : factRefs
+  const callout = [
+    narrative.opportunity ? `机会：${narrative.opportunity}` : '',
+    narrative.risk ? `风险：${narrative.risk}` : '',
+    narrative.unknown ? `待验证：${narrative.unknown}` : '',
+  ].filter(Boolean).join('｜')
+
+  return {
+    slideNo,
+    layout: 'module',
+    kicker: `${module.moduleName} · 投资含义`,
+    title: narrative.analysisHeadline || `${module.moduleName}：这意味着什么`,
+    bullets: (narrative.analysis && narrative.analysis.length > 0)
+      ? narrative.analysis
+      : [`本模块公开信息覆盖 ${Math.round(module.coverage * 100)}%`, '需补充原始资料后复核关键假设'],
+    callout: callout || `研究覆盖 ${Math.round(module.coverage * 100)}%｜待补 ${module.gaps.filter(g => g.status === 'OPEN').length} 项`,
     evidenceRefs,
     footer,
   }
@@ -399,6 +581,25 @@ export function assembleBriefSpec(context: DeckContext, narratives: DeckNarrativ
       footer,
     },
   ]
+
+  slides.push({
+    slideNo: 0,
+    layout: 'summary',
+    kicker: '行业与时机',
+    title: narratives.industry.headline,
+    bullets: narratives.industry.bullets.slice(0, 4),
+    callout: narratives.timing.bullets[0] || '时机判断需结合需求、供给与资本窗口',
+    footer,
+  })
+  slides.push({
+    slideNo: 0,
+    layout: 'summary',
+    kicker: '时机窗口',
+    title: narratives.timing.headline,
+    bullets: narratives.timing.bullets.slice(0, 4),
+    callout: narratives.executiveSummary.conclusion,
+    footer,
+  })
 
   let slideNo = 3
   for (const module of context.modules) {
@@ -480,7 +681,7 @@ export function assembleBriefSpec(context: DeckContext, narratives: DeckNarrativ
     projectName: context.project.name,
     generatedAt,
     theme: 'navy-gold',
-    slides,
+    slides: slides.map((s, index) => ({ ...s, slideNo: index + 1 })),
   }
 }
 
@@ -529,14 +730,48 @@ export function assembleFinalSpec(context: DeckContext, narratives: DeckNarrativ
     },
   ]
 
-  slides.push(sectionSlide(3, '01', '项目与赛道', '先回答「是什么、卖给谁、凭什么」，再讨论成长与估值', footer))
+  // 每个模块固定两页：事实与发现 → 投资含义；slideNo 最终按数组顺序统一编号
+  const pushModulePair = (key: string) => {
+    const module = moduleOf(key)
+    if (!module) return
+    const narrative = moduleNarrative(key)
+    slides.push(moduleSlide(module, narrative, 0, footer))
+    slides.push(moduleAnalysisSlide(module, narrative, 0, footer))
+  }
 
-  slides.push(moduleSlide(moduleOf('PROJECT_ENTITY'), moduleNarrative('PROJECT_ENTITY'), 4, footer))
-  slides.push(moduleSlide(moduleOf('PRODUCT_TECHNOLOGY'), moduleNarrative('PRODUCT_TECHNOLOGY'), 5, footer))
-  slides.push(moduleSlide(moduleOf('MARKET_CUSTOMERS'), moduleNarrative('MARKET_CUSTOMERS'), 6, footer))
-  slides.push(moduleSlide(moduleOf('COMMERCIALIZATION'), moduleNarrative('COMMERCIALIZATION'), 7, footer))
+  slides.push(sectionSlide(0, '01', '行业与时机', '先判断行业阶段与窗口，再判断单个项目能否跑出来', footer))
+  slides.push({
+    slideNo: 0,
+    layout: 'summary',
+    kicker: '行业发展与政策环境',
+    title: narratives.industry.headline,
+    bullets: narratives.industry.bullets.slice(0, 5),
+    stats: [
+      { label: '公开来源', value: String(context.research.sourceCount) },
+      { label: '可核验事实', value: String(context.research.factCount) },
+      { label: '行业覆盖', value: `${Math.round((context.modules.find(m => m.moduleKey === 'MARKET_CUSTOMERS')?.coverage || 0) * 100)}%` },
+      { label: '竞争覆盖', value: `${Math.round((context.modules.find(m => m.moduleKey === 'COMPETITION_MOATS')?.coverage || 0) * 100)}%` },
+    ],
+    callout: '行业结论决定项目的增长天花板与估值中枢，必须与项目自身证据分开判断',
+    footer,
+  })
+  slides.push({
+    slideNo: 0,
+    layout: 'summary',
+    kicker: '时机窗口',
+    title: narratives.timing.headline,
+    bullets: narratives.timing.bullets.slice(0, 5),
+    callout: '时机判断要同时看需求、供给与资本窗口；任一条件不成立都应收紧估值或分期投入',
+    footer,
+  })
 
-  slides.push(sectionSlide(8, '02', '为什么可能成', '把机会拆成可验证的驱动因素，而不是笼统的行业空间', footer))
+  slides.push(sectionSlide(0, '02', '项目与赛道', '先回答「是什么、卖给谁、凭什么」，再讨论成长与估值', footer))
+  pushModulePair('PROJECT_ENTITY')
+  pushModulePair('PRODUCT_TECHNOLOGY')
+  pushModulePair('MARKET_CUSTOMERS')
+  pushModulePair('COMMERCIALIZATION')
+
+  slides.push(sectionSlide(0, '03', '为什么可能成', '把机会拆成可验证的驱动因素，而不是笼统的行业空间', footer))
 
   slides.push({
     slideNo: 9,
@@ -561,12 +796,12 @@ export function assembleFinalSpec(context: DeckContext, narratives: DeckNarrativ
     footer,
   })
 
-  slides.push(moduleSlide(moduleOf('COMPETITION_MOATS'), moduleNarrative('COMPETITION_MOATS'), 10, footer))
-  slides.push(moduleSlide(moduleOf('TEAM_GOVERNANCE'), moduleNarrative('TEAM_GOVERNANCE'), 11, footer))
+  pushModulePair('COMPETITION_MOATS')
+  pushModulePair('TEAM_GOVERNANCE')
 
-  slides.push(sectionSlide(12, '03', '为什么可能不成', '把失败路径写清楚：财务、法务、团队与竞争四条线', footer))
-  slides.push(moduleSlide(moduleOf('FINANCE_ECONOMICS'), moduleNarrative('FINANCE_ECONOMICS'), 13, footer))
-  slides.push(moduleSlide(moduleOf('LEGAL_COMPLIANCE'), moduleNarrative('LEGAL_COMPLIANCE'), 14, footer))
+  slides.push(sectionSlide(0, '04', '为什么可能不成', '把失败路径写清楚：财务、法务、团队与竞争四条线', footer))
+  pushModulePair('FINANCE_ECONOMICS')
+  pushModulePair('LEGAL_COMPLIANCE')
 
   slides.push({
     slideNo: 15,
@@ -621,7 +856,7 @@ export function assembleFinalSpec(context: DeckContext, narratives: DeckNarrativ
     footer,
   })
 
-  slides.push(sectionSlide(17, '04', '估值与交易', '估值不是单点数字，而是可比、条款与回报情景的组合', footer))
+  slides.push(sectionSlide(0, '05', '估值与交易', '估值不是单点数字，而是可比、条款与回报情景的组合', footer))
 
   slides.push({
     slideNo: 18,
@@ -635,6 +870,8 @@ export function assembleFinalSpec(context: DeckContext, narratives: DeckNarrativ
       : '当前缺少可比融资数据，建议补充 FA 材料与融资数据库导出',
     footer,
   })
+
+  pushModulePair('VALUATION_DEAL')
 
   slides.push({
     slideNo: 19,
@@ -732,6 +969,6 @@ export function assembleFinalSpec(context: DeckContext, narratives: DeckNarrativ
     projectName: context.project.name,
     generatedAt,
     theme: 'navy-gold',
-    slides,
+    slides: slides.map((s, index) => ({ ...s, slideNo: index + 1 })),
   }
 }

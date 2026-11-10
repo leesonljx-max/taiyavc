@@ -8,7 +8,7 @@ import { DD_MODULE_KEYS } from '@/lib/dd-research/constants'
 
 /**
  * POST /api/dd/research/[projectId]/run
- * 手动触发九大模块全网研究（24h 幂等，force 可重跑）
+ * 手动触发九大模块全网研究（资料未变时复用已有版本，force 可重跑）
  */
 export async function POST(
   request: Request,
@@ -18,7 +18,7 @@ export async function POST(
   if (!access.ok) return access.response
 
   try {
-    let body: { modules?: unknown; force?: unknown } = {}
+    let body: { modules?: unknown; force?: unknown; autoDeck?: unknown } = {}
     try {
       body = await request.json()
     } catch {
@@ -32,6 +32,7 @@ export async function POST(
     const result = await createResearchRun(params.projectId, {
       modules,
       force: Boolean(body.force),
+      autoDeck: body.autoDeck !== false,
       userId: access.userId,
     })
     enqueueResearch(result.runId)

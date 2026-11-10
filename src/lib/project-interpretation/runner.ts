@@ -14,6 +14,7 @@ import { parseAgentJson } from '@/lib/dd-harness/agent'
 import { recordTokenUsage } from '@/lib/token-accounting'
 import { DEEPSEEK_MODEL } from '@/lib/deepseek-model'
 import { buildUserSkillPromptBlock, listActiveDynamicSkills } from '@/lib/skill-registry'
+import { buildPluginContextBlock } from '@/lib/plugin-runtime'
 import {
   PI_RULES,
   isPIMatchLevel,
@@ -147,9 +148,18 @@ export async function runInterpretation(input: {
     ? (await listActiveDynamicSkills(input.userId, 'project-interpretation').catch(() => [])).map(s => s.name)
     : []
 
-  // 1. 七维解读（纯文档分析；用户技能框架优先于固定框架）
+  // 0b. 插件补充资料（已启用的检索渠道插件；无插件/无结果时为空串）
+  let pluginBlock = ''
+  try {
+    const pluginContext = await buildPluginContextBlock({ name: input.projectName }, { scene: 'project-interpretation' })
+    pluginBlock = pluginContext.block
+  } catch {
+    pluginBlock = ''
+  }
+
+  // 1. 七维解读（纯文档分析；用户技能框架优先于固定框架；插件资料用于补足公开信息）
   const { parsed: base } = await callDeepSeekJson<Partial<InterpretationResult>>(
-    INTERPRET_SYSTEM_PROMPT + skillBlock,
+    INTERPRET_SYSTEM_PROMPT + skillBlock + pluginBlock,
     `项目文档内容：\n\n${docText}\n\n请按固定框架输出 JSON 解读。`,
     3500
   )

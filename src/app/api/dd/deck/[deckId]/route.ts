@@ -41,6 +41,8 @@ export async function GET(
         projectName: deck.project.name,
         type: deck.type,
         status: deck.status,
+        version: deck.version,
+        templateVersion: deck.templateVersion,
         slideCount: deck.slideCount,
         pptxUrl: deck.pptxUrl,
         generatedAt: deck.generatedAt,

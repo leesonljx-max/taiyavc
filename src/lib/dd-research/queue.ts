@@ -7,6 +7,7 @@
 
 import prisma from '@/lib/prisma'
 import { runResearch } from './orchestrator'
+import { createDeck, enqueueDeck } from '@/lib/dd-deck/queue'
 
 const CONCURRENCY = 1
 const POLL_MS = 30_000
@@ -63,11 +64,39 @@ async function recoverStale(): Promise<void> {
   return recovering
 }
 
+/** 一键尽调：检索完成后自动生成资料简报与尽调报告（已有同版本则复用） */
+async function triggerAutoDeck(runId: string): Promise<void> {
+  const run = await prisma.dDResearchRun.findUnique({
+    where: { id: runId },
+    select: { projectId: true, status: true, scopeJson: true },
+  })
+  if (!run || (run.status !== 'DONE' && run.status !== 'PARTIAL')) return
+
+  let autoDeck = false
+  try {
+    const scope = run.scopeJson ? JSON.parse(run.scopeJson) as { autoDeck?: unknown } : {}
+    autoDeck = scope.autoDeck === true
+  } catch {
+    autoDeck = false
+  }
+  if (!autoDeck) return
+
+  for (const type of ['BRIEF', 'FINAL'] as const) {
+    try {
+      const { deckId, existing } = await createDeck(run.projectId, type, 'system:auto')
+      if (!existing) enqueueDeck(deckId)
+    } catch (error) {
+      console.error(`[dd-research] 自动生成 ${type} 报告失败:`, error)
+    }
+  }
+}
+
 function pump(): void {
   while (active < CONCURRENCY && waiting.length > 0) {
     const runId = waiting.shift() as string
     active += 1
     void runResearch(runId)
+      .then(() => triggerAutoDeck(runId))
       .catch(error => {
         console.error(`[dd-research] 队列任务异常 ${runId}:`, error)
       })

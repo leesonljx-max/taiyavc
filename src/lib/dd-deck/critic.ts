@@ -39,7 +39,8 @@ export function critiqueDeck(spec: DeckSpec, context: DeckContext): CritiqueResu
       )
 
       if (slide.layout === 'module' && evidenceRefs.length === 0) {
-        const moduleFacts = factRefsByModule.get(slide.kicker || '') || []
+        const moduleName = (slide.kicker || '').split(' · ')[0]
+        const moduleFacts = factRefsByModule.get(moduleName) || []
         evidenceRefs.push(...moduleFacts)
       }
 

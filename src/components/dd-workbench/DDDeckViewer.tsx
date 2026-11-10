@@ -20,6 +20,8 @@ interface DeckDetailDeck {
   projectName: string
   type: DeckType
   status: 'QUEUED' | 'GENERATING' | 'READY' | 'FAILED'
+  version: number
+  templateVersion: string
   slideCount: number
   pptxUrl: string | null
   generatedAt: string | null
@@ -339,7 +341,7 @@ export default function DDDeckViewer({ deckId, onClose }: { deckId: string; onCl
               {typeLabel}
             </span>
             <span style={{ flexShrink: 0, fontSize: 12, color: '#8FA3B5' }}>
-              {total} 页
+              {data?.deck.version ? `v${data.deck.version} · ` : ''}{total} 页
             </span>
           </div>
 

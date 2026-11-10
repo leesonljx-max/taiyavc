@@ -38,6 +38,18 @@ interface ResearchStatusPayload {
   stats: ResearchStats | null
 }
 
+export interface DeckSummary {
+  id: string
+  type: 'BRIEF' | 'FINAL'
+  status: string
+  version: number
+  inputFingerprint: string | null
+  slideCount: number
+  generatedAt: string | null
+  createdAt: string
+  error: string | null
+}
+
 const PHASE_LABELS: Record<string, string> = {
   PLAN: '规划检索',
   SEARCH: '检索公开资料',
@@ -89,6 +101,8 @@ export default function DDResearchBar(props: {
   } = props
 
   const [status, setStatus] = useState<ResearchStatusPayload | null>(null)
+  const [decks, setDecks] = useState<DeckSummary[]>([])
+  const [currentFingerprints, setCurrentFingerprints] = useState<{ BRIEF: string; FINAL: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
   const [deckBusy, setDeckBusy] = useState<'BRIEF' | 'FINAL' | null>(null)
@@ -119,6 +133,20 @@ export default function DDResearchBar(props: {
     }
   }, [])
 
+  const fetchDecks = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/dd/decks/${projectId}`, { cache: 'no-store' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !mountedRef.current) return
+      setDecks(Array.isArray(data?.decks) ? (data.decks as DeckSummary[]) : [])
+      if (data?.current?.BRIEF && data?.current?.FINAL) {
+        setCurrentFingerprints(data.current as { BRIEF: string; FINAL: string })
+      }
+    } catch {
+      // 版本列表失败不阻塞主流程
+    }
+  }, [projectId])
+
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch(`/api/dd/research/${projectId}/status`, { cache: 'no-store' })
@@ -142,6 +170,7 @@ export default function DDResearchBar(props: {
       const active = !!payload.run && ACTIVE_STATUSES.includes(payload.run.status)
       if (wasActiveRef.current && !active) {
         onResearchFinishedRef.current()
+        void fetchDecks()
       }
       wasActiveRef.current = active
     } catch {
@@ -149,11 +178,11 @@ export default function DDResearchBar(props: {
     } finally {
       if (mountedRef.current) setLoading(false)
     }
-  }, [projectId])
+  }, [fetchDecks, projectId])
 
   useEffect(() => {
-    void fetchStatus()
-  }, [fetchStatus])
+    void Promise.all([fetchStatus(), fetchDecks()])
+  }, [fetchStatus, fetchDecks])
 
   const run = status?.run ?? null
   const modules = status?.modules ?? []
@@ -168,6 +197,16 @@ export default function DDResearchBar(props: {
     return () => clearInterval(timer)
   }, [active, fetchStatus])
 
+  // 自动报告生成期间轮询版本列表，完成后无需手动刷新
+  const hasActiveDeck = decks.some(d => d.status === 'QUEUED' || d.status === 'GENERATING')
+  useEffect(() => {
+    if (!hasActiveDeck) return
+    const timer = setInterval(() => {
+      void fetchDecks()
+    }, 5000)
+    return () => clearInterval(timer)
+  }, [hasActiveDeck, fetchDecks])
+
   const startResearch = useCallback(
     async (force: boolean) => {
       if (!canEdit || starting || active) return
@@ -177,7 +216,7 @@ export default function DDResearchBar(props: {
         const res = await fetch(`/api/dd/research/${projectId}/run`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ force }),
+          body: JSON.stringify({ force, autoDeck: true }),
         })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) {
@@ -185,13 +224,18 @@ export default function DDResearchBar(props: {
           return
         }
         await fetchStatus()
+        // 复用已有研究时后台仍会补齐报告，稍后再刷新一次版本列表
+        void fetchDecks()
+        setTimeout(() => {
+          void fetchDecks()
+        }, 3000)
       } catch {
         setError('网络异常，请稍后重试')
       } finally {
         if (mountedRef.current) setStarting(false)
       }
     },
-    [active, canEdit, fetchStatus, projectId, starting]
+    [active, canEdit, fetchDecks, fetchStatus, projectId, starting]
   )
 
   const pollDeck = useCallback(async (deckId: string) => {
@@ -222,16 +266,39 @@ export default function DDResearchBar(props: {
     setError('报告生成超时，请稍后重试')
   }, [])
 
+  const latestDeck = useCallback(
+    (type: 'BRIEF' | 'FINAL') => decks.find(d => d.type === type) || null,
+    [decks]
+  )
+
+  const deckIsCurrent = useCallback(
+    (deck: DeckSummary | null) => {
+      if (!deck || !currentFingerprints) return true
+      return !deck.inputFingerprint || deck.inputFingerprint === currentFingerprints[deck.type]
+    },
+    [currentFingerprints]
+  )
+
   const generateDeck = useCallback(
-    async (type: 'BRIEF' | 'FINAL') => {
+    async (type: 'BRIEF' | 'FINAL', force = false) => {
       if (!canEdit || deckBusy) return
+
+      const latest = latestDeck(type)
+      if (!force && latest?.status === 'READY' && deckIsCurrent(latest)) {
+        onOpenDeckRef.current(latest.id)
+        return
+      }
+      if (force && latest && !window.confirm(`将基于当前资料重新生成${type === 'FINAL' ? '尽调报告' : '资料简报'}，并创建一个新版本，是否继续？`)) {
+        return
+      }
+
       setDeckBusy(type)
       setError(null)
       try {
         const res = await fetch(`/api/dd/decks/${projectId}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type }),
+          body: JSON.stringify({ type, force }),
         })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) {
@@ -247,17 +314,32 @@ export default function DDResearchBar(props: {
           return
         }
         await pollDeck(String(data.deckId))
+        await fetchDecks()
       } catch {
         setError('网络异常，请稍后重试')
       } finally {
         if (mountedRef.current) setDeckBusy(null)
       }
     },
-    [canEdit, deckBusy, onGapClick, pollDeck, projectId]
+    [canEdit, deckBusy, deckIsCurrent, fetchDecks, latestDeck, onGapClick, pollDeck, projectId]
   )
 
+  const deckButtonLabel = (type: 'BRIEF' | 'FINAL') => {
+    const icon = type === 'BRIEF' ? '📑' : '📊'
+    const name = type === 'BRIEF' ? '资料简报' : '尽调报告'
+    if (deckBusy === type) return `${name}生成中...`
+    const latest = latestDeck(type)
+    if (latest?.status === 'READY') {
+      return `${icon} ${name} v${latest.version}${deckIsCurrent(latest) ? '' : ' · 更新'}`
+    }
+    if (latest && (latest.status === 'QUEUED' || latest.status === 'GENERATING')) {
+      return `${name}生成中...`
+    }
+    return `${icon} 生成${name}`
+  }
+
   const researchLabel = active
-    ? `全网检索中 ${Math.round(run?.progress ?? 0)}%`
+    ? `全网检索与自动报告 ${Math.round(run?.progress ?? 0)}%`
     : finished
       ? '🔄 重新全网尽调'
       : '🔍 一键全网尽调'
@@ -283,7 +365,7 @@ export default function DDResearchBar(props: {
         <div className="mr-auto min-w-[160px]">
           <div className="text-sm font-bold text-ink">全网尽调</div>
           <div className="mt-0.5 text-[11px] text-ink-faint">
-            九大模块自动检索 · 事实卡与缺口清单
+            九大模块深度检索 · 自动生成 PPT 简报与尽调报告 · 资料未变直接复用版本
           </div>
         </div>
 
@@ -291,10 +373,10 @@ export default function DDResearchBar(props: {
           type="button"
           className="btn-secondary"
           disabled={!canEdit || deckBusy !== null}
-          title={!canEdit ? '无编辑权限' : undefined}
+          title={!canEdit ? '无编辑权限' : '已有同版本时直接打开；资料更新后点击生成新版本'}
           onClick={() => void generateDeck('BRIEF')}
         >
-          {deckBusy === 'BRIEF' ? '简报生成中...' : '📑 资料简报'}
+          {deckButtonLabel('BRIEF')}
         </button>
 
         <button
@@ -304,19 +386,36 @@ export default function DDResearchBar(props: {
           title={!canEdit ? '无编辑权限' : undefined}
           onClick={() => void generateDeck('FINAL')}
         >
-          {deckBusy === 'FINAL' ? '报告生成中...' : '📊 尽调报告'}
+          {deckButtonLabel('FINAL')}
         </button>
 
         <button
           type="button"
           className="btn-primary"
           disabled={!canEdit || active || starting}
-          title={!canEdit ? '无编辑权限' : undefined}
-          onClick={() => void startResearch(finished)}
+          title={!canEdit ? '无编辑权限' : '资料未变化时直接复用已有版本；上传或更新资料后点击将生成新版本'}
+          onClick={() => void startResearch(false)}
         >
           {researchLabel}
         </button>
       </div>
+
+      {(decks.length > 0 || active) && (
+        <div className="mt-2 text-[11px] text-ink-faint">
+          {active
+            ? '检索完成后会自动生成资料简报与尽调报告；已有同版本报告不会重复生成'
+            : (() => {
+                const brief = latestDeck('BRIEF')
+                const finalDeck = latestDeck('FINAL')
+                const parts: string[] = []
+                if (brief?.status === 'READY') parts.push(`资料简报 v${brief.version}`)
+                if (finalDeck?.status === 'READY') parts.push(`尽调报告 v${finalDeck.version}`)
+                if (parts.length === 0) return '尚未生成报告'
+                const stale = [brief, finalDeck].some(d => d?.status === 'READY' && !deckIsCurrent(d))
+                return `最新版本：${parts.join(' · ')}${stale ? '；资料已更新，可生成新版本' : '；已是最新'}`
+              })()}
+        </div>
+      )}
 
       {loading && !status && (
         <div className="mt-3 text-xs text-ink-faint">加载研究进度...</div>

@@ -20,11 +20,18 @@ export interface DDRequirement {
   keywords: string[]
 }
 
+/** 研究与报告模板版本：任一变动都会使旧版本失效并触发重新生成 */
+export const DD_RESEARCH_VERSION = 'v2.8'
+export const DD_DECK_VERSION = 'v2.8'
+
 export const DD_SEARCH_BUDGET = {
-  maxSearches: 45,
+  /** 9 模块 × 8 条查询；预算内允许模块级补搜 */
+  maxSearches: 72,
   maxResultsPerQuery: 5,
-  maxSourcesPerModule: 8,
-  contentMaxChars: 20_000,
+  /** 每模块保留来源上限（去重后） */
+  maxSourcesPerModule: 12,
+  /** 单来源正文保留上限 */
+  contentMaxChars: 30_000,
 } as const
 
 export const DD_MODULE_KEYS = [
