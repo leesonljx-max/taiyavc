@@ -286,7 +286,7 @@ if (deck.type === 'DEEP') {
 - `npm test`
 - `npm run build`
 - 浏览器手测：生成深度报告 → 打开 A4 预览 → 检查目录/章节/图表/图片 → 打印预览为 A4 → 保存 PDF。
-- `package.json` 版本 `2.7.3`。
+- `package.json` 版本 `2.7.4`。
 
 ## 13. 不在本轮范围
 

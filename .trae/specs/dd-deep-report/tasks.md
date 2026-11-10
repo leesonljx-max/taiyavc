@@ -108,7 +108,7 @@
 
 文件：
 - 新增 `tests/dd-deep.test.ts`。
-- `package.json`：版本 `2.7.3`。
+- `package.json`：版本 `2.7.4`。
 
 执行：
 1. `npx tsc --noEmit`
