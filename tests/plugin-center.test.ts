@@ -19,13 +19,16 @@ import {
   PLUGIN_CATALOG,
   buildPluginQueries,
   getPluginManifest,
+  resolvePluginByName,
   sanitizePluginModules,
   sanitizePluginScenes,
 } from '@/lib/plugin-registry'
 import {
   installPlugin,
+  installPluginByName,
   uninstallPlugin,
   togglePlugin,
+  setPluginScenes,
   setProjectPluginEnabled,
   createPromptPlugin,
   listPluginViews,
@@ -88,10 +91,10 @@ const req = (method: string, url: string, payload?: unknown) =>
 
 // ── 受控目录（纯函数） ──
 
-test('目录：内置 5 个检索渠道插件，查询模板按主体生成', () => {
-  assert.equal(PLUGIN_CATALOG.length, 5)
+test('目录：内置 6 个检索渠道插件，支持按名称/别名解析', () => {
+  assert.equal(PLUGIN_CATALOG.length, 6)
   assert.deepEqual(PLUGIN_CATALOG.map(p => p.key), [
-    'official-site', 'patent-search', 'bidding-search', 'news-monitor', 'financial-data',
+    'official-site', 'patent-search', 'bidding-search', 'news-monitor', 'financial-data', 'market-intel',
   ])
   const manifest = getPluginManifest('official-site')!
   const queries = buildPluginQueries(manifest, { name: '无涯智远', fullName: '无涯智远（北京）科技有限公司' })
@@ -101,6 +104,12 @@ test('目录：内置 5 个检索渠道插件，查询模板按主体生成', ()
   assert.equal(buildPluginQueries(manifest, { name: '' }).length, 0)
   assert.deepEqual(sanitizePluginScenes(['dd-workbench', 'unknown']), ['dd-workbench'])
   assert.deepEqual(sanitizePluginModules(['FINANCE_ECONOMICS', 'BAD']), ['FINANCE_ECONOMICS'])
+
+  // 名称/中文名/别名均可解析；dshmarket 映射到市场情报插件
+  assert.equal(resolvePluginByName('official-site')!.key, 'official-site')
+  assert.equal(resolvePluginByName('官网深读')!.key, 'official-site')
+  assert.equal(resolvePluginByName('dshmarket')!.key, 'market-intel')
+  assert.equal(resolvePluginByName('不存在的插件'), null)
 })
 
 // ── 运行时：安装/启停/项目级启用/卸载 ──
@@ -126,6 +135,21 @@ test('运行时：安装写入版本与统计行，启停与项目级启停生�
   assert.equal(await prisma.projectPlugin.count({ where: { pluginKey: 'official-site' } }), 0)
   views = await listPluginViews()
   assert.equal(views.find(v => v.key === 'official-site')!.installed, false)
+})
+
+test('运行时：按名称安装（dshmarket）与按插件配置参与功能', async () => {
+  const byName = await installPluginByName('dshmarket', userId)
+  assert.equal(byName.key, 'market-intel')
+  assert.equal(byName.alreadyInstalled, false)
+
+  const again = await installPluginByName('市场情报', userId)
+  assert.equal(again.alreadyInstalled, true)
+
+  await setPluginScenes('market-intel', ['project-interpretation'])
+  const view = (await listPluginViews()).find(v => v.key === 'market-intel')!
+  assert.deepEqual(view.scenes, ['project-interpretation'])
+
+  await assert.rejects(() => installPluginByName('不存在的插件'), /未找到插件/)
 })
 
 // ── 执行：检索插件与提示词插件 ──
@@ -185,26 +209,43 @@ test('尽调接入：插件来源按首模块归集，与既有来源共用 URL 
 
 // ── API：权限与契约 ──
 
-test('API：未登录 401；普通账号可读目录但不可管理；管理员可安装', async () => {
+test('API：未登录 401；普通账号可读目录、可安装与配置参与功能，但不可卸载', async () => {
   mockState.session = null
   assert.equal((await PLUGIN_GET(req('GET', 'http://t/api/admin/plugins'))).status, 401)
 
   asUser()
-  const read = await PLUGIN_GET(req('GET', `http://t/api/admin/plugins?projectId=${projectId}`))
+  const read = await PLUGIN_GET(req('GET', 'http://t/api/admin/plugins'))
   assert.equal(read.status, 200)
   const readBody = await read.json()
-  assert.equal(readBody.plugins.length, 5)
+  assert.equal(readBody.plugins.length, 6)
   assert.ok(Array.isArray(readBody.projects))
   assert.equal(readBody.stats.installed, 0)
 
-  const denied = await PLUGIN_POST(req('POST', 'http://t/api/admin/plugins', { action: 'install', key: 'official-site' }))
-  assert.equal(denied.status, 403)
-
-  asAdmin()
+  // 普通账号可以直接安装，并配置该插件参与的功能
   const installed = await PLUGIN_POST(req('POST', 'http://t/api/admin/plugins', { action: 'install', key: 'official-site' }))
   assert.equal(installed.status, 200)
+  const scenes = await PLUGIN_POST(req('POST', 'http://t/api/admin/plugins', {
+    action: 'scenes', key: 'official-site', scenes: ['project-interpretation'],
+  }))
+  assert.equal(scenes.status, 200)
+
+  // 卸载仍仅管理员可操作
+  const denied = await PLUGIN_POST(req('POST', 'http://t/api/admin/plugins', { action: 'uninstall', key: 'official-site' }))
+  assert.equal(denied.status, 403)
+
   const after = await (await PLUGIN_GET(req('GET', 'http://t/api/admin/plugins'))).json()
   assert.equal(after.stats.installed, 1)
+  assert.deepEqual(after.plugins.find((p: { key: string }) => p.key === 'official-site').scenes, ['project-interpretation'])
+})
+
+test('API：按名称安装 dshmarket 自动安装市场情报插件', async () => {
+  asUser()
+  const res = await PLUGIN_POST(req('POST', 'http://t/api/admin/plugins', { action: 'installByName', name: 'dshmarket' }))
+  assert.equal(res.status, 200)
+  const body = await res.json()
+  assert.equal(body.key, 'market-intel')
+  assert.equal(body.name, '市场情报')
+  assert.equal(body.alreadyInstalled, false)
 })
 
 test('API：管理员创建提示词插件；试运行接口返回来源', async () => {

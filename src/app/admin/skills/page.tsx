@@ -204,21 +204,21 @@ export default function AdminSkillsPage() {
   const builtin = builtinSkills
 
   return (
-    <DashboardLayout title="插件中心" subtitle="受控插件目录 × AI 技术能力注册表">
-      <div className="max-w-5xl mx-auto space-y-5 pb-6">
+    <DashboardLayout title="插件中心" subtitle="受控插件目录 × AI 技能注册表">
+      <div className="w-full space-y-5 pb-6">
         {/* 一级栏目两个模块切换 */}
         <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit">
           <button
             onClick={() => setTab('plugins')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${tab === 'plugins' ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink'}`}
+            className={`px-10 py-2.5 rounded-lg text-sm font-bold transition-colors ${tab === 'plugins' ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink'}`}
           >
             插件
           </button>
           <button
             onClick={() => setTab('tech')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${tab === 'tech' ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink'}`}
+            className={`px-10 py-2.5 rounded-lg text-sm font-bold transition-colors ${tab === 'tech' ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink'}`}
           >
-            技术
+            技能
           </button>
         </div>
 

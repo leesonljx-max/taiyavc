@@ -31,6 +31,7 @@ export const PLUGIN_CAPABILITIES = [
   { key: 'BIDDING', label: '招投标' },
   { key: 'NEWS', label: '新闻舆情' },
   { key: 'FINANCIAL', label: '财务工商' },
+  { key: 'MARKET', label: '市场情报' },
 ] as const
 
 /** 尽调模块中文名（插件归属展示用；与 DD 模板保持一致） */
@@ -65,6 +66,8 @@ export interface PluginManifest {
   capabilities: string[]
   scenes: PluginScene[]
   modules: string[]
+  /** 按名称安装时可识别的别名（中文名/英文名/简称） */
+  aliases?: string[]
   /** 按项目主体生成检索查询（2-3 条） */
   buildQueries: (subject: PluginSubject) => string[]
 }
@@ -88,6 +91,7 @@ export const PLUGIN_CATALOG: PluginManifest[] = [
     kind: 'SEARCH_CHANNEL',
     version: '1.1.0',
     capabilities: ['OFFICIAL_SITE'],
+    aliases: ['官网', '官网深读', 'official', 'official-site'],
     scenes: DEFAULT_SCENES,
     modules: ['PROJECT_ENTITY', 'PRODUCT_TECHNOLOGY'],
     buildQueries: ({ name, fullName }) => [
@@ -104,6 +108,7 @@ export const PLUGIN_CATALOG: PluginManifest[] = [
     kind: 'SEARCH_CHANNEL',
     version: '1.1.0',
     capabilities: ['PATENT'],
+    aliases: ['专利', '专利检索', 'patent', 'patent-search'],
     scenes: DEFAULT_SCENES,
     modules: ['PRODUCT_TECHNOLOGY', 'COMPETITION_MOATS'],
     buildQueries: ({ name, fullName }) => [
@@ -120,6 +125,7 @@ export const PLUGIN_CATALOG: PluginManifest[] = [
     kind: 'SEARCH_CHANNEL',
     version: '1.1.0',
     capabilities: ['BIDDING'],
+    aliases: ['招投标', '招投标检索', '中标', 'bidding', 'bidding-search'],
     scenes: DEFAULT_SCENES,
     modules: ['MARKET_CUSTOMERS', 'COMMERCIALIZATION'],
     buildQueries: ({ name, fullName }) => [
@@ -136,6 +142,7 @@ export const PLUGIN_CATALOG: PluginManifest[] = [
     kind: 'SEARCH_CHANNEL',
     version: '1.1.0',
     capabilities: ['NEWS'],
+    aliases: ['新闻', '舆情', '新闻舆情', 'news', 'news-monitor'],
     scenes: DEFAULT_SCENES,
     modules: ['MARKET_CUSTOMERS', 'FINANCE_ECONOMICS'],
     buildQueries: ({ name, fullName }) => [
@@ -152,6 +159,7 @@ export const PLUGIN_CATALOG: PluginManifest[] = [
     kind: 'SEARCH_CHANNEL',
     version: '1.1.0',
     capabilities: ['FINANCIAL'],
+    aliases: ['财务', '工商', '财务工商', 'financial', 'financial-data'],
     scenes: DEFAULT_SCENES,
     modules: ['FINANCE_ECONOMICS', 'PROJECT_ENTITY'],
     buildQueries: ({ name, fullName }) => [
@@ -160,10 +168,42 @@ export const PLUGIN_CATALOG: PluginManifest[] = [
       `${shortOf({ name, fullName })} 融资 估值 轮次 财务`,
     ],
   },
+  {
+    key: 'market-intel',
+    name: '市场情报',
+    description: '检索行业规模、增速、政策监管与竞争格局，为市场客户与竞争壁垒模块补充行业侧公开情报。',
+    category: 'research',
+    kind: 'SEARCH_CHANNEL',
+    version: '1.0.0',
+    capabilities: ['MARKET'],
+    // dshmarket 作为快捷安装名，便于按名称直接添加市场情报插件
+    aliases: ['市场情报', '行业市场', '行业研究', 'dshmarket', 'dsh-market', 'market-intel'],
+    scenes: DEFAULT_SCENES,
+    modules: ['MARKET_CUSTOMERS', 'COMPETITION_MOATS'],
+    buildQueries: ({ name, fullName }) => [
+      `${entityOf({ name, fullName })} 行业 市场规模 增速`,
+      `${entityOf({ name, fullName })} 行业 政策 监管 趋势`,
+      `${shortOf({ name, fullName })} 市场份额 竞争格局`,
+    ],
+  },
 ]
 
 export function getPluginManifest(key: string): PluginManifest | null {
   return PLUGIN_CATALOG.find(p => p.key === key) || null
+}
+
+/** 按名称/标识/别名解析受控目录插件（支持 dshmarket 这类快捷安装名） */
+export function resolvePluginByName(input: string): PluginManifest | null {
+  const query = input.trim().toLowerCase()
+  if (!query) return null
+  return (
+    PLUGIN_CATALOG.find(
+      p =>
+        p.key.toLowerCase() === query ||
+        p.name.toLowerCase() === query ||
+        (p.aliases || []).some(a => a.toLowerCase() === query)
+    ) || null
+  )
 }
 
 export function isBuiltinPluginKey(key: string): boolean {

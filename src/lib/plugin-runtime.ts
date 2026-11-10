@@ -19,6 +19,7 @@ import {
   getPluginManifest,
   isPluginInScene,
   pluginModuleLabel,
+  resolvePluginByName,
   sanitizePluginModules,
   sanitizePluginScenes,
   type PluginSubject,
@@ -120,9 +121,9 @@ export async function listPluginViews(projectId?: string): Promise<PluginView[]>
       kind: manifest.kind,
       version: row?.version || manifest.version,
       latestVersion: manifest.version,
-      capabilities: manifest.capabilities,
-      scenes: manifest.scenes,
-      modules: manifest.modules,
+      capabilities: row?.capabilities || manifest.capabilities,
+      scenes: row?.scenes || manifest.scenes,
+      modules: row?.modules || manifest.modules,
       installed: !!row,
       installedVersion: row?.version || null,
       isActive: row?.isActive ?? false,
@@ -229,6 +230,46 @@ export async function installPlugin(key: string, userId?: string): Promise<void>
 export async function uninstallPlugin(key: string): Promise<void> {
   await prisma.agentPlugin.deleteMany({ where: { key } })
   await prisma.projectPlugin.deleteMany({ where: { pluginKey: key } })
+}
+
+/**
+ * 按名称安装插件：支持受控目录的 key / 中文名 / 别名（如 dshmarket → 市场情报），
+ * 也支持已创建的提示词插件按名称识别。未知名称给出明确提示，不执行任意第三方代码。
+ */
+export async function installPluginByName(
+  input: string,
+  userId?: string
+): Promise<{ key: string; name: string; alreadyInstalled: boolean }> {
+  const name = input.trim()
+  if (!name) throw new Error('请输入插件名称')
+  const manifest = resolvePluginByName(name)
+  if (manifest) {
+    const existing = await prisma.agentPlugin.findUnique({ where: { key: manifest.key } })
+    await installPlugin(manifest.key, userId)
+    return { key: manifest.key, name: manifest.name, alreadyInstalled: !!existing }
+  }
+
+  const row = await prisma.agentPlugin.findFirst({
+    where: {
+      OR: [
+        { key: name.toLowerCase() },
+        { name: { equals: name, mode: 'insensitive' } },
+      ],
+    },
+  })
+  if (row) return { key: row.key, name: row.name, alreadyInstalled: true }
+
+  throw new Error(`未找到插件「${name}」。受控目录支持：${PLUGIN_CATALOG.map(p => p.name).join('、')}；也可先在下方创建提示词插件。`)
+}
+
+/** 更新插件参与的功能场景（项目解读 / 项目尽调 / AI行研） */
+export async function setPluginScenes(key: string, scenes: unknown): Promise<void> {
+  const row = await prisma.agentPlugin.findUnique({ where: { key } })
+  if (!row) throw new Error('请先安装插件')
+  await prisma.agentPlugin.update({
+    where: { key },
+    data: { scenes: sanitizePluginScenes(scenes) },
+  })
 }
 
 export async function upgradePlugin(key: string): Promise<void> {
