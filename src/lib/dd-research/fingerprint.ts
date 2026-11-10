@@ -8,6 +8,7 @@
 import crypto from 'crypto'
 import prisma from '@/lib/prisma'
 import { DD_DECK_VERSION, DD_RESEARCH_VERSION } from './constants'
+import type { DeckType } from '@/lib/dd-deck/spec'
 
 function hash(value: unknown): string {
   return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 32)
@@ -81,18 +82,65 @@ export async function latestResearchRun(projectId: string) {
   })
 }
 
+/** 深度报告额外签名：文档正文、截图与人工结论变化都应触发新版本 */
+async function computeDeepResourceSignature(projectId: string): Promise<unknown> {
+  const resources = await prisma.dDModuleResource.findMany({
+    where: { projectId },
+    select: { moduleKey: true, documents: true, screenshots: true, conclusion: true },
+  })
+
+  return resources.map(resource => {
+    let docs: Array<{ id: string; fileName: string; len: number; head: string; tail: string }> = []
+    try {
+      const parsed = resource.documents ? JSON.parse(resource.documents) : []
+      if (Array.isArray(parsed)) {
+        docs = parsed.map((doc: { id?: unknown; fileName?: unknown; text?: unknown }) => {
+          const text = typeof doc?.text === 'string' ? doc.text : ''
+          return {
+            id: String(doc?.id || ''),
+            fileName: String(doc?.fileName || ''),
+            len: text.length,
+            head: text.slice(0, 200),
+            tail: text.slice(-200),
+          }
+        })
+      }
+    } catch {
+      docs = []
+    }
+
+    let shots: string[] = []
+    try {
+      const parsed = resource.screenshots ? JSON.parse(resource.screenshots) : []
+      shots = Array.isArray(parsed)
+        ? parsed.map((shot: { id?: unknown; url?: unknown }) => String(shot?.url || shot?.id || '')).filter(Boolean)
+        : []
+    } catch {
+      shots = []
+    }
+
+    return {
+      moduleKey: resource.moduleKey,
+      docs,
+      shots,
+      conclusionLen: (resource.conclusion || '').length,
+    }
+  }).sort((a, b) => a.moduleKey.localeCompare(b.moduleKey))
+}
+
 /** 报告指纹：研究结果 + 模块资料更新时间（模块报告/上传资料变化都会触发新版本） */
 export async function computeDeckFingerprint(
   projectId: string,
-  type: 'BRIEF' | 'FINAL'
+  type: DeckType
 ): Promise<{ fingerprint: string; researchRunId: string | null; researchFingerprint: string }> {
-  const [researchFingerprint, run, resources] = await Promise.all([
+  const [researchFingerprint, run, resources, deepSignature] = await Promise.all([
     computeResearchFingerprint(projectId),
     latestResearchRun(projectId),
     prisma.dDModuleResource.findMany({
       where: { projectId },
       select: { moduleKey: true, updatedAt: true },
     }),
+    type === 'DEEP' ? computeDeepResourceSignature(projectId) : Promise.resolve(null),
   ])
 
   const fingerprint = hash({
@@ -104,6 +152,7 @@ export async function computeDeckFingerprint(
     resources: resources
       .map(r => ({ moduleKey: r.moduleKey, updatedAt: r.updatedAt.toISOString() }))
       .sort((a, b) => a.moduleKey.localeCompare(b.moduleKey)),
+    ...(type === 'DEEP' ? { deepSignature } : {}),
   })
 
   return { fingerprint, researchRunId: run?.id || null, researchFingerprint }

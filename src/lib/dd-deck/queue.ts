@@ -8,10 +8,11 @@ import prisma from '@/lib/prisma'
 import { buildDeckContext } from './context'
 import { assembleBriefSpec, assembleFinalSpec, generateNarratives } from './writer'
 import { critiqueDeck } from './critic'
-import { coerceDeckSpec } from './spec'
+import { coerceDeckSpec, type DeckType } from './spec'
 import { renderDeckPptx } from './render-pptx'
 import { DD_DECK_VERSION } from '@/lib/dd-research/constants'
 import { computeDeckFingerprint } from '@/lib/dd-research/fingerprint'
+import { generateDeepDeck } from '@/lib/dd-deep/pipeline'
 
 const CONCURRENCY = 1
 const POLL_MS = 20_000
@@ -26,7 +27,7 @@ let recovering: Promise<void> | null = null
 
 export async function createDeck(
   projectId: string,
-  type: 'BRIEF' | 'FINAL',
+  type: DeckType,
   userId: string,
   options?: { force?: boolean }
 ): Promise<{ deckId: string; existing: boolean; version: number }> {
@@ -123,6 +124,12 @@ export async function generateDeck(deckId: string): Promise<void> {
       where: { id: deckId },
       data: { status: 'GENERATING', error: null },
     })
+
+    // 深度报告：A4 文档流水线，不生成幻灯片与 PPTX
+    if (deck.type === 'DEEP') {
+      await generateDeepDeck(deckId)
+      return
+    }
 
     const context = await buildDeckContext(deck.projectId)
     const narratives = await generateNarratives(context, deck.type as 'BRIEF' | 'FINAL')

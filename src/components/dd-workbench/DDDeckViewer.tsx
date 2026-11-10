@@ -12,7 +12,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import DeckSlide from './DeckSlide'
+import DeepReportDocument from './DeepReportDocument'
 import type { DeckSpec, DeckType, SlideSpec } from '@/lib/dd-deck/spec'
+import type { DeepDocSpec } from '@/lib/dd-deep/spec'
 
 interface DeckDetailDeck {
   id: string
@@ -40,8 +42,12 @@ interface DeckDetailSlide {
 
 interface DeckDetail {
   deck: DeckDetailDeck
-  spec: DeckSpec | null
+  spec: DeckSpec | DeepDocSpec | null
   slides: DeckDetailSlide[]
+}
+
+function isDeepSpec(spec: DeckSpec | DeepDocSpec | null | undefined): spec is DeepDocSpec {
+  return Boolean(spec && (spec as { kind?: string }).kind === 'DOCUMENT')
 }
 
 const C = {
@@ -95,6 +101,8 @@ export default function DDDeckViewer({ deckId, onClose }: { deckId: string; onCl
   const [loadError, setLoadError] = useState<string | null>(null)
   const [current, setCurrent] = useState(0)
   const [scale, setScale] = useState(1)
+  const [deepFitScale, setDeepFitScale] = useState(1)
+  const [deepZoomMode, setDeepZoomMode] = useState<'fit' | 'actual'>('fit')
   const [exporting, setExporting] = useState<'none' | 'single' | 'zip'>('none')
   const [exportError, setExportError] = useState<string | null>(null)
 
@@ -135,8 +143,8 @@ export default function DDDeckViewer({ deckId, onClose }: { deckId: string; onCl
   }, [deckId])
 
   const slides: SlideSpec[] = useMemo(() => {
-    if (!data) return []
-    if (data.spec && Array.isArray(data.spec.slides) && data.spec.slides.length > 0) {
+    if (!data || !data.spec || isDeepSpec(data.spec)) return []
+    if (Array.isArray(data.spec.slides) && data.spec.slides.length > 0) {
       return data.spec.slides
     }
     return data.slides
@@ -144,12 +152,16 @@ export default function DDDeckViewer({ deckId, onClose }: { deckId: string; onCl
       .filter((c): c is SlideSpec => Boolean(c))
   }, [data])
 
-  const total = slides.length
+  const deepSpec = isDeepSpec(data?.spec) ? data.spec : null
+  const deckType: DeckType = data?.deck.type || (deepSpec ? 'DEEP' : 'BRIEF')
+  const isDeep = deckType === 'DEEP' || Boolean(deepSpec)
+  const deepTotal = deepSpec?.pages.length ?? 0
+  const total = isDeep ? (deepTotal || data?.deck.slideCount || 0) : slides.length
   const index = total > 0 ? Math.min(current, total - 1) : 0
   const slide = slides[index]
   const projectName = data?.spec?.projectName || data?.deck.projectName || '项目'
-  const deckType: DeckType = data?.spec?.type || data?.deck.type || 'BRIEF'
   const status = data?.deck.status
+  const deepScale = deepZoomMode === 'actual' ? 1 : deepFitScale
 
   // ── body 滚动锁定 ──
   useEffect(() => {
@@ -166,17 +178,17 @@ export default function DDDeckViewer({ deckId, onClose }: { deckId: string; onCl
       if (e.key === 'Escape') {
         e.preventDefault()
         onClose()
-      } else if (e.key === 'ArrowRight') {
+      } else if (!isDeep && e.key === 'ArrowRight') {
         e.preventDefault()
         setCurrent(prev => (total > 0 ? Math.min(prev + 1, total - 1) : 0))
-      } else if (e.key === 'ArrowLeft') {
+      } else if (!isDeep && e.key === 'ArrowLeft') {
         e.preventDefault()
         setCurrent(prev => Math.max(prev - 1, 0))
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [total, onClose])
+  }, [total, onClose, isDeep])
 
   // ── 舞台尺寸测量 ──
   useEffect(() => {
@@ -190,6 +202,7 @@ export default function DDDeckViewer({ deckId, onClose }: { deckId: string; onCl
       if (availableWidth <= 0 || availableHeight <= 0) return
       const next = Math.min(availableWidth / 1280, availableHeight / 720, 1)
       setScale(next > 0 ? next : 1)
+      setDeepFitScale(Math.min(Math.max(availableWidth / 794, 0.3), 1))
     }
 
     measure()
@@ -261,13 +274,14 @@ export default function DDDeckViewer({ deckId, onClose }: { deckId: string; onCl
     [index, projectName, total]
   )
 
-  const typeLabel = deckType === 'FINAL' ? '尽调报告' : '资料简报'
+  const typeLabel = deckType === 'DEEP' ? '深度报告' : deckType === 'FINAL' ? '汇报 PPT' : '资料简报'
   const title = data?.spec?.title || data?.deck.projectName || '尽调报告'
   const busy = exporting !== 'none'
 
   return (
     <div
       ref={viewerRef}
+      className="dd-viewer-overlay"
       style={{
         position: 'fixed',
         inset: 0,
@@ -281,9 +295,24 @@ export default function DDDeckViewer({ deckId, onClose }: { deckId: string; onCl
         fontFamily: '-apple-system, "PingFang SC", "Microsoft YaHei", sans-serif',
       }}
     >
-      <style>{'@keyframes ddspin{to{transform:rotate(360deg)}}'}</style>
+      <style>{`
+        @keyframes ddspin{to{transform:rotate(360deg)}}
+        @media print {
+          html, body { background: #fff !important; }
+          .dd-viewer-overlay { position: static !important; padding: 0 !important; background: #fff !important; display: block !important; }
+          .dd-viewer-shell {
+            display: block !important; height: auto !important; max-width: none !important;
+            background: #fff !important; border: 0 !important; border-radius: 0 !important; overflow: visible !important;
+          }
+          .dd-viewer-shell > * { display: none !important; }
+          .dd-viewer-shell > .dd-deep-print { display: block !important; width: 210mm; }
+          .deep-page { box-shadow: none !important; }
+          .deep-doc { gap: 0 !important; }
+        }
+      `}</style>
 
       <div
+        className="dd-viewer-shell"
         style={{
           width: '100%',
           height: '100%',
@@ -299,6 +328,7 @@ export default function DDDeckViewer({ deckId, onClose }: { deckId: string; onCl
       >
         {/* 顶部工具栏 */}
         <div
+          className="dd-viewer-toolbar"
           style={{
             flexShrink: 0,
             background: C.navy,
@@ -346,59 +376,91 @@ export default function DDDeckViewer({ deckId, onClose }: { deckId: string; onCl
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <button
-              type="button"
-              onClick={() => setCurrent(prev => Math.max(prev - 1, 0))}
-              disabled={index <= 0 || total === 0}
-              style={{ ...BTN, ...(index <= 0 || total === 0 ? BTN_DISABLED : {}) }}
-            >
-              ◀ 上一页
-            </button>
-            <span
-              style={{
-                fontSize: 12,
-                color: C.text,
-                minWidth: 56,
-                textAlign: 'center',
-                fontVariantNumeric: 'tabular-nums',
-              }}
-            >
-              {total === 0 ? '0/0' : `${index + 1}/${total}`}
-            </span>
-            <button
-              type="button"
-              onClick={() => setCurrent(prev => Math.min(prev + 1, Math.max(total - 1, 0)))}
-              disabled={index >= total - 1 || total === 0}
-              style={{ ...BTN, ...(index >= total - 1 || total === 0 ? BTN_DISABLED : {}) }}
-            >
-              下一页 ▶
-            </button>
+            {isDeep ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setDeepZoomMode('fit')}
+                  style={{ ...BTN, ...(deepZoomMode === 'fit' ? { borderColor: C.teal, color: '#FFFFFF' } : {}) }}
+                >
+                  适应宽度
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeepZoomMode('actual')}
+                  style={{ ...BTN, ...(deepZoomMode === 'actual' ? { borderColor: C.teal, color: '#FFFFFF' } : {}) }}
+                >
+                  100%
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  style={{ ...BTN, background: 'rgba(201,162,39,0.2)', borderColor: 'rgba(201,162,39,0.55)', color: '#F1DFA5' }}
+                >
+                  🖨 打印 / 导出 PDF
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setCurrent(prev => Math.max(prev - 1, 0))}
+                  disabled={index <= 0 || total === 0}
+                  style={{ ...BTN, ...(index <= 0 || total === 0 ? BTN_DISABLED : {}) }}
+                >
+                  ◀ 上一页
+                </button>
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: C.text,
+                    minWidth: 56,
+                    textAlign: 'center',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {total === 0 ? '0/0' : `${index + 1}/${total}`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrent(prev => Math.min(prev + 1, Math.max(total - 1, 0)))}
+                  disabled={index >= total - 1 || total === 0}
+                  style={{ ...BTN, ...(index >= total - 1 || total === 0 ? BTN_DISABLED : {}) }}
+                >
+                  下一页 ▶
+                </button>
+              </>
+            )}
             <button type="button" onClick={toggleFullscreen} style={BTN}>
               ⛶ 全屏
             </button>
-            <button
-              type="button"
-              onClick={() => window.open(`/api/dd/deck/${deckId}/pptx`, '_blank')}
-              style={BTN}
-            >
-              ⬇ 下载 PPTX
-            </button>
-            <button
-              type="button"
-              onClick={() => void runExport('single')}
-              disabled={busy || total === 0}
-              style={{ ...BTN, ...(busy || total === 0 ? BTN_DISABLED : {}) }}
-            >
-              {exporting === 'single' ? '导出中...' : '🖼 导出当前页 PNG'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void runExport('zip')}
-              disabled={busy || total === 0}
-              style={{ ...BTN, ...(busy || total === 0 ? BTN_DISABLED : {}) }}
-            >
-              {exporting === 'zip' ? '导出中...' : '📦 导出全部 PNG（ZIP）'}
-            </button>
+            {!isDeep ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => window.open(`/api/dd/deck/${deckId}/pptx`, '_blank')}
+                  style={BTN}
+                >
+                  ⬇ 下载 PPTX
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void runExport('single')}
+                  disabled={busy || total === 0}
+                  style={{ ...BTN, ...(busy || total === 0 ? BTN_DISABLED : {}) }}
+                >
+                  {exporting === 'single' ? '导出中...' : '🖼 导出当前页 PNG'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void runExport('zip')}
+                  disabled={busy || total === 0}
+                  style={{ ...BTN, ...(busy || total === 0 ? BTN_DISABLED : {}) }}
+                >
+                  {exporting === 'zip' ? '导出中...' : '📦 导出全部 PNG（ZIP）'}
+                </button>
+              </>
+            ) : null}
             <button
               type="button"
               onClick={onClose}
@@ -432,6 +494,7 @@ export default function DDDeckViewer({ deckId, onClose }: { deckId: string; onCl
         {/* 主舞台 */}
         <div
           ref={stageRef}
+          className="dd-viewer-stage"
           style={{
             flex: 1,
             minHeight: 0,
@@ -467,6 +530,27 @@ export default function DDDeckViewer({ deckId, onClose }: { deckId: string; onCl
             />
           ) : status === 'QUEUED' || status === 'GENERATING' ? (
             <StateMessage title="报告生成中" detail="报告正在生成，请稍后再刷新查看。" />
+          ) : isDeep ? (
+            !deepSpec ? (
+              <StateMessage title="暂无可预览页面" detail="该深度报告还没有可展示的文档内容。" />
+            ) : (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  overflow: 'auto',
+                  background: '#16222E',
+                  padding: '22px 0 40px',
+                }}
+              >
+                <div
+                  className="deep-doc-zoom"
+                  style={{ zoom: deepScale, width: 794, margin: '0 auto' }}
+                >
+                  <DeepReportDocument spec={deepSpec} />
+                </div>
+              </div>
+            )
           ) : !slide ? (
             <StateMessage title="暂无可预览页面" detail="该报告还没有可展示的幻灯片内容。" />
           ) : (
@@ -495,8 +579,9 @@ export default function DDDeckViewer({ deckId, onClose }: { deckId: string; onCl
         </div>
 
         {/* 缩略图条 */}
-        {!loading && !loadError && total > 0 ? (
+        {!isDeep && !loading && !loadError && total > 0 ? (
           <div
+            className="dd-viewer-thumbs"
             style={{
               flexShrink: 0,
               height: 104,
@@ -547,24 +632,33 @@ export default function DDDeckViewer({ deckId, onClose }: { deckId: string; onCl
         ) : null}
 
         {/* 隐藏导出容器：渲染全部页面 */}
-        <div
-          ref={exportRef}
-          aria-hidden
-          style={{
-            position: 'fixed',
-            left: -10000,
-            top: 0,
-            width: 1280,
-            background: C.ivory,
-            pointerEvents: 'none',
-          }}
-        >
-          {slides.map((s, i) => (
-            <div key={i} style={{ width: 1280, height: 720 }}>
-              <DeckSlide slide={s} projectName={projectName} deckType={deckType} />
-            </div>
-          ))}
-        </div>
+        {!isDeep ? (
+          <div
+            ref={exportRef}
+            aria-hidden
+            style={{
+              position: 'fixed',
+              left: -10000,
+              top: 0,
+              width: 1280,
+              background: C.ivory,
+              pointerEvents: 'none',
+            }}
+          >
+            {slides.map((s, i) => (
+              <div key={i} style={{ width: 1280, height: 720 }}>
+                <DeckSlide slide={s} projectName={projectName} deckType={deckType} />
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {/* 打印专用副本：屏幕隐藏，打印时仅输出该文档 */}
+        {isDeep && deepSpec ? (
+          <div className="dd-deep-print" aria-hidden style={{ display: 'none' }}>
+            <DeepReportDocument spec={deepSpec} />
+          </div>
+        ) : null}
       </div>
     </div>
   )

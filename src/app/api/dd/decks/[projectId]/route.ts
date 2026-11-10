@@ -38,15 +38,17 @@ export async function GET(
       },
       take: 30,
     })
-    const [briefFp, finalFp] = await Promise.all([
+    const [briefFp, finalFp, deepFp] = await Promise.all([
       computeDeckFingerprint(params.projectId, 'BRIEF'),
       computeDeckFingerprint(params.projectId, 'FINAL'),
+      computeDeckFingerprint(params.projectId, 'DEEP'),
     ])
     return NextResponse.json({
       decks,
       current: {
         BRIEF: briefFp.fingerprint,
         FINAL: finalFp.fingerprint,
+        DEEP: deepFp.fingerprint,
       },
     })
   } catch (error) {
@@ -69,8 +71,8 @@ export async function POST(
   try {
     const body = await request.json().catch(() => ({})) as { type?: unknown; force?: unknown }
     const type = String(body.type || '').toUpperCase()
-    if (type !== 'BRIEF' && type !== 'FINAL') {
-      return NextResponse.json({ error: 'type 仅支持 BRIEF / FINAL' }, { status: 400 })
+    if (type !== 'BRIEF' && type !== 'FINAL' && type !== 'DEEP') {
+      return NextResponse.json({ error: 'type 仅支持 BRIEF / FINAL / DEEP' }, { status: 400 })
     }
 
     // 零补充资料也允许生成「公开信息版」报告，缺口只作为草稿提示，不再阻断
@@ -81,10 +83,10 @@ export async function POST(
     })
     const blocking = type === 'FINAL' ? await blockingGapsForProject(params.projectId) : []
     const warnings: string[] = []
-    if (type === 'FINAL' && !research) warnings.push('尚未完成全网研究，本次报告为项目资料版草稿')
+    if (!research) warnings.push('尚未完成全网研究，本次报告为项目资料版草稿')
     if (blocking.length > 0) warnings.push(`存在 ${blocking.length} 项待补充资料，报告将以「公开信息版」生成`)
 
-    const result = await createDeck(params.projectId, type, access.userId, {
+    const result = await createDeck(params.projectId, type as 'BRIEF' | 'FINAL' | 'DEEP', access.userId, {
       force: Boolean(body.force),
     })
     if (!result.existing) enqueueDeck(result.deckId)

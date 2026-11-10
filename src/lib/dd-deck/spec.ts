@@ -5,7 +5,7 @@
  * 写库前必须通过校验，避免版式溢出与无证据结论。
  */
 
-export type DeckType = 'BRIEF' | 'FINAL'
+export type DeckType = 'BRIEF' | 'FINAL' | 'DEEP'
 
 export type SlideLayout =
   | 'cover'

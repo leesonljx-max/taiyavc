@@ -38,9 +38,11 @@ interface ResearchStatusPayload {
   stats: ResearchStats | null
 }
 
+type DeckTypeKey = 'BRIEF' | 'FINAL' | 'DEEP'
+
 export interface DeckSummary {
   id: string
-  type: 'BRIEF' | 'FINAL'
+  type: DeckTypeKey
   status: string
   version: number
   inputFingerprint: string | null
@@ -59,6 +61,18 @@ const PHASE_LABELS: Record<string, string> = {
 }
 
 const ACTIVE_STATUSES: ResearchRunStatus[] = ['QUEUED', 'RUNNING']
+
+const DECK_NAMES: Record<DeckTypeKey, string> = {
+  BRIEF: '资料简报',
+  FINAL: '汇报 PPT',
+  DEEP: '深度报告',
+}
+
+const DECK_ICONS: Record<DeckTypeKey, string> = {
+  BRIEF: '📑',
+  FINAL: '📊',
+  DEEP: '📘',
+}
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
 
@@ -102,10 +116,10 @@ export default function DDResearchBar(props: {
 
   const [status, setStatus] = useState<ResearchStatusPayload | null>(null)
   const [decks, setDecks] = useState<DeckSummary[]>([])
-  const [currentFingerprints, setCurrentFingerprints] = useState<{ BRIEF: string; FINAL: string } | null>(null)
+  const [currentFingerprints, setCurrentFingerprints] = useState<Record<DeckTypeKey, string> | null>(null)
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
-  const [deckBusy, setDeckBusy] = useState<'BRIEF' | 'FINAL' | null>(null)
+  const [deckBusy, setDeckBusy] = useState<DeckTypeKey | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const onModulesRef = useRef(onModules)
@@ -139,8 +153,8 @@ export default function DDResearchBar(props: {
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !mountedRef.current) return
       setDecks(Array.isArray(data?.decks) ? (data.decks as DeckSummary[]) : [])
-      if (data?.current?.BRIEF && data?.current?.FINAL) {
-        setCurrentFingerprints(data.current as { BRIEF: string; FINAL: string })
+      if (data?.current?.BRIEF && data?.current?.FINAL && data?.current?.DEEP) {
+        setCurrentFingerprints(data.current as Record<DeckTypeKey, string>)
       }
     } catch {
       // 版本列表失败不阻塞主流程
@@ -238,9 +252,11 @@ export default function DDResearchBar(props: {
     [active, canEdit, fetchDecks, fetchStatus, projectId, starting]
   )
 
-  const pollDeck = useCallback(async (deckId: string) => {
-    for (let i = 0; i < 150; i++) {
-      await sleep(2000)
+  const pollDeck = useCallback(async (deckId: string, type: DeckTypeKey) => {
+    const maxAttempts = type === 'DEEP' ? 1200 : 150
+    const interval = type === 'DEEP' ? 3000 : 2000
+    for (let i = 0; i < maxAttempts; i++) {
+      await sleep(interval)
       if (!mountedRef.current) return
       try {
         const res = await fetch(`/api/dd/deck/${deckId}`, { cache: 'no-store' })
@@ -267,7 +283,7 @@ export default function DDResearchBar(props: {
   }, [])
 
   const latestDeck = useCallback(
-    (type: 'BRIEF' | 'FINAL') => decks.find(d => d.type === type) || null,
+    (type: DeckTypeKey) => decks.find(d => d.type === type) || null,
     [decks]
   )
 
@@ -280,7 +296,7 @@ export default function DDResearchBar(props: {
   )
 
   const generateDeck = useCallback(
-    async (type: 'BRIEF' | 'FINAL', force = false) => {
+    async (type: DeckTypeKey, force = false) => {
       if (!canEdit || deckBusy) return
 
       const latest = latestDeck(type)
@@ -288,7 +304,7 @@ export default function DDResearchBar(props: {
         onOpenDeckRef.current(latest.id)
         return
       }
-      if (force && latest && !window.confirm(`将基于当前资料重新生成${type === 'FINAL' ? '尽调报告' : '资料简报'}，并创建一个新版本，是否继续？`)) {
+      if (force && latest && !window.confirm(`将基于当前资料重新生成${DECK_NAMES[type]}，并创建一个新版本，是否继续？`)) {
         return
       }
 
@@ -302,10 +318,7 @@ export default function DDResearchBar(props: {
         })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) {
-          setError(
-            data?.error ||
-              httpErrorMessage(res.status, type === 'FINAL' ? '生成尽调报告失败' : '生成资料简报失败')
-          )
+          setError(data?.error || httpErrorMessage(res.status, `生成${DECK_NAMES[type]}失败`))
           if (type === 'FINAL' && res.status === 400) onGapClick()
           return
         }
@@ -313,7 +326,7 @@ export default function DDResearchBar(props: {
           setError('创建报告失败：未返回报告 ID')
           return
         }
-        await pollDeck(String(data.deckId))
+        await pollDeck(String(data.deckId), type)
         await fetchDecks()
       } catch {
         setError('网络异常，请稍后重试')
@@ -324,9 +337,9 @@ export default function DDResearchBar(props: {
     [canEdit, deckBusy, deckIsCurrent, fetchDecks, latestDeck, onGapClick, pollDeck, projectId]
   )
 
-  const deckButtonLabel = (type: 'BRIEF' | 'FINAL') => {
-    const icon = type === 'BRIEF' ? '📑' : '📊'
-    const name = type === 'BRIEF' ? '资料简报' : '尽调报告'
+  const deckButtonLabel = (type: DeckTypeKey) => {
+    const icon = DECK_ICONS[type]
+    const name = DECK_NAMES[type]
     if (deckBusy === type) return `${name}生成中...`
     const latest = latestDeck(type)
     if (latest?.status === 'READY') {
@@ -365,7 +378,7 @@ export default function DDResearchBar(props: {
         <div className="mr-auto min-w-[160px]">
           <div className="text-sm font-bold text-ink">全网尽调</div>
           <div className="mt-0.5 text-[11px] text-ink-faint">
-            九大模块深度检索 · 自动生成 PPT 简报与尽调报告 · 资料未变直接复用版本
+            九大模块深度检索 · 资料简报 / 汇报 PPT / A4 深度报告 · 资料未变直接复用版本
           </div>
         </div>
 
@@ -392,6 +405,16 @@ export default function DDResearchBar(props: {
         <button
           type="button"
           className="btn-primary"
+          disabled={!canEdit || deckBusy !== null}
+          title={!canEdit ? '无编辑权限' : 'A4 图文深度报告：九模块核心问题 + 资料分析 + 结论 + 图表与架构图，可直接打印为 PDF'}
+          onClick={() => void generateDeck('DEEP')}
+        >
+          {deckButtonLabel('DEEP')}
+        </button>
+
+        <button
+          type="button"
+          className="btn-primary"
           disabled={!canEdit || active || starting}
           title={!canEdit ? '无编辑权限' : '资料未变化时直接复用已有版本；上传或更新资料后点击将生成新版本'}
           onClick={() => void startResearch(false)}
@@ -407,11 +430,13 @@ export default function DDResearchBar(props: {
             : (() => {
                 const brief = latestDeck('BRIEF')
                 const finalDeck = latestDeck('FINAL')
+                const deep = latestDeck('DEEP')
                 const parts: string[] = []
                 if (brief?.status === 'READY') parts.push(`资料简报 v${brief.version}`)
-                if (finalDeck?.status === 'READY') parts.push(`尽调报告 v${finalDeck.version}`)
+                if (finalDeck?.status === 'READY') parts.push(`汇报 PPT v${finalDeck.version}`)
+                if (deep?.status === 'READY') parts.push(`深度报告 v${deep.version}（${deep.slideCount} 页）`)
                 if (parts.length === 0) return '尚未生成报告'
-                const stale = [brief, finalDeck].some(d => d?.status === 'READY' && !deckIsCurrent(d))
+                const stale = [brief, finalDeck, deep].some(d => d?.status === 'READY' && !deckIsCurrent(d))
                 return `最新版本：${parts.join(' · ')}${stale ? '；资料已更新，可生成新版本' : '；已是最新'}`
               })()}
         </div>
