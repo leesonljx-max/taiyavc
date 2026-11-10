@@ -6,28 +6,25 @@
  */
 
 import { Buffer } from 'buffer'
-import { readFile, stat } from 'fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'fs/promises'
 import { join } from 'path'
 import dns from 'dns/promises'
 import net from 'net'
 import { buildPagedBpText, extractBpPageImages } from '@/lib/project-interpretation/bp-images'
-import type { DeepContext } from './context'
+import type { DeepContext, DeepDocument } from './context'
 import type { DeepImage } from './spec'
 
-const MAX_IMAGES = 10
-const MAX_SCREENSHOTS = 6
-const MAX_DOC_PAGES = 6
+const MAX_IMAGES = 24
+const MAX_PER_MODULE = 4
+const MAX_SCREENSHOTS_PER_MODULE = 2
+const MAX_DOC_PAGES = 18
+const MAX_OFFICE_MEDIA = 12
 const MAX_WEB_IMAGES = 4
 const MAX_DOC_BYTES = 30 * 1024 * 1024
-const DOC_TIMEOUT_MS = 20_000
-const IMAGE_KEYWORDS = /架构|拓扑|流程|示意|技术路线|产品|平台|系统|部署|客户|订单|矩阵|图谱/
-
-const IMAGE_MODULES = new Set([
-  'PROJECT_ENTITY',
-  'PRODUCT_TECHNOLOGY',
-  'MARKET_CUSTOMERS',
-  'COMMERCIALIZATION',
-])
+const DOC_TIMEOUT_MS = 25_000
+const IMAGE_KEYWORDS = /架构|拓扑|流程|示意|技术路线|产品|平台|系统|部署|客户|订单|矩阵|图谱|组织|团队|市场|规模|竞争|财务|收入|毛利|估值|融资|专利|证书/
+const MEDIA_DIR = join(process.cwd(), 'public', 'interpretation-images')
+const MEDIA_URL_PREFIX = '/api/uploads/interpretation-images'
 
 function isPrivateIpv4(ip: string): boolean {
   const parts = ip.split('.').map(part => Number(part))
@@ -102,12 +99,11 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
   ])
 }
 
-/** 资料中心截图（URL 原样使用） */
+/** 资料中心截图（URL 原样使用），每个模块 2 张，优先覆盖更多模块 */
 function collectScreenshots(context: DeepContext): DeepImage[] {
   const images: DeepImage[] = []
   for (const module of context.modules) {
-    for (const shot of module.screenshots) {
-      if (images.length >= MAX_SCREENSHOTS) return images
+    for (const shot of module.screenshots.slice(0, MAX_SCREENSHOTS_PER_MODULE)) {
       images.push({
         moduleKey: module.moduleKey,
         url: shot.url,
@@ -133,78 +129,194 @@ function parsePagedText(paged: string): Array<{ page: number; text: string }> {
   return pages
 }
 
-function pickKeyPages(pagedText: string): number[] {
+function pickKeyPages(pagedText: string, limit = 2): Array<{ page: number; text: string }> {
   const pages = parsePagedText(pagedText)
   if (pages.length === 0) return []
   const scored = pages.map(item => ({
-    page: item.page,
+    ...item,
     score: (item.text.match(IMAGE_KEYWORDS) || []).length,
   }))
   const hits = scored.filter(item => item.score > 0).sort((a, b) => b.score - a.score || a.page - b.page)
-  if (hits.length > 0) return hits.slice(0, 2).map(item => item.page)
+  if (hits.length > 0) return hits.slice(0, limit)
   // 无关键词命中时，取封面后的前两页作为版式展示
-  const fallback = pages.filter(item => item.page >= 2).slice(0, 2).map(item => item.page)
-  return fallback.length > 0 ? fallback : [pages[0].page]
+  const fallback = pages.filter(item => item.page >= 2).slice(0, limit)
+  return fallback.length > 0 ? fallback : pages.slice(0, limit)
 }
 
+function pageSnippet(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().slice(0, 30)
+}
+
+const LOCAL_DOC_RULES = [
+  { prefix: '/research-docs/', dir: join(process.cwd(), 'public', 'research-docs'), serve: '/api/uploads/research-docs/' },
+  { prefix: '/dd-unclassified/', dir: join(process.cwd(), 'public', 'dd-unclassified'), serve: '/dd-unclassified/' },
+]
+
+/** 资料中心本地文件：模块资料 / 非分类资料池，统一解析为磁盘路径与可访问 URL */
+function resolveLocalDoc(fileUrl: string): { path: string; url: string } | null {
+  if (!fileUrl) return null
+  for (const rule of LOCAL_DOC_RULES) {
+    if (!fileUrl.startsWith(rule.prefix)) continue
+    const name = fileUrl.slice(rule.prefix.length)
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) return null
+    return { path: join(rule.dir, name), url: `${rule.serve}${name}` }
+  }
+  return null
+}
+
+function isLocalResearchDoc(doc: DeepDocument): boolean {
+  return resolveLocalDoc(doc.fileUrl) !== null
+}
+
+function localDocPath(doc: DeepDocument): string {
+  return resolveLocalDoc(doc.fileUrl)?.path || ''
+}
+
+/** PDF / PPTX 关键页截图：覆盖所有有资料的模块，每模块最多 2 页 */
 async function extractDocumentImages(context: DeepContext): Promise<{ images: DeepImage[]; notes: string[] }> {
   const images: DeepImage[] = []
   const notes: string[] = []
   let pageBudget = MAX_DOC_PAGES
 
   for (const module of context.modules) {
-    if (!IMAGE_MODULES.has(module.moduleKey)) continue
-    if (images.length >= MAX_SCREENSHOTS + MAX_DOC_PAGES || pageBudget <= 0) break
+    if (pageBudget <= 0) break
+    const docs = module.documents
+      .filter(isLocalResearchDoc)
+      .filter(doc => /\.(pdf|pptx)$/i.test(doc.fileName))
+      .slice(0, 2)
+    if (docs.length === 0) continue
 
-    const doc = module.documents.find(item => {
-      if (!item.fileUrl) return false
-      if (!/^\/research-docs\/[A-Za-z0-9._-]+$/.test(item.fileUrl)) return false
-      return /\.(pdf|pptx)$/i.test(item.fileName)
-    })
-    if (!doc) continue
+    let moduleCount = 0
+    for (const doc of docs) {
+      if (pageBudget <= 0 || moduleCount >= 2) break
+      const localPath = localDocPath(doc)
+      const result = await withTimeout(
+        (async () => {
+          const info = await stat(localPath)
+          if (!info.size || info.size > MAX_DOC_BYTES) return null
+          const buffer = await readFile(localPath)
+          const paged = await buildPagedBpText(buffer, doc.fileName)
+          if (!paged) return null
+          const pages = pickKeyPages(paged, Math.min(2, pageBudget))
+          if (pages.length === 0) return null
+          const extracted = await extractBpPageImages(
+            buffer,
+            doc.fileName,
+            pages.map(item => item.page),
+            `deep-${context.base.project.id}-${module.moduleKey}`
+          )
+          const textByPage = new Map(pages.map(item => [item.page, item.text]))
+          return extracted.map(item => ({
+            ...item,
+            snippet: pageSnippet(textByPage.get(item.page) || ''),
+          }))
+        })(),
+        DOC_TIMEOUT_MS
+      )
 
-    const fileName = doc.fileUrl.replace('/research-docs/', '')
-    const localPath = join(process.cwd(), 'public', 'research-docs', fileName)
+      if (!result || result.length === 0) {
+        notes.push(`${module.moduleName}：${doc.fileName} 未能提取架构图/流程图。`)
+        continue
+      }
 
-    const result = await withTimeout(
-      (async () => {
-        const info = await stat(localPath)
-        if (!info.size || info.size > MAX_DOC_BYTES) return null
-        const buffer = await readFile(localPath)
-        const paged = await buildPagedBpText(buffer, doc.fileName)
-        if (!paged) return null
-        const pages = pickKeyPages(paged).slice(0, Math.min(2, pageBudget))
-        if (pages.length === 0) return null
-        const extracted = await extractBpPageImages(
-          buffer,
-          doc.fileName,
-          pages,
-          `deep-${context.base.project.id}-${module.moduleKey}`
-        )
-        return extracted
-      })(),
-      DOC_TIMEOUT_MS
-    )
-
-    if (!result || result.length === 0) {
-      notes.push(`${module.moduleName}：${doc.fileName} 未能提取架构图/流程图。`)
-      continue
-    }
-
-    for (const item of result) {
-      if (images.length >= MAX_SCREENSHOTS + MAX_DOC_PAGES) break
-      images.push({
-        moduleKey: module.moduleKey,
-        url: item.url,
-        caption: `${doc.fileName} 第 ${item.page} 页`,
-        source: `资料中心 · ${doc.fileName}`,
-        kind: 'doc',
-      })
-      pageBudget -= 1
+      for (const item of result) {
+        if (pageBudget <= 0 || moduleCount >= 3) break
+        for (const url of item.url.split(';').filter(Boolean)) {
+          if (pageBudget <= 0 || moduleCount >= 3) break
+          images.push({
+            moduleKey: module.moduleKey,
+            url,
+            caption: `${doc.fileName} 第 ${item.page} 页${item.snippet ? `：${item.snippet}` : ''}`,
+            source: `资料中心 · ${doc.fileName}`,
+            kind: 'doc',
+          })
+          pageBudget -= 1
+          moduleCount += 1
+        }
+      }
     }
   }
 
   return { images, notes }
+}
+
+/** DOCX/XLSX/PPTX 内嵌图片（没有可渲染页面时的兜底） */
+async function extractOfficeMedia(context: DeepContext): Promise<DeepImage[]> {
+  const images: DeepImage[] = []
+  let budget = MAX_OFFICE_MEDIA
+
+  for (const module of context.modules) {
+    if (budget <= 0 || images.length >= MAX_IMAGES) break
+    const docs = module.documents
+      .filter(isLocalResearchDoc)
+      .filter(doc => /\.(docx|xlsx|pptx)$/i.test(doc.fileName))
+      .slice(0, 2)
+
+    for (const doc of docs) {
+      if (budget <= 0) break
+      const media = await withTimeout(
+        (async () => {
+          const info = await stat(localDocPath(doc))
+          if (!info.size || info.size > MAX_DOC_BYTES) return null
+          const buffer = await readFile(localDocPath(doc))
+          const JSZip = (await import('jszip')).default
+          const zip = await JSZip.loadAsync(buffer)
+          const entries = Object.values(zip.files)
+            .filter(file => !file.dir && /^(word|xl|ppt)\/media\/[^/]+\.(png|jpe?g|gif|webp)$/i.test(file.name))
+            .slice(0, 6)
+          const out: Array<{ data: Buffer; ext: string }> = []
+          for (const entry of entries) {
+            const data = await entry.async('nodebuffer')
+            if (data.length < 30 * 1024 || data.length > 2 * 1024 * 1024) continue
+            const ext = (entry.name.split('.').pop() || 'png').toLowerCase()
+            out.push({ data, ext })
+            if (out.length >= 2) break
+          }
+          return out
+        })(),
+        DOC_TIMEOUT_MS
+      )
+      if (!media || media.length === 0) continue
+
+      await mkdir(MEDIA_DIR, { recursive: true })
+      for (const item of media) {
+        if (budget <= 0) break
+        const name = `deep-${context.base.project.id}-${module.moduleKey}-media-${budget}.${item.ext}`
+        await writeFile(join(MEDIA_DIR, name), item.data)
+        images.push({
+          moduleKey: module.moduleKey,
+          url: `${MEDIA_URL_PREFIX}/${name}`,
+          caption: `${doc.fileName} 内嵌图`,
+          source: `资料中心 · ${doc.fileName}`,
+          kind: 'doc',
+        })
+        budget -= 1
+      }
+    }
+  }
+
+  return images
+}
+
+/** 直接上传的图片资料（模块资料 / 非分类资料池） */
+function collectImageDocs(context: DeepContext): DeepImage[] {
+  const images: DeepImage[] = []
+  for (const module of context.modules) {
+    for (const doc of module.documents) {
+      if (!/\.(png|jpe?g|webp|gif)$/i.test(doc.fileName)) continue
+      const local = resolveLocalDoc(doc.fileUrl)
+      if (!local) continue
+      images.push({
+        moduleKey: module.moduleKey,
+        url: local.url,
+        caption: doc.fileName,
+        source: `资料中心 · ${doc.fileName}`,
+        kind: 'doc',
+      })
+      break
+    }
+  }
+  return images
 }
 
 function parseOgImage(html: string, baseUrl: string): string | null {
@@ -277,24 +389,31 @@ export async function collectDeepImages(context: DeepContext): Promise<{ images:
   const notes: string[] = []
   const screenshots = collectScreenshots(context)
   const docResult = await extractDocumentImages(context)
+  const officeMedia = await extractOfficeMedia(context)
+  const imageDocs = collectImageDocs(context)
   notes.push(...docResult.notes)
 
-  let images = [...screenshots, ...docResult.images]
+  // BP/PPT 关键页优先，其次资料截图与内嵌图，保证每个模块先拿到可引用的原文页面
+  let images = [...docResult.images, ...screenshots, ...officeMedia, ...imageDocs]
   if (images.length < MAX_IMAGES) {
     const web = await collectWebImages(context)
     images = [...images, ...web]
   }
 
-  // 按模块去重，保留上限
+  // 去重 + 每模块限额 + 总量限额
   const seen = new Set<string>()
+  const perModule = new Map<string, number>()
   images = images.filter(image => {
     if (seen.has(image.url)) return false
+    const count = perModule.get(image.moduleKey) || 0
+    if (count >= MAX_PER_MODULE) return false
     seen.add(image.url)
+    perModule.set(image.moduleKey, count + 1)
     return true
   }).slice(0, MAX_IMAGES)
 
-  if (images.length === 0) {
-    notes.push('本次未能收集到可展示的架构图/流程图，报告以文字、表格与统计图表为主。')
+  if (images.length < 3) {
+    notes.push('本次仅收集到少量可展示的架构图/流程图，报告以文字、表格与统计图表为主。')
   }
 
   return { images, notes }

@@ -35,6 +35,7 @@ const ALLOWED_DIRS = new Set([
   'project-docs',
   'project-images',
   'research-docs',
+  'dd-unclassified',
   'interpretation-docs',
   'interpretation-images',
   'post-investment-docs',

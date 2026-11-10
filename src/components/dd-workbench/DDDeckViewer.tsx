@@ -202,7 +202,7 @@ export default function DDDeckViewer({ deckId, onClose }: { deckId: string; onCl
       if (availableWidth <= 0 || availableHeight <= 0) return
       const next = Math.min(availableWidth / 1280, availableHeight / 720, 1)
       setScale(next > 0 ? next : 1)
-      setDeepFitScale(Math.min(Math.max(availableWidth / 794, 0.3), 1))
+      setDeepFitScale(Math.min(Math.max(next, 0.25), 1))
     }
 
     measure()
@@ -305,7 +305,7 @@ export default function DDDeckViewer({ deckId, onClose }: { deckId: string; onCl
             background: #fff !important; border: 0 !important; border-radius: 0 !important; overflow: visible !important;
           }
           .dd-viewer-shell > * { display: none !important; }
-          .dd-viewer-shell > .dd-deep-print { display: block !important; width: 210mm; }
+          .dd-viewer-shell > .dd-deep-print { display: block !important; width: 338.67mm; }
           .deep-page { box-shadow: none !important; }
           .deep-doc { gap: 0 !important; }
         }
@@ -545,7 +545,7 @@ export default function DDDeckViewer({ deckId, onClose }: { deckId: string; onCl
               >
                 <div
                   className="deep-doc-zoom"
-                  style={{ zoom: deepScale, width: 794, margin: '0 auto' }}
+                  style={{ zoom: deepScale, width: 1280, margin: '0 auto' }}
                 >
                   <DeepReportDocument spec={deepSpec} />
                 </div>

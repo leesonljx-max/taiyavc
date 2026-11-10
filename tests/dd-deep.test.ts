@@ -23,16 +23,23 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { DD_TEMPLATE_MODULES } from '@/lib/dd-workbench/template'
 
 function moduleContent(moduleKey: string, index: number): DeepModuleContent {
+  const argumentItems = Array.from({ length: 3 }).map((_, argumentIndex) => ({
+    title: `模块 ${index + 1} 论点 ${argumentIndex + 1}`,
+    content: `内容 ${argumentIndex + 1}：资料显示业务已进入交付阶段。[资料1]`,
+    analysis: `分析 ${argumentIndex + 1}：需求增长与交付能力共同驱动，需关注订单持续性。`,
+    evidence: [
+      { text: `公开事实 ${argumentIndex + 1}`, ref: 'F1' },
+      { text: '资料中心原文', ref: '资料1', quote: '公司主营工业软件平台。' },
+    ],
+    view: `观点 ${argumentIndex + 1}：可进入下一阶段验证。`,
+    ...(argumentIndex === 0 ? { imageId: '图1' } : {}),
+  }))
+
   return {
     moduleKey,
     headline: `模块 ${index + 1} 结论`,
-    questions: [
-      { question: `问题 ${index + 1}-1`, answer: '回答一，基于资料。[F1]', refs: ['F1'] },
-      { question: `问题 ${index + 1}-2`, answer: '回答二，基于资料。' },
-      { question: `问题 ${index + 1}-3`, answer: '回答三，基于资料。' },
-    ],
-    facts: ['[F1] 事实一', '[F2] 事实二', '资料显示业务已进入交付阶段。'],
-    analysis: ['驱动因素：需求增长。', '反证条件：订单不及预期。', '待验证：客户复购。'],
+    coreAnswer: `模块 ${index + 1} 的核心判断：具备进入下一阶段验证的基础。`,
+    arguments: argumentItems,
     conclusion: `第 ${index + 1} 模块结论：可进入下一阶段验证。`,
     metrics: [{ label: '覆盖率', value: '60%', hint: '公开信息' }],
     dataLimited: false,
@@ -199,7 +206,7 @@ test('装页：超长段落拆块、标题不落单、每页块不为空', () =>
   }
 })
 
-test('coerceDeepDocSpec：清空块、拦截非法图片、截断表格并重排页码', () => {
+test('coerceDeepDocSpec：清空块、拦截非法图片、保留表格数据并重排页码', () => {
   const raw: DeepDocSpec = {
     kind: 'DOCUMENT',
     type: 'DEEP',
@@ -252,7 +259,7 @@ test('coerceDeepDocSpec：清空块、拦截非法图片、截断表格并重排
   assert.ok(table && table.type === 'table')
   if (table && table.type === 'table') {
     assert.equal(table.columns.length, 6, '表格最多 6 列')
-    assert.ok(table.rows.length <= 8, '表格最多 8 行')
+    assert.equal(table.rows.length, 12, '表格数据不得被静默截断')
   }
   assert.equal(spec.toc.length, 1)
   assert.equal(spec.toc[0].page, 3)
@@ -304,14 +311,18 @@ test('buildDeepCharts：覆盖度 9 项、等级合计等于事实数、无财�
     assert.equal(charts.coverage.chart.series.length, 9)
   }
   assert.ok(charts.grades && charts.grades.type === 'chart')
-  if (charts.grades && charts.grades.type === 'chart') {
+  if (charts.grades && charts.grades.type === 'chart' && charts.grades.chart.kind === 'donut') {
     const total = charts.grades.chart.series.reduce((sum, item) => sum + item.value, 0)
     assert.equal(total, facts.length)
   }
   assert.equal(charts.financeFacts, null)
+  assert.ok(charts.docUsage && charts.docUsage.type === 'table', '应输出资料利用统计表')
+  if (charts.docUsage && charts.docUsage.type === 'table') {
+    assert.equal(charts.docUsage.rows.length, 9)
+  }
 })
 
-test('fallbackModuleContent：问题不少于 3 个、结论非空、引用来自真实事实', () => {
+test('fallbackModuleContent：论点不少于 3 个、四段完整、资料原文逐字引用', () => {
   const module = {
     moduleKey: 'PROJECT_ENTITY',
     moduleName: '项目主体',
@@ -336,27 +347,47 @@ test('fallbackModuleContent：问题不少于 3 个、结论非空、引用来�
   } as unknown as DeepModuleContext
 
   const content = fallbackModuleContent(module)
-  assert.ok(content.questions.length >= 3)
+  assert.ok(content.arguments && content.arguments.length >= 3, '应至少生成 3 个论点')
   assert.ok(content.conclusion.length > 0)
-  assert.ok(content.facts.some(item => item.includes('[F1]')))
-  for (const question of content.questions) {
-    for (const ref of question.refs || []) {
-      assert.match(ref, /^(F\d+|资料\d+|E\d+)$/)
+  for (const argument of content.arguments || []) {
+    assert.ok(argument.title && argument.content && argument.analysis && argument.view, '论点四段不得为空')
+    assert.ok(argument.evidence.length > 0, '每个论点必须有论据')
+    for (const item of argument.evidence) {
+      if (item.ref) assert.match(item.ref, /^(F\d+|资料\d+|E\d+)$/)
     }
   }
+  const quote = (content.arguments || [])
+    .flatMap(argument => argument.evidence)
+    .find(item => item.ref === '资料1' && item.quote)
+  assert.equal(quote?.quote, '公司主营工业软件平台。', '资料原文摘录必须与原文逐字一致')
 })
 
-test('A4 文档渲染：封面、目录、章节、图表、图片与页码', () => {
+test('16:9 文档渲染：封面、目录、论点独立成页、图表、资料图片与页码', () => {
   const spec = assembleDeepDocSpec(buildInput())
   const html = renderToStaticMarkup(DeepReportDocument({ spec }))
 
   const pageCount = (html.match(/class="deep-page/g) || []).length
   assert.equal(pageCount, spec.pageCount, '渲染页数应等于规格页数')
+  assert.ok(html.includes('width: 1280px'), '页面应为 16:9（1280×720）')
+  assert.ok(html.includes('height: 720px'))
   assert.ok(html.includes('尽职调查报告'))
   assert.ok(html.includes('目录'))
   assert.ok(html.includes('<svg'), '应包含内联图表')
   assert.ok(html.includes('技术架构图'), '应包含资料中心图片')
+  assert.ok(html.includes('deep-argument-image'), '图片应绑定到论点页')
+  assert.ok(html.includes('论点 1 / 3'), '论点页应显示论点序号')
+  assert.ok(html.includes('内容') && html.includes('分析') && html.includes('论据') && html.includes('观点'), '论点四段标签应完整')
+  assert.ok(html.includes('deep-section-stat'), '章节页应展示资料/证据统计')
   assert.ok(html.includes('机密 · 仅供投资决策使用'))
+
+  const argumentPages = spec.pages.filter(
+    page => page.kind === 'content' && page.blocks.some(block => block.type === 'argument')
+  )
+  assert.equal(argumentPages.length, 27, '九大模块 × 3 个论点应各自独立成页')
+  for (const page of argumentPages) {
+    assert.equal(page.blocks.length, 1, '论点页不得混入其他内容块')
+  }
+
   const text = html.replace(/<!--.*?-->/g, '')
   assert.ok(text.includes(`${spec.pageCount} / ${spec.pageCount}`), '最后一页页码应正确')
 })

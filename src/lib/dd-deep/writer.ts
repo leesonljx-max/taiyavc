@@ -1,14 +1,22 @@
 /**
  * 深度报告内容生成
  *
- * 每个模块一次 LLM 调用，输出核心问题、资料与发现、分析、结论；
+ * 每个模块一次 LLM 调用，输出 3–5 个论点；每个论点按「内容/分析/论据/观点」展开。
+ * 论据必须引用资料中心原文或公开事实，引用摘录在服务端做逐字校验。
  * 另两次调用生成执行摘要与行业/时机/风险/估值/结论。
  * 任何失败都回退到资料与事实拼装，保证报告始终可产出。
  */
 
 import { callDeepSeekJson } from '@/lib/dd-research/llm'
 import type { DeepContext, DeepModuleContext } from './context'
-import type { DeepModuleContent, DeepNarrative, DeepRisk } from './spec'
+import type {
+  DeepArgument,
+  DeepArgumentEvidence,
+  DeepImage,
+  DeepModuleContent,
+  DeepNarrative,
+  DeepRisk,
+} from './spec'
 
 export interface DeepExecutive {
   headline: string
@@ -36,19 +44,33 @@ export interface DeepOutlook {
 }
 
 const SYSTEM_PROMPT = [
-  '你是风险投资机构的尽调报告主笔，为投委会撰写 A4 深度尽调报告。写作要求：',
-  '1. 先结论后论证：每个问题先给判断，再给依据、反证条件与验证路径。',
-  '2. 必须使用给定资料：公开事实写 [F3]，公开来源写 [E2]，上传资料写 [资料1]；不得编造引用。',
-  '3. 公司收入、订单、客户、估值等数字只能来自给定事实或资料原文；没有就写「公开信息不足」，不得猜测。',
-  '4. 允许使用行业常识补充背景，但必须写成分析判断，不得伪装成公司事实。',
-  '5. 每段只讲一件事，避免形容词堆砌与空话；面向投资决策，具体到业务、客户、技术、竞争与交易。',
-  '6. 明确区分「事实」「推测」「待验证」，对资料冲突要指出。',
+  '你是风险投资机构的尽调报告主笔，为投委会撰写 16:9 深度尽调报告。写作要求：',
+  '1. 论点驱动：每个模块输出 3–5 个可判断的论点，每个论点必须按「内容 → 分析 → 论据 → 观点」四段展开。',
+  '   - 内容：基于资料的事实与现状，不写评价；',
+  '   - 分析：解释原因、机制、反证条件与影响；',
+  '   - 论据：给出支撑该论点的事实编号或资料原文摘录；',
+  '   - 观点：对投资决策的含义，明确成立条件或反对理由。',
+  '2. 必须优先使用资料中心上传的资料：引用写 [资料1]、[资料2]；公开事实写 [F3]；公开来源写 [E2]。',
+  '3. 资料中心的原文摘录必须逐字复制，不得改写、拼接或编造；引用编号写 [资料1]、[资料2]，不要编造页码。',
+  '4. 每个论点至少 1 条论据来自资料中心原文或公开事实；没有资料支撑就明确写「资料不足，待验证」，不得用行业常识冒充事实。',
+  '5. 公司收入、订单、客户、估值等数字只能来自给定事实或资料原文；没有就写「公开信息不足」，不得猜测。',
+  '6. 允许使用行业常识补充背景，但必须写成分析判断，不得伪装成公司事实。',
+  '7. 明确区分「事实」「推测」「待验证」，对资料冲突要指出。',
   '只输出 JSON，不要输出 Markdown 代码块。',
 ].join('\n')
 
 function truncate(text: string, max: number): string {
   const clean = (text || '').replace(/\s+/g, ' ').trim()
-  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean
+  if (clean.length <= max) return clean
+  const head = clean.slice(0, max - 1)
+  const boundary = Math.max(
+    head.lastIndexOf('。'),
+    head.lastIndexOf('；'),
+    head.lastIndexOf('！'),
+    head.lastIndexOf('？')
+  )
+  if (boundary >= Math.floor(max * 0.6)) return head.slice(0, boundary + 1)
+  return `${head}…`
 }
 
 function asString(value: unknown, max: number): string {
@@ -85,7 +107,7 @@ function buildProjectBrief(context: DeepContext): string {
   return lines.filter(Boolean).join('\n')
 }
 
-function buildModuleInput(module: DeepModuleContext): string {
+function buildModuleInput(module: DeepModuleContext, images: DeepImage[]): string {
   const lines: string[] = [
     `【${module.moduleKey} ${module.moduleName}】`,
     `模块核心问题：${module.coreQuestion}`,
@@ -137,8 +159,16 @@ function buildModuleInput(module: DeepModuleContext): string {
     module.documents.forEach((doc, index) => {
       const text = doc.text || '（该文件未提取到文本）'
       lines.push(`- [资料${index + 1}] ${doc.fileName}（原文 ${doc.textLength} 字）`)
-      lines.push(`  ${truncate(text, 4000)}`)
+      lines.push(`  ${truncate(text, 6000)}`)
     })
+  }
+
+  if (images.length > 0) {
+    lines.push('', '可用资料图片（来自资料中心截图或 BP/PPT 关键页）：')
+    images.forEach(image => {
+      lines.push(`- ${image.id || '图'}：${truncate(image.caption, 100)}｜来源：${image.source || '资料中心'}`)
+    })
+    lines.push('可在论点中填写 "image": "图N" 关联最相关的一张图片；不确定就留空。')
   }
 
   if (module.textBlocks.length > 0) {
@@ -165,11 +195,19 @@ function buildModuleInput(module: DeepModuleContext): string {
 
 const MODULE_SCHEMA = `{
   "headline": "本模块一句话结论（≤40字）",
-  "questions": [
-    {"question": "投委会最关心的问题（≤40字）", "answer": "判断+依据+引用（≤300字）", "refs": ["F1","资料1"]}
+  "coreAnswer": "对模块核心问题的直接回答（≤120字，含依据）",
+  "arguments": [
+    {
+      "title": "论点（≤30字，判断句）",
+      "content": "内容：事实与现状（≤220字，只写资料支持的事实）",
+      "analysis": "分析：原因、机制、反证条件与影响（≤260字）",
+      "evidence": [
+        {"text": "论据说明（≤90字）", "ref": "资料1 或 F3", "quote": "资料中心原文逐字摘录（≤100字）"}
+      ],
+      "view": "观点：投资含义、成立条件或反对理由（≤160字）",
+      "image": "图1 或空字符串"
+    }
   ],
-  "facts": ["资料与发现，每条≤150字，带 [F#]/[E#]/[资料N]"],
-  "analysis": ["分析判断，每条≤150字，覆盖驱动/反证/竞争影响/待验证"],
   "conclusion": "本模块结论（≤150字）",
   "metrics": [{"label":"指标","value":"数值","hint":"口径或来源"}],
   "limitations": ["资料不足、冲突或需人工核验之处"]
@@ -177,17 +215,20 @@ const MODULE_SCHEMA = `{
 
 export async function generateModuleContent(
   context: DeepContext,
-  module: DeepModuleContext
+  module: DeepModuleContext,
+  images: DeepImage[] = []
 ): Promise<DeepModuleContent> {
   const prompt = [
     buildProjectBrief(context),
     '',
-    buildModuleInput(module),
+    buildModuleInput(module, images),
     '',
     '请针对本模块输出 JSON，要求：',
-    '- questions 3–5 个，必须是投委会真正关心、且能由上述资料回答的问题；禁止「还需补充什么资料」式伪问题；',
-    '- facts 4–6 条，优先使用 [资料N] 与 [F#]，其次 [E#]；',
-    '- analysis 4–6 条，包含驱动因素、反证条件、竞争影响、待验证项；',
+    '- arguments 3–5 个；每个论点必须是可判断的结论句，不得写成「需关注/需补充」式提醒；',
+    '- 每个论点必须完整给出 content / analysis / evidence / view 四段，缺一不可；',
+    '- evidence 1–2 条：优先引用 [资料N] 原文，quote 必须从上面资料中逐字复制；其次引用 [F#] 公开事实；',
+    '- 资料中心有可用资料时，至少 2 个论点的论据必须包含 [资料N] 原文摘录；不得只用公开来源；',
+    '- 每个论点最多关联 1 张图片（image 填图号），图片必须与论点内容相关，不确定就留空；',
     '- conclusion 1 条，明确「成立/不成立/待验证」及条件；',
     '- metrics 0–4 个，只填资料中出现的数值，没有就给空数组；',
     '- limitations 0–4 条，指出资料缺口或冲突。',
@@ -199,8 +240,8 @@ export async function generateModuleContent(
     system: SYSTEM_PROMPT,
     user: prompt,
     module: 'dd-deck',
-    maxTokens: 3200,
-    timeoutMs: 240_000,
+    maxTokens: 7000,
+    timeoutMs: 300_000,
     temperature: 0.3,
   }).catch(() => null)
 
@@ -208,35 +249,113 @@ export async function generateModuleContent(
   return parsed || fallbackModuleContent(module)
 }
 
+function normalizeQuote(text: string): string {
+  return (text || '').replace(/\s+/g, '').replace(/[“”"'‘’]/g, '')
+}
+
+function canonicalRef(value: string): string | null {
+  const match = value.match(/(资料\s*\d+|F\s*\d+|E\s*\d+)/i)
+  if (!match) return null
+  const token = match[1].replace(/\s+/g, '')
+  if (/^资料/i.test(token)) return token.replace(/^资料/i, '资料')
+  return token.toUpperCase()
+}
+
+function allowedRefs(module: DeepModuleContext): Set<string> {
+  const refs = new Set<string>()
+  for (const fact of module.facts) if (fact.ref) refs.add(fact.ref)
+  for (const source of module.sources) if (source.ref) refs.add(source.ref)
+  module.documents.forEach((_, index) => refs.add(`资料${index + 1}`))
+  return refs
+}
+
+/** 校验原文摘录：只在资料中心文本或公开来源正文中做逐字匹配 */
+function findQuoteSource(
+  module: DeepModuleContext,
+  quote: string
+): { ref: string; isDocument: boolean } | null {
+  const needle = normalizeQuote(quote)
+  if (needle.length < 6) return null
+  for (let index = 0; index < module.documents.length; index += 1) {
+    if (normalizeQuote(module.documents[index].text).includes(needle)) {
+      return { ref: `资料${index + 1}`, isDocument: true }
+    }
+  }
+  for (const source of module.sources) {
+    if (source.ref && normalizeQuote(source.excerpt).includes(needle)) {
+      return { ref: source.ref, isDocument: false }
+    }
+  }
+  return null
+}
+
+function coerceEvidence(
+  raw: unknown,
+  module: DeepModuleContext,
+  allowed: Set<string>
+): DeepArgumentEvidence[] {
+  if (!Array.isArray(raw)) return []
+  const evidence: DeepArgumentEvidence[] = []
+  for (const item of raw) {
+    if (evidence.length >= 2) break
+    if (!item || typeof item !== 'object') continue
+    const record = item as Record<string, unknown>
+    let text = asString(record.text, 110)
+    let quote = asString(record.quote, 150)
+    let ref = canonicalRef(asString(record.ref, 60))
+
+    if (quote) {
+      const found = findQuoteSource(module, quote)
+      if (!found) {
+        quote = ''
+      } else if (found.isDocument) {
+        ref = found.ref
+      } else if (!ref) {
+        ref = found.ref
+      }
+    }
+    if (ref && !allowed.has(ref)) ref = null
+    if (!text && quote) text = `资料原文摘录：${quote.slice(0, 60)}`
+    if (!text) continue
+    evidence.push({
+      text,
+      ...(ref ? { ref } : {}),
+      ...(quote ? { quote } : {}),
+    })
+  }
+  return evidence
+}
+
 function coerceModuleContent(raw: unknown, module: DeepModuleContext): DeepModuleContent | null {
   if (!raw || typeof raw !== 'object') return null
   const data = raw as Record<string, unknown>
 
-  const questions: DeepModuleContent['questions'] = []
-  if (Array.isArray(data.questions)) {
-    for (const item of data.questions) {
-      if (questions.length >= 5) break
+  const allowed = allowedRefs(module)
+  const args: DeepArgument[] = []
+  if (Array.isArray(data.arguments)) {
+    for (const item of data.arguments) {
+      if (args.length >= 5) break
       if (!item || typeof item !== 'object') continue
-      const q = item as Record<string, unknown>
-      const question = asString(q.question, 120)
-      const answer = asString(q.answer, 900)
-      if (!question || !answer) continue
-      const refs = asStringArray(q.refs, 6, 40)
-      questions.push(refs.length > 0 ? { question, answer, refs } : { question, answer })
+      const record = item as Record<string, unknown>
+      const title = asString(record.title, 60)
+      const content = asString(record.content, 300)
+      const analysis = asString(record.analysis, 360)
+      const view = asString(record.view, 240)
+      const evidence = coerceEvidence(record.evidence, module, allowed)
+      if (!title || !content || !analysis || !view || evidence.length === 0) continue
+      const image = asString(record.image, 20)
+      const imageId = /^图\d+$/.test(image) ? image : undefined
+      args.push({ title, content, analysis, evidence, view, ...(imageId ? { imageId } : {}) })
     }
   }
 
-  const facts = asStringArray(data.facts, 6, 300)
-  const analysis = asStringArray(data.analysis, 6, 300)
   const conclusion = asString(data.conclusion, 400)
+  if (args.length < 2 || !conclusion) return null
 
-  if (questions.length < 2 || facts.length === 0 || !conclusion) return null
-
-  while (questions.length < 3) {
-    questions.push({
-      question: `如何验证${module.moduleName}的核心假设？`,
-      answer: '现有资料不足以形成确定判断，需结合原始合同、台账与访谈记录逐项核验。',
-    })
+  // 论点不足 3 个时，用资料原文论点补齐，保证模块结构完整
+  for (const fallback of fallbackArguments(module)) {
+    if (args.length >= 3) break
+    if (!args.some(item => item.title === fallback.title)) args.push(fallback)
   }
 
   const metrics: NonNullable<DeepModuleContent['metrics']> = []
@@ -256,64 +375,115 @@ function coerceModuleContent(raw: unknown, module: DeepModuleContext): DeepModul
   return {
     moduleKey: module.moduleKey,
     headline: asString(data.headline, 120) || `${module.moduleName}：基于现有资料的判断`,
-    questions,
-    facts,
-    analysis: analysis.length > 0 ? analysis : ['资料不足，暂无法形成有效分析。'],
+    coreAnswer: asString(data.coreAnswer, 240) || asString(data.headline, 120),
+    arguments: args,
     conclusion,
     metrics,
     limitations: asStringArray(data.limitations, 4, 200),
-    dataLimited: false,
+    dataLimited: module.facts.length === 0 && module.sources.length === 0 && module.documents.every(doc => !doc.text),
   }
+}
+
+/** 从资料原文截取一段完整语句，保证 quote 是原文的精确子串 */
+function docQuote(text: string, max = 110): string {
+  const clean = (text || '').replace(/\s+/g, ' ').trim()
+  if (!clean) return ''
+  const cut = clean.slice(0, max)
+  const stop = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('；'), cut.lastIndexOf('，'))
+  return stop >= 40 ? cut.slice(0, stop + 1) : cut
+}
+
+/** 兜底论点：直接引用资料原文与公开事实，保证报告仍以资料为依据 */
+export function fallbackArguments(module: DeepModuleContext): DeepArgument[] {
+  const args: DeepArgument[] = []
+  const facts = module.facts.slice(0, 4)
+  const docs = module.documents
+    .map((doc, index) => ({ doc, ref: `资料${index + 1}` }))
+    .filter(item => item.doc.text)
+  const openGaps = module.gaps.filter(gap => gap.status === 'OPEN')
+  const coverage = Math.round(module.coverage * 100)
+
+  if (module.humanConclusion || module.report?.summary) {
+    const evidence: DeepArgumentEvidence[] = []
+    if (facts[0]) {
+      evidence.push({
+        text: `公开信息：${truncate(facts[0].fact, 120)}${facts[0].value ? `（${facts[0].value}${facts[0].unit || ''}）` : ''}`,
+        ref: facts[0].ref,
+      })
+    }
+    if (docs[0]) {
+      const quote = docQuote(docs[0].doc.text, 100)
+      if (quote) {
+        evidence.push({ text: `${docs[0].doc.fileName} 原文摘录`, ref: docs[0].ref, quote })
+      }
+    }
+    if (evidence.length === 0) {
+      evidence.push({ text: '现有资料未形成可引用证据，以下判断待进一步验证。' })
+    }
+    args.push({
+      title: `${module.moduleName}：人工结论与综合判断`,
+      content: truncate(module.humanConclusion || module.report?.summary || '', 360),
+      analysis: `该判断来自项目维护人与既有报告，信息覆盖度 ${coverage}%。${
+        openGaps.length > 0
+          ? `仍有 ${openGaps.length} 项资料缺口（${openGaps.slice(0, 3).map(gap => gap.label).join('、')}），结论需在补齐材料后复核。`
+          : '现有资料未发现显著缺口，但仍需核验原始凭证。'
+      }`,
+      evidence,
+      view: openGaps.length > 0
+        ? '在缺口补齐前，本模块结论只能作为初步判断，不宜直接作为交易定价依据。'
+        : '该判断可作为投前判断的基础，交易前仍需完成底稿复核。',
+    })
+  }
+
+  for (const item of docs.slice(0, 3)) {
+    const quote = docQuote(item.doc.text, 120)
+    args.push({
+      title: `${truncate(item.doc.fileName, 24)}揭示的关键信息`,
+      content: truncate(item.doc.text, 280),
+      analysis: `该段内容直接来自资料中心上传的《${truncate(item.doc.fileName, 40)}》，原文约 ${item.doc.textLength} 字。它构成本模块的一手事实基础；${
+        item.doc.textLength > 280 ? '其余内容需结合原文完整阅读。' : '资料篇幅较短，信息完整度有限。'
+      }`,
+      evidence: [{ text: `《${truncate(item.doc.fileName, 40)}》原文摘录`, ref: item.ref, quote }].filter(evidence => evidence.quote),
+      view: '该信息可作为本模块的事实依据，但仍需与合同、台账或访谈记录交叉核验。',
+    })
+    if (args.length >= 3) break
+  }
+
+  if (args.length < 3 && facts.length > 0) {
+    const evidence: DeepArgumentEvidence[] = facts.slice(0, 3).map(fact => ({
+      text: truncate(fact.fact, 120),
+      ref: fact.ref,
+    }))
+    args.push({
+      title: '公开信息中的关键事实',
+      content: facts
+        .slice(0, 3)
+        .map(fact => `${truncate(fact.fact, 90)}${fact.value ? `（${fact.value}${fact.unit || ''}）` : ''}`)
+        .join('；'),
+      analysis: `上述事实来自公开检索，平均证据等级以 B/C 级为主，信息覆盖度 ${coverage}%。公开信息可用于形成初步判断，但不能替代一手资料核验。`,
+      evidence,
+      view: '公开事实支持初步判断；在关键数字未经审计或合同验证前，应保留估值调整条件。',
+    })
+  }
+
+  if (args.length < 3) {
+    args.push({
+      title: `${module.moduleName}的关键假设仍待验证`,
+      content: openGaps.length > 0
+        ? `尚未补齐的资料包括：${openGaps.slice(0, 5).map(gap => gap.label).join('、')}。`
+        : '资料中心与公开检索均未提供足够信息，本模块尚无法形成确定结论。',
+      analysis: `信息覆盖度仅 ${coverage}%，现有材料不足以支持对核心假设的定量判断，任何结论都存在较高不确定性。`,
+      evidence: [{ text: openGaps[0]?.label || '缺少可引用的原始资料。' }],
+      view: '建议将本模块列入投前条件，补齐资料后再形成最终判断。',
+    })
+  }
+
+  return args.slice(0, 5)
 }
 
 export function fallbackModuleContent(module: DeepModuleContext): DeepModuleContent {
   const facts = module.facts.slice(0, 5)
-  const factLines = facts.map(fact => {
-    const value = fact.value ? `：${fact.value}${fact.unit || ''}` : ''
-    return `[${fact.ref}] ${truncate(fact.fact, 100)}${value}`
-  })
-
-  const docLines = module.documents
-    .filter(doc => doc.text)
-    .slice(0, 3)
-    .map((doc, index) => `[资料${index + 1}] ${doc.fileName}：${truncate(doc.text, 200)}`)
-
-  const questions: DeepModuleContent['questions'] = []
-  if (module.humanConclusion) {
-    questions.push({
-      question: `${module.coreQuestion}（人工结论）`,
-      answer: truncate(module.humanConclusion, 600),
-    })
-  }
-  if (facts[0]) {
-    questions.push({
-      question: `公开信息如何回答「${module.coreQuestion}」？`,
-      answer: `公开信息显示：${truncate(facts[0].fact, 200)}${facts[0].value ? `（${facts[0].value}${facts[0].unit || ''}）` : ''} [${facts[0].ref}]。该结论仍需结合交易资料核验。`,
-      refs: [facts[0].ref],
-    })
-  }
-  if (module.documents[0]?.text) {
-    questions.push({
-      question: `${module.moduleName}的一手资料提供了哪些关键信息？`,
-      answer: `[资料1] ${module.documents[0].fileName} 显示：${truncate(module.documents[0].text, 400)}`,
-      refs: ['资料1'],
-    })
-  }
-  questions.push({
-    question: `本模块哪些假设仍待验证？`,
-    answer: module.gaps.filter(gap => gap.status === 'OPEN').length > 0
-      ? `待验证：${module.gaps.filter(gap => gap.status === 'OPEN').slice(0, 4).map(gap => gap.label).join('、')}。`
-      : '公开信息与上传资料未发现明显缺口，但仍需在正式尽调中复核原始凭证。',
-  })
-
-  const analysis: string[] = []
-  if (module.report?.opportunities?.[0]) analysis.push(`机会：${truncate(module.report.opportunities[0], 200)}`)
-  if (module.report?.risks?.[0]) analysis.push(`风险：${truncate(module.report.risks[0], 200)}`)
-  const openGap = module.gaps.find(gap => gap.status === 'OPEN')
-  if (openGap) analysis.push(`待验证：${truncate(openGap.label, 200)}`)
-  analysis.push(`投资含义：本模块信息覆盖度 ${Math.round(module.coverage * 100)}%，需结合交易资料复核后再纳入决策。`)
-  analysis.push('验证路径：补充原始合同、台账、访谈记录与第三方证明，逐条核对关键假设。')
-
+  const args = fallbackArguments(module)
   const conclusion = module.humanConclusion
     ? truncate(module.humanConclusion, 300)
     : module.report?.summary
@@ -325,9 +495,8 @@ export function fallbackModuleContent(module: DeepModuleContext): DeepModuleCont
   return {
     moduleKey: module.moduleKey,
     headline: `${module.moduleName}：信息覆盖 ${Math.round(module.coverage * 100)}%`,
-    questions: questions.slice(0, 5),
-    facts: [...factLines, ...docLines].length > 0 ? [...factLines, ...docLines].slice(0, 6) : ['公开信息不足，未形成可引用事实。'],
-    analysis: analysis.slice(0, 6),
+    coreAnswer: module.humanConclusion ? truncate(module.humanConclusion, 240) : conclusion,
+    arguments: args,
     conclusion,
     metrics: facts
       .filter(fact => fact.value)
@@ -348,7 +517,8 @@ export async function generateExecutiveSummary(
 ): Promise<DeepExecutive> {
   const moduleLines = modules.map((content, index) => {
     const module = context.modules[index]
-    return `- ${module?.moduleName || content.moduleKey}：${truncate(content.conclusion, 200)}`
+    const points = (content.arguments || []).slice(0, 3).map(item => item.title).join('；')
+    return `- ${module?.moduleName || content.moduleKey}：${truncate(content.conclusion, 200)}${points ? `（核心论点：${points}）` : ''}`
   })
 
   const prompt = [
@@ -363,7 +533,7 @@ export async function generateExecutiveSummary(
     `{
   "headline": "一句话投资判断（≤40字）",
   "paragraphs": ["2–3段，每段≤220字，说明判断依据、关键变量与边界"],
-  "bullets": ["4–6条核心理由，每条≤120字，尽量带 [F#]/[E#]"],
+  "bullets": ["4–6条核心理由，每条≤120字，尽量带 [F#]/[E#]/[资料N]"],
   "conclusion": "总体结论与建议（≤160字）"
 }`,
   ].join('\n')
@@ -435,8 +605,8 @@ export async function generateOutlookAndRisks(
     system: SYSTEM_PROMPT,
     user: prompt,
     module: 'dd-deck',
-    maxTokens: 3200,
-    timeoutMs: 180_000,
+    maxTokens: 3800,
+    timeoutMs: 200_000,
     temperature: 0.3,
   }).catch(() => null)
 

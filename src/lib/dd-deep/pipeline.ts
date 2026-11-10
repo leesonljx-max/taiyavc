@@ -28,14 +28,25 @@ export async function generateDeepDeck(deckId: string): Promise<void> {
   if (!deck) throw new Error('报告不存在')
 
   const context = await buildDeepContext(deck.projectId)
-  const charts = buildDeepCharts(context)
   const imageResult = await collectDeepImages(context)
+
+  // 为每个模块的图片编号（图1、图2…），供论点引用
+  const moduleImages = new Map<string, typeof imageResult.images>()
+  const imageCounts: Record<string, number> = {}
+  for (const module of context.modules) {
+    const items = imageResult.images
+      .filter(image => image.moduleKey === module.moduleKey)
+      .map((image, index) => ({ ...image, id: `图${index + 1}` }))
+    moduleImages.set(module.moduleKey, items)
+    imageCounts[module.moduleKey] = items.length
+  }
+  const charts = buildDeepCharts(context, imageCounts)
 
   const contents: DeepModuleContent[] = []
   for (const module of context.modules) {
     let content: DeepModuleContent
     try {
-      content = await generateModuleContent(context, module)
+      content = await generateModuleContent(context, module, moduleImages.get(module.moduleKey) || [])
     } catch (error) {
       console.error(`[dd-deep] 模块生成失败 ${module.moduleKey}:`, error)
       content = fallbackModuleContent(module)
@@ -74,9 +85,14 @@ export async function generateDeepDeck(deckId: string): Promise<void> {
       moduleName: module.moduleName,
       coreQuestion: module.coreQuestion,
       content: contents[index],
+      stats: [
+        { label: '资料', value: `${module.documents.length} 份` },
+        { label: '证据', value: `${module.facts.length + module.sources.length} 条` },
+        { label: '关键图', value: `${imageCounts[module.moduleKey] || 0} 张` },
+      ],
     })),
     charts,
-    images: imageResult.images,
+    images: Array.from(moduleImages.values()).flat(),
     limitations,
     appendix: {
       facts: context.base.facts.slice(0, 90).map(fact => ({
@@ -93,6 +109,14 @@ export async function generateDeepDeck(deckId: string): Promise<void> {
         grade: source.grade,
         url: source.url,
       })),
+      documents: context.modules.flatMap(module =>
+        module.documents.slice(0, 20).map((doc, index) => ({
+          ref: `资料${index + 1}`,
+          fileName: clean(doc.fileName, 56),
+          moduleName: module.moduleName,
+          textLength: doc.textLength,
+        }))
+      ).slice(0, 80),
     },
     stats: {
       sourceCount: context.base.research.sourceCount,

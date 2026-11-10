@@ -21,6 +21,7 @@ const nextConfig = {
       { source: '/project-docs/:path*', destination: '/api/uploads/project-docs/:path*' },
       { source: '/project-images/:path*', destination: '/api/uploads/project-images/:path*' },
       { source: '/research-docs/:path*', destination: '/api/uploads/research-docs/:path*' },
+      { source: '/dd-unclassified/:path*', destination: '/api/uploads/dd-unclassified/:path*' },
     ]
   },
 }
