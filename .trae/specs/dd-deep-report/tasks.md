@@ -50,10 +50,10 @@
 - 新增 `src/lib/dd-deep/images.ts`：`collectDeepImages`。
 
 要点：
-- 截图优先；文档按页提取（4 个模块、≤6 页）；网络 og:image ≤4 张。
+- 截图优先；文档按页提取（覆盖所有有资料的模块、≤30 页）；网络 og:image ≤8 张。
 - 文档路径 `public/research-docs/*`，过滤 >30MB，20s 超时。
 - 网络图片：DNS 私网校验、5s 超时、≤2MB、仅 image/*、失败静默。
-- 每张图带 caption 与 source；总数 ≤10。
+- 每张图带 caption 与 source；总数 ≤72，按章节实际需要分配。
 
 验收：
 - 单测：URL 白名单过滤、图片上限、来源缺失时丢弃。
@@ -108,7 +108,7 @@
 
 文件：
 - 新增 `tests/dd-deep.test.ts`。
-- `package.json`：版本 `2.7.4`。
+- `package.json`：版本 `2.8.0`。
 
 执行：
 1. `npx tsc --noEmit`

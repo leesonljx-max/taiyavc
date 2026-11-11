@@ -2,9 +2,11 @@
  * 深度尽调报告文档规格（16:9 横向页面，1280×720）
  *
  * AI 只提供内容块；页面由服务端按高度预算装页，页数随内容自然增长。
- * 模块内的每个论点独立成页，按「内容 / 分析 / 论据 / 观点」四段式展开。
- * 文档结构：封面 → 目录 → 执行摘要 → 行业与时机 → 九大模块 → 风险估值结论 → 资料利用与局限 → 附录。
+ * 模块内的每个论点独立成页：以归纳阐述为主线，配资料论据与按需给出的判断。
+ * 文档结构固定：封面 → 目录 → 00 推荐理由 → 01–08 固定八章 → 附A 资料利用与局限 → 附B 附录。
  */
+
+import type { DeepChapterSpec } from './framework'
 
 export interface DeepArgumentEvidence {
   /** 论据陈述：这条论据说明什么 */
@@ -18,14 +20,12 @@ export interface DeepArgumentEvidence {
 export interface DeepArgument {
   /** 论点：可判断的结论句 */
   title: string
-  /** 内容：事实与现状 */
-  content: string
-  /** 分析：原因、机制、反证与影响 */
-  analysis: string
-  /** 论据：支撑该论点的证据 */
+  /** 归纳阐述：1–3 段，把资料中的事实、机制与影响讲清楚，按内容需要组织 */
+  narrative: string[]
+  /** 论据：支撑该论点的资料原文或公开证据 */
   evidence: DeepArgumentEvidence[]
-  /** 观点：投资含义与判断 */
-  view: string
+  /** 判断/投资含义（按需给出，可为空） */
+  takeaway?: string
   /** 关联的资料中心图片编号（图1、图2...） */
   imageId?: string
 }
@@ -117,9 +117,11 @@ export interface DeepRisk {
 export interface DeepModuleContent {
   moduleKey: string
   headline: string
+  /** 章节标题页的 1–2 句总结 */
+  summary?: string
   /** 对模块核心问题的直接回答 */
   coreAnswer?: string
-  /** 论点式正文：每个论点含内容/分析/论据/观点 */
+  /** 论点式正文：每个论点含归纳阐述、论据与按需判断 */
   arguments?: DeepArgument[]
   /** 兼容旧版报告 */
   questions?: Array<{ question: string; answer: string; refs?: string[] }>
@@ -141,10 +143,23 @@ export interface DeepImage {
   kind: 'screenshot' | 'doc' | 'web'
 }
 
-export interface DeepModuleInput {
-  moduleKey: string
-  moduleName: string
-  coreQuestion: string
+/** 固定推荐理由页的单个维度 */
+export interface DeepRecommendationItem {
+  dimension: string
+  headline: string
+  points: string[]
+}
+
+/** 固定第 1 页：推荐理由（行业 / 团队背景 / 产品和业务进展 / 竞争态势 / 融资） */
+export interface DeepRecommendation {
+  headline: string
+  items: DeepRecommendationItem[]
+  conclusion: string
+}
+
+/** 固定章节输入：章节规格 + 按小节生成的论点内容 */
+export interface DeepChapterInput {
+  chapter: DeepChapterSpec
   content: DeepModuleContent
   /** 章节页统计 */
   stats?: Array<{ label: string; value: string }>
@@ -176,15 +191,10 @@ export interface DeepDocInput {
     totalAmount?: string | null
   }
   generatedAt: string
-  executive: DeepNarrative & { conclusion: string }
-  outlook: {
-    industry: DeepNarrative
-    timing: DeepNarrative
-    risks: DeepRisk[]
-    valuation: { headline: string; bullets: string[]; metrics?: Array<{ label: string; value: string; hint?: string }> }
-    conclusion: { headline: string; conditions: string[]; nextSteps: string[] }
-  }
-  modules: DeepModuleInput[]
+  /** 固定第 1 页：推荐理由（5 个维度） */
+  recommendation: DeepRecommendation
+  /** 固定八章（顺序由 framework.ts 决定） */
+  chapters: DeepChapterInput[]
   charts: {
     coverage: DeepBlock | null
     grades: DeepBlock | null
@@ -381,7 +391,7 @@ function packBlocks(
   }
 
   for (const block of blocks) {
-    // 论点独立成页：保证「内容/分析/论据/观点」完整呈现在同一页
+    // 论点独立成页：归纳阐述 + 论据 + 按需判断完整呈现在同一页
     if (block.type === 'argument') {
       flush()
       pages.push({
@@ -405,7 +415,6 @@ function packBlocks(
           flush()
           current.push(last)
           used += blockHeight(last)
-          if (used + height > PAGE_BUDGET) flush()
         } else {
           flush()
         }
@@ -436,11 +445,15 @@ function sectionPage(
 }
 
 /**
- * 模块内容：概览页（核心回答/指标/图表/结论）+ 每个论点独立一页。
+ * 章节内容：概览页（核心回答/小节导航/指标/图表/结论）+ 每个固定小节独立一页。
  * 图片优先绑定到论点，未被引用的图片放在概览页。
  */
-function moduleBlocks(module: DeepModuleInput, images: DeepImage[], charts: DeepBlock[]): DeepBlock[] {
-  const content = module.content
+function chapterBlocks(
+  chapter: DeepChapterSpec,
+  content: DeepModuleContent,
+  images: DeepImage[],
+  charts: DeepBlock[]
+): DeepBlock[] {
   const args = content.arguments && content.arguments.length > 0 ? content.arguments : []
 
   // 先解析论点图片，避免概览页与论点页重复用图
@@ -462,36 +475,16 @@ function moduleBlocks(module: DeepModuleInput, images: DeepImage[], charts: Deep
 
   overviewBlocks.push({
     type: 'callout',
-    title: '模块核心回答',
-    text: content.coreAnswer || content.headline || '本模块尚无法形成确定回答。',
+    title: '本章核心回答',
+    text: content.coreAnswer || content.headline || '本章尚无法形成确定回答。',
     tone: 'teal',
   })
 
-  if (args.length >= 2) {
-    overviewBlocks.push({ type: 'heading', text: '本模块论点' })
-    overviewBlocks.push({
-      type: 'bullets',
-      items: args.map((argument, index) => `论点 ${index + 1}：${argument.title}`),
-    })
-  }
-
-  // 兼容旧版报告：提问式内容
-  if (args.length === 0 && content.questions && content.questions.length > 0) {
-    overviewBlocks.push({
-      type: 'qa',
-      items: content.questions.map(q => ({ question: q.question, answer: q.answer, refs: q.refs })),
-    })
-  }
-
-  if (args.length === 0 && content.facts && content.facts.length > 0) {
-    overviewBlocks.push({ type: 'heading', text: '资料与发现' })
-    overviewBlocks.push({ type: 'bullets', items: content.facts })
-  }
-
-  if (args.length === 0 && content.analysis && content.analysis.length > 0) {
-    overviewBlocks.push({ type: 'heading', text: '分析' })
-    overviewBlocks.push({ type: 'bullets', items: content.analysis })
-  }
+  overviewBlocks.push({ type: 'heading', text: '本章固定小节' })
+  overviewBlocks.push({
+    type: 'bullets',
+    items: chapter.sections.map((section, index) => `${index + 1}. ${section.title}`),
+  })
 
   if (content.metrics && content.metrics.length > 0) {
     overviewBlocks.push({
@@ -506,8 +499,8 @@ function moduleBlocks(module: DeepModuleInput, images: DeepImage[], charts: Deep
 
   overviewBlocks.push({
     type: 'callout',
-    title: content.dataLimited ? '模块结论（资料有限）' : '模块结论',
-    text: content.conclusion || '本模块尚无法形成确定结论。',
+    title: content.dataLimited ? '本章结论（资料有限）' : '本章结论',
+    text: content.conclusion || '本章尚无法形成确定结论。',
     tone: content.dataLimited ? 'red' : 'gold',
   })
 
@@ -533,103 +526,58 @@ function moduleBlocks(module: DeepModuleInput, images: DeepImage[], charts: Deep
 export function assembleDeepDocSpec(input: DeepDocInput): DeepDocSpec {
   const bodyPages: DeepPage[] = []
 
-  // 01 执行摘要
-  bodyPages.push(sectionPage('01', '执行摘要', '投资判断与核心理由'))
+  // 00 推荐理由（固定第 1 页）
+  const recommendationItems = input.recommendation.items.slice(0, 5)
+  bodyPages.push(sectionPage('00', '推荐理由', '行业 · 团队背景 · 产品和业务进展 · 竞争态势 · 融资'))
   bodyPages.push(
     ...packBlocks(
-      { sectionNo: '01', sectionTitle: '执行摘要', kicker: '投资判断与核心理由' },
+      { sectionNo: '00', sectionTitle: '推荐理由', kicker: '五个维度的推荐判断' },
       [
-        { type: 'heading', text: input.executive.headline || '执行摘要' },
-        ...input.executive.paragraphs.map(text => ({ type: 'paragraph' as const, text })),
-        { type: 'bullets', items: input.executive.bullets },
-        ...(input.charts.coverage ? [input.charts.coverage] : []),
-        { type: 'callout', title: '总体结论', text: input.executive.conclusion, tone: 'gold' },
+        { type: 'callout', title: '一句话推荐', text: input.recommendation.headline, tone: 'gold' },
+        {
+          type: 'table',
+          title: '推荐理由（五个维度）',
+          columns: ['维度', '推荐理由', '关键依据'],
+          rows: recommendationItems.map(item => [
+            item.dimension,
+            item.headline,
+            item.points.slice(0, 2).join('；'),
+          ]),
+          note: '推荐理由覆盖行业、团队背景、产品和业务进展、竞争态势与融资五个固定维度。',
+        },
+        { type: 'callout', title: '推荐结论', text: input.recommendation.conclusion, tone: 'teal' },
       ]
     )
   )
 
-  // 02 行业与时机
-  bodyPages.push(sectionPage('02', '行业、时机与价值判断', '外部环境与窗口期'))
-  bodyPages.push(
-    ...packBlocks(
-      { sectionNo: '02', sectionTitle: '行业、时机与价值判断', kicker: '外部环境与窗口期' },
-      [
-        { type: 'heading', text: input.outlook.industry.headline || '行业格局' },
-        ...input.outlook.industry.paragraphs.map(text => ({ type: 'paragraph' as const, text })),
-        { type: 'bullets', items: input.outlook.industry.bullets },
-        { type: 'heading', text: input.outlook.timing.headline || '时机窗口' },
-        ...input.outlook.timing.paragraphs.map(text => ({ type: 'paragraph' as const, text })),
-        { type: 'bullets', items: input.outlook.timing.bullets },
-      ]
-    )
-  )
-
-  // 03–11 九大模块
-  input.modules.forEach((module, index) => {
-    const no = String(index + 3).padStart(2, '0')
-    const moduleImages = input.images
-      .filter(img => img.moduleKey === module.moduleKey)
+  // 01–08 固定八章（章节与小节顺序由 framework.ts 唯一确定）
+  for (const item of input.chapters) {
+    const { chapter, content: chapterContent, stats } = item
+    const chapterImages = input.images
+      .filter(img => chapter.moduleKeys.includes(img.moduleKey))
       .map((img, imageIndex) => ({ ...img, id: img.id || `图${imageIndex + 1}` }))
-    const moduleCharts: DeepBlock[] = []
-    const dedicated = input.charts.moduleCharts?.[module.moduleKey]
-    if (dedicated) {
-      moduleCharts.push(dedicated)
-    } else if (module.moduleKey === 'MARKET_CUSTOMERS' && input.charts.coverage) {
-      moduleCharts.push(input.charts.coverage)
-    } else if (module.moduleKey === 'FINANCE_ECONOMICS' && input.charts.financeFacts) {
-      moduleCharts.push(input.charts.financeFacts)
+    const chapterCharts: DeepBlock[] = []
+    if (chapter.key === 'FINANCE' && input.charts.financeFacts) {
+      chapterCharts.push(input.charts.financeFacts)
     }
-    bodyPages.push(sectionPage(no, module.moduleName, module.coreQuestion, module.stats))
+    for (const moduleKey of chapter.moduleKeys) {
+      const dedicated = input.charts.moduleCharts?.[moduleKey]
+      if (dedicated) {
+        chapterCharts.push(dedicated)
+        break
+      }
+    }
+    const kicker = chapterContent.summary || chapter.kicker
+    bodyPages.push(sectionPage(chapter.no, chapter.title, kicker, stats))
     bodyPages.push(
       ...packBlocks(
-        { sectionNo: no, sectionTitle: module.moduleName, kicker: module.coreQuestion },
-        moduleBlocks(module, moduleImages, moduleCharts)
+        { sectionNo: chapter.no, sectionTitle: chapter.title, kicker },
+        chapterBlocks(chapter, chapterContent, chapterImages, chapterCharts.slice(0, 2))
       )
     )
-  })
-
-  // 12 风险、估值与结论
-  const riskBlocks: DeepBlock[] = [
-    { type: 'heading', text: '主要风险与缓释' },
-  ]
-  if (input.outlook.risks.length > 0) {
-    riskBlocks.push({
-      type: 'table',
-      title: '风险清单',
-      columns: ['风险', '机制', '缓释/验证'],
-      rows: input.outlook.risks.map(r => [r.title, r.detail, r.mitigation]),
-    })
-  } else {
-    riskBlocks.push({ type: 'paragraph', text: '当前未识别出可量化的重大风险，仍需在投前尽调中逐项验证。' })
   }
-  riskBlocks.push(
-    { type: 'heading', text: input.outlook.valuation.headline || '估值与回报' },
-    { type: 'bullets', items: input.outlook.valuation.bullets }
-  )
-  if (input.outlook.valuation.metrics && input.outlook.valuation.metrics.length > 0) {
-    riskBlocks.push({
-      type: 'table',
-      title: '估值与回报指标',
-      columns: ['指标', '数值', '口径'],
-      rows: input.outlook.valuation.metrics.map(m => [m.label, m.value, m.hint || '—']),
-    })
-  }
-  if (input.charts.grades) riskBlocks.push(input.charts.grades)
-  if (input.charts.moduleEvidence) riskBlocks.push(input.charts.moduleEvidence)
-  if (input.charts.evidenceByModule) riskBlocks.push(input.charts.evidenceByModule)
-  riskBlocks.push(
-    { type: 'heading', text: input.outlook.conclusion.headline || '结论与建议' },
-    { type: 'paragraph', text: '建议的投放条件：' },
-    { type: 'bullets', items: input.outlook.conclusion.conditions },
-    { type: 'paragraph', text: '交割前需完成的验证动作：' },
-    { type: 'bullets', items: input.outlook.conclusion.nextSteps }
-  )
-  bodyPages.push(sectionPage('12', '风险、估值与结论', '风险定价与交易建议'))
-  bodyPages.push(
-    ...packBlocks({ sectionNo: '12', sectionTitle: '风险、估值与结论', kicker: '风险定价与交易建议' }, riskBlocks)
-  )
 
-  // 13 资料利用与局限
+  // 附A 资料利用与局限
   const limitationItems = input.limitations.length > 0
     ? input.limitations
     : ['未发现显著资料缺口；结论仍以公开信息与已上传资料为限。']
@@ -638,6 +586,9 @@ export function assembleDeepDocSpec(input: DeepDocInput): DeepDocSpec {
   ]
   if (input.charts.docUsage) utilizationBlocks.push(input.charts.docUsage)
   if (input.charts.docContribution) utilizationBlocks.push(input.charts.docContribution)
+  if (input.charts.grades) utilizationBlocks.push(input.charts.grades)
+  if (input.charts.moduleEvidence) utilizationBlocks.push(input.charts.moduleEvidence)
+  if (input.charts.evidenceByModule) utilizationBlocks.push(input.charts.evidenceByModule)
   utilizationBlocks.push(
     { type: 'heading', text: '资料与信息边界' },
     { type: 'bullets', items: limitationItems },
@@ -648,15 +599,15 @@ export function assembleDeepDocSpec(input: DeepDocInput): DeepDocSpec {
       tone: 'teal',
     }
   )
-  bodyPages.push(sectionPage('13', '资料利用与局限', '资料使用、证据边界与待验证事项'))
+  bodyPages.push(sectionPage('A', '资料利用与局限', '资料使用、证据边界与待验证事项'))
   bodyPages.push(
     ...packBlocks(
-      { sectionNo: '13', sectionTitle: '资料利用与局限', kicker: '资料使用、证据边界与待验证事项' },
+      { sectionNo: 'A', sectionTitle: '资料利用与局限', kicker: '资料使用、证据边界与待验证事项' },
       utilizationBlocks
     )
   )
 
-  // 14 附录
+  // 附B 附录
   const appendixBlocks: DeepBlock[] = [
     { type: 'heading', text: '证据索引（公开事实）' },
   ]
@@ -705,9 +656,9 @@ export function assembleDeepDocSpec(input: DeepDocInput): DeepDocSpec {
   } else {
     appendixBlocks.push({ type: 'paragraph', text: '资料中心暂无上传资料。' })
   }
-  bodyPages.push(sectionPage('14', '附录', '证据与来源索引'))
+  bodyPages.push(sectionPage('B', '附录', '证据与来源索引'))
   bodyPages.push(
-    ...packBlocks({ sectionNo: '14', sectionTitle: '附录', kicker: '证据与来源索引' }, appendixBlocks)
+    ...packBlocks({ sectionNo: 'B', sectionTitle: '附录', kicker: '证据与来源索引' }, appendixBlocks)
   )
 
   // 封面 + 目录（目录先占位，回填页码）
@@ -857,18 +808,20 @@ function coerceBlock(block: DeepBlock): DeepBlock | null {
     case 'argument': {
       const argument = block.argument
       const title = clampText(argument.title, 90)
-      const content = clampText(argument.content, 340)
-      const analysis = clampText(argument.analysis, 420)
-      const view = clampText(argument.view, 260)
+      const narrative = (argument.narrative || [])
+        .map(paragraph => clampText(paragraph, 220))
+        .filter(Boolean)
+        .slice(0, 3)
+      const takeaway = argument.takeaway ? clampText(argument.takeaway, 260) : undefined
       const evidence = (argument.evidence || [])
         .map(item => ({
           text: clampText(item.text, 130),
           ref: item.ref ? clampText(item.ref, 60) : undefined,
-          quote: item.quote ? clampText(item.quote, 170) : undefined,
+          quote: item.quote ? clampText(item.quote, 160) : undefined,
         }))
         .filter(item => item.text)
-        .slice(0, 2)
-      if (!title || !content || !analysis || !view || evidence.length === 0) return null
+        .slice(0, 3)
+      if (!title || narrative.length === 0 || evidence.length === 0) return null
       let image: { url: string; caption: string; source?: string } | undefined
       if (block.image && isValidImageUrl(block.image.url) && block.image.caption) {
         image = {
@@ -883,10 +836,9 @@ function coerceBlock(block: DeepBlock): DeepBlock | null {
         total: Math.max(1, Math.min(99, Math.round(block.total || 1))),
         argument: {
           title,
-          content,
-          analysis,
-          view,
+          narrative,
           evidence,
+          ...(takeaway ? { takeaway } : {}),
           imageId: argument.imageId ? clampText(argument.imageId, 20) : undefined,
         },
         image,

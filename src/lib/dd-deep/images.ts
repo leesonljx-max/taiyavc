@@ -14,12 +14,12 @@ import { buildPagedBpText, extractBpPageImages } from '@/lib/project-interpretat
 import type { DeepContext, DeepDocument } from './context'
 import type { DeepImage } from './spec'
 
-const MAX_IMAGES = 24
-const MAX_PER_MODULE = 4
-const MAX_SCREENSHOTS_PER_MODULE = 2
-const MAX_DOC_PAGES = 18
-const MAX_OFFICE_MEDIA = 12
-const MAX_WEB_IMAGES = 4
+const MAX_IMAGES = 72
+const MAX_PER_MODULE = 12
+const MAX_SCREENSHOTS_PER_MODULE = 8
+const MAX_DOC_PAGES = 30
+const MAX_OFFICE_MEDIA = 24
+const MAX_WEB_IMAGES = 8
 const MAX_DOC_BYTES = 30 * 1024 * 1024
 const DOC_TIMEOUT_MS = 25_000
 const IMAGE_KEYWORDS = /架构|拓扑|流程|示意|技术路线|产品|平台|系统|部署|客户|订单|矩阵|图谱|组织|团队|市场|规模|竞争|财务|收入|毛利|估值|融资|专利|证书/
@@ -99,7 +99,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
   ])
 }
 
-/** 资料中心截图（URL 原样使用），每个模块 2 张，优先覆盖更多模块 */
+/** 资料中心截图（URL 原样使用），每个模块最多 8 张，按篇章需要选用 */
 function collectScreenshots(context: DeepContext): DeepImage[] {
   const images: DeepImage[] = []
   for (const module of context.modules) {
@@ -172,7 +172,7 @@ function localDocPath(doc: DeepDocument): string {
   return resolveLocalDoc(doc.fileUrl)?.path || ''
 }
 
-/** PDF / PPTX 关键页截图：覆盖所有有资料的模块，每模块最多 2 页 */
+/** PDF / PPTX 关键页截图：覆盖所有有资料的模块，每模块按需最多 6 页 */
 async function extractDocumentImages(context: DeepContext): Promise<{ images: DeepImage[]; notes: string[] }> {
   const images: DeepImage[] = []
   const notes: string[] = []
@@ -183,12 +183,12 @@ async function extractDocumentImages(context: DeepContext): Promise<{ images: De
     const docs = module.documents
       .filter(isLocalResearchDoc)
       .filter(doc => /\.(pdf|pptx)$/i.test(doc.fileName))
-      .slice(0, 2)
+      .slice(0, 3)
     if (docs.length === 0) continue
 
     let moduleCount = 0
     for (const doc of docs) {
-      if (pageBudget <= 0 || moduleCount >= 2) break
+      if (pageBudget <= 0 || moduleCount >= 6) break
       const localPath = localDocPath(doc)
       const result = await withTimeout(
         (async () => {
@@ -197,7 +197,7 @@ async function extractDocumentImages(context: DeepContext): Promise<{ images: De
           const buffer = await readFile(localPath)
           const paged = await buildPagedBpText(buffer, doc.fileName)
           if (!paged) return null
-          const pages = pickKeyPages(paged, Math.min(2, pageBudget))
+          const pages = pickKeyPages(paged, Math.min(3, pageBudget))
           if (pages.length === 0) return null
           const extracted = await extractBpPageImages(
             buffer,
@@ -220,9 +220,9 @@ async function extractDocumentImages(context: DeepContext): Promise<{ images: De
       }
 
       for (const item of result) {
-        if (pageBudget <= 0 || moduleCount >= 3) break
+        if (pageBudget <= 0 || moduleCount >= 6) break
         for (const url of item.url.split(';').filter(Boolean)) {
-          if (pageBudget <= 0 || moduleCount >= 3) break
+          if (pageBudget <= 0 || moduleCount >= 6) break
           images.push({
             moduleKey: module.moduleKey,
             url,
@@ -250,7 +250,7 @@ async function extractOfficeMedia(context: DeepContext): Promise<DeepImage[]> {
     const docs = module.documents
       .filter(isLocalResearchDoc)
       .filter(doc => /\.(docx|xlsx|pptx)$/i.test(doc.fileName))
-      .slice(0, 2)
+      .slice(0, 3)
 
     for (const doc of docs) {
       if (budget <= 0) break
@@ -263,14 +263,14 @@ async function extractOfficeMedia(context: DeepContext): Promise<DeepImage[]> {
           const zip = await JSZip.loadAsync(buffer)
           const entries = Object.values(zip.files)
             .filter(file => !file.dir && /^(word|xl|ppt)\/media\/[^/]+\.(png|jpe?g|gif|webp)$/i.test(file.name))
-            .slice(0, 6)
+            .slice(0, 10)
           const out: Array<{ data: Buffer; ext: string }> = []
           for (const entry of entries) {
             const data = await entry.async('nodebuffer')
             if (data.length < 30 * 1024 || data.length > 2 * 1024 * 1024) continue
             const ext = (entry.name.split('.').pop() || 'png').toLowerCase()
             out.push({ data, ext })
-            if (out.length >= 2) break
+            if (out.length >= 4) break
           }
           return out
         })(),
@@ -298,7 +298,7 @@ async function extractOfficeMedia(context: DeepContext): Promise<DeepImage[]> {
   return images
 }
 
-/** 直接上传的图片资料（模块资料 / 非分类资料池） */
+/** 直接上传的图片资料（模块资料 / 非分类资料池），按需全部收集 */
 function collectImageDocs(context: DeepContext): DeepImage[] {
   const images: DeepImage[] = []
   for (const module of context.modules) {
@@ -313,7 +313,6 @@ function collectImageDocs(context: DeepContext): DeepImage[] {
         source: `资料中心 · ${doc.fileName}`,
         kind: 'doc',
       })
-      break
     }
   }
   return images

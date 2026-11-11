@@ -1,61 +1,38 @@
 /**
- * 深度报告内容生成
+ * 深度报告内容生成（固定框架版）
  *
- * 每个模块一次 LLM 调用，输出 3–5 个论点；每个论点按「内容/分析/论据/观点」展开。
- * 论据必须引用资料中心原文或公开事实，引用摘录在服务端做逐字校验。
- * 另两次调用生成执行摘要与行业/时机/风险/估值/结论。
- * 任何失败都回退到资料与事实拼装，保证报告始终可产出。
+ * 报告固定为「推荐理由 + 八章」，每章严格按 framework.ts 规定的小节顺序输出，
+ * 每个小节一页：用归纳阐述把资料讲清楚，配 1–3 条论据，判断按需给出。
+ * 论据必须引用资料中心原文（全报告统一编号 资料1…资料N）或公开事实，
+ * 引用摘录在服务端做逐字校验，任何失败都回退到资料拼装，保证报告可产出。
  */
 
 import { callDeepSeekJson } from '@/lib/dd-research/llm'
-import type { DeepContext, DeepModuleContext } from './context'
+import type { DeepContext, DeepDocument, DeepModuleContext } from './context'
+import type { DeepChapterSpec, DeepSectionSpec } from './framework'
+import { DEEP_REPORT_PRINCIPLES, DEEP_RECOMMENDATION_DIMENSIONS, DEEP_SECTIONS } from './framework'
 import type {
   DeepArgument,
   DeepArgumentEvidence,
   DeepImage,
   DeepModuleContent,
-  DeepNarrative,
-  DeepRisk,
+  DeepRecommendation,
+  DeepRecommendationItem,
 } from './spec'
-
-export interface DeepExecutive {
-  headline: string
-  paragraphs: string[]
-  bullets: string[]
-  conclusion: string
-  dataLimited?: boolean
-}
-
-export interface DeepOutlook {
-  industry: DeepNarrative
-  timing: DeepNarrative
-  risks: DeepRisk[]
-  valuation: {
-    headline: string
-    bullets: string[]
-    metrics: Array<{ label: string; value: string; hint?: string }>
-  }
-  conclusion: {
-    headline: string
-    conditions: string[]
-    nextSteps: string[]
-  }
-  dataLimited?: boolean
-}
 
 const SYSTEM_PROMPT = [
   '你是风险投资机构的尽调报告主笔，为投委会撰写 16:9 深度尽调报告。写作要求：',
-  '1. 论点驱动：每个模块输出 3–5 个可判断的论点，每个论点必须按「内容 → 分析 → 论据 → 观点」四段展开。',
-  '   - 内容：基于资料的事实与现状，不写评价；',
-  '   - 分析：解释原因、机制、反证条件与影响；',
-  '   - 论据：给出支撑该论点的事实编号或资料原文摘录；',
-  '   - 观点：对投资决策的含义，明确成立条件或反对理由。',
-  '2. 必须优先使用资料中心上传的资料：引用写 [资料1]、[资料2]；公开事实写 [F3]；公开来源写 [E2]。',
-  '3. 资料中心的原文摘录必须逐字复制，不得改写、拼接或编造；引用编号写 [资料1]、[资料2]，不要编造页码。',
-  '4. 每个论点至少 1 条论据来自资料中心原文或公开事实；没有资料支撑就明确写「资料不足，待验证」，不得用行业常识冒充事实。',
-  '5. 公司收入、订单、客户、估值等数字只能来自给定事实或资料原文；没有就写「公开信息不足」，不得猜测。',
-  '6. 允许使用行业常识补充背景，但必须写成分析判断，不得伪装成公司事实。',
+  '1. 严格遵循固定框架：报告固定为「推荐理由 + 八章」，章节与每章小节顺序不得增删、改名或调序。',
+  '2. 论点驱动：每个小节输出一个可判断的论点，像投委会单页一样把这件事讲清楚：',
+  '   - 先用 1–3 段归纳阐述，讲清资料中的事实、机制与影响，按内容需要自然组织，不要套用「内容/分析」等固定小标题；',
+  '   - 再列 1–3 条论据，给出支撑该论点的事实编号或资料原文摘录；',
+  '   - 最后按需给出判断与投资含义；没有把握可以不写，但不允许空泛表态。',
+  '3. 必须优先使用资料中心上传的资料：引用写 [资料1]、[资料2]；公开事实写 [F3]；公开来源写 [E2]。资料编号为全报告统一编号。',
+  '4. 资料中心的原文摘录必须逐字复制，不得改写、拼接或编造；不要编造页码。',
+  '5. 资料不足时以公司官网、公众号、公开报道等网上宣传信息为主，并明确写「资料不足，待补充验证」，不得用行业常识冒充公司事实。',
+  '6. 能表格化的内容尽量用表格；数字只能来自给定事实或资料原文，没有就写「公开信息不足」，不得猜测。',
   '7. 明确区分「事实」「推测」「待验证」，对资料冲突要指出。',
+  DEEP_REPORT_PRINCIPLES,
   '只输出 JSON，不要输出 Markdown 代码块。',
 ].join('\n')
 
@@ -86,6 +63,10 @@ function asStringArray(value: unknown, max: number, maxEach: number): string[] {
     .slice(0, max)
 }
 
+function docRef(doc: DeepDocument, index: number): string {
+  return doc.ref || `资料${index + 1}`
+}
+
 function buildProjectBrief(context: DeepContext): string {
   const { project, research } = context.base
   const lines: string[] = [
@@ -109,8 +90,7 @@ function buildProjectBrief(context: DeepContext): string {
 
 function buildModuleInput(module: DeepModuleContext, images: DeepImage[]): string {
   const lines: string[] = [
-    `【${module.moduleKey} ${module.moduleName}】`,
-    `模块核心问题：${module.coreQuestion}`,
+    `【${module.moduleName}】`,
     `信息覆盖度：${Math.round(module.coverage * 100)}%`,
   ]
 
@@ -134,7 +114,7 @@ function buildModuleInput(module: DeepModuleContext, images: DeepImage[]): strin
   if (module.facts.length === 0) {
     lines.push('- 无（不得编造公司数字）')
   } else {
-    for (const fact of module.facts.slice(0, 12)) {
+    for (const fact of module.facts.slice(0, 16)) {
       const value = fact.value ? `：${fact.value}${fact.unit || ''}` : ''
       const period = fact.period ? `（${fact.period}）` : ''
       lines.push(`- [${fact.ref}] ${truncate(fact.fact, 120)}${value}${period}｜等级 ${fact.grade}｜来源 ${fact.sourceRef || '未标注'}`)
@@ -145,7 +125,7 @@ function buildModuleInput(module: DeepModuleContext, images: DeepImage[]): strin
   if (module.sources.length === 0) {
     lines.push('- 无')
   } else {
-    for (const source of module.sources) {
+    for (const source of module.sources.slice(0, 8)) {
       const ref = source.ref ? `[${source.ref}]` : ''
       lines.push(`- ${ref} ${truncate(source.title, 60)}｜${source.domain}｜${source.grade} 级`)
       if (source.excerpt) lines.push(`  摘录：${truncate(source.excerpt, 600)}`)
@@ -156,10 +136,10 @@ function buildModuleInput(module: DeepModuleContext, images: DeepImage[]): strin
   if (module.documents.length === 0) {
     lines.push('- 无')
   } else {
-    module.documents.forEach((doc, index) => {
+    module.documents.slice(0, 8).forEach((doc, index) => {
       const text = doc.text || '（该文件未提取到文本）'
-      lines.push(`- [资料${index + 1}] ${doc.fileName}（原文 ${doc.textLength} 字）`)
-      lines.push(`  ${truncate(text, 6000)}`)
+      lines.push(`- [${docRef(doc, index)}] ${doc.fileName}（原文 ${doc.textLength} 字）`)
+      lines.push(`  ${truncate(text, 5000)}`)
     })
   }
 
@@ -185,7 +165,7 @@ function buildModuleInput(module: DeepModuleContext, images: DeepImage[]): strin
 
   const openGaps = module.gaps.filter(gap => gap.status === 'OPEN')
   if (openGaps.length > 0) {
-    lines.push('', `未补齐资料：${openGaps.slice(0, 6).map(gap => gap.label).join('、')}`)
+    lines.push('', `未补齐资料：${openGaps.slice(0, 8).map(gap => gap.label).join('、')}`)
   } else {
     lines.push('', '未补齐资料：无')
   }
@@ -193,60 +173,91 @@ function buildModuleInput(module: DeepModuleContext, images: DeepImage[]): strin
   return lines.join('\n')
 }
 
-const MODULE_SCHEMA = `{
-  "headline": "本模块一句话结论（≤40字）",
-  "coreAnswer": "对模块核心问题的直接回答（≤120字，含依据）",
+const CHAPTER_SCHEMA = (sectionCount: number) => `{
+  "headline": "本章一句话结论（≤40字）",
+  "summary": "本章 1–2 句总结，用于章节标题页（≤120字）",
+  "coreAnswer": "对本章核心问题的直接回答（≤120字，含依据）",
   "arguments": [
     {
-      "title": "论点（≤30字，判断句）",
-      "content": "内容：事实与现状（≤220字，只写资料支持的事实）",
-      "analysis": "分析：原因、机制、反证条件与影响（≤260字）",
+      "title": "必须原样使用给定的小节标题",
+      "narrative": [
+        "第一段：把资料归纳成连贯论述，讲清事实与判断（≤160字）",
+        "第二段：原因、机制、反证条件或影响（可选，≤160字）"
+      ],
       "evidence": [
         {"text": "论据说明（≤90字）", "ref": "资料1 或 F3", "quote": "资料中心原文逐字摘录（≤100字）"}
       ],
-      "view": "观点：投资含义、成立条件或反对理由（≤160字）",
+      "takeaway": "判断与投资含义（可选，≤120字）",
       "image": "图1 或空字符串"
     }
   ],
-  "conclusion": "本模块结论（≤150字）",
+  "conclusion": "本章结论（≤150字）",
   "metrics": [{"label":"指标","value":"数值","hint":"口径或来源"}],
   "limitations": ["资料不足、冲突或需人工核验之处"]
 }`
 
-export async function generateModuleContent(
+const RECOMMENDATION_SCHEMA = `{
+  "headline": "一句话推荐结论（≤60字）",
+  "items": [
+    {"dimension": "行业", "headline": "该维度推荐理由（≤60字）", "points": ["依据1（≤60字）", "依据2（≤60字）"]},
+    {"dimension": "团队背景", "headline": "…", "points": ["…"]},
+    {"dimension": "产品和业务进展", "headline": "…", "points": ["…"]},
+    {"dimension": "竞争态势", "headline": "…", "points": ["…"]},
+    {"dimension": "融资", "headline": "…", "points": ["…"]}
+  ],
+  "conclusion": "推荐结论与条件（≤160字）"
+}`
+
+export async function generateChapterContent(
   context: DeepContext,
+  chapter: DeepChapterSpec,
   module: DeepModuleContext,
   images: DeepImage[] = []
 ): Promise<DeepModuleContent> {
+  const sectionLines = chapter.sections.map((section, index) => {
+    const extra = section.emphasis === 'score'
+      ? '（必须给出 10 分制明确分数）'
+      : section.emphasis === 'advice'
+        ? '（必须给出投 / 有条件投 / 不投的明确建议）'
+        : ''
+    return `${index + 1}. 【${section.title}】${section.instruction}${extra}`
+  })
+
   const prompt = [
     buildProjectBrief(context),
     '',
+    `本报告固定框架：第 ${chapter.no} 章「${chapter.title}」（${chapter.kicker}）。`,
+    chapter.summaryInstruction,
+    '',
+    '本章必须逐节输出的固定小节（顺序、数量不得变化；第 i 个论点对应第 i 个小节，title 必须原样使用小节标题）：',
+    ...sectionLines,
+    '',
     buildModuleInput(module, images),
     '',
-    '请针对本模块输出 JSON，要求：',
-    '- arguments 3–5 个；每个论点必须是可判断的结论句，不得写成「需关注/需补充」式提醒；',
-    '- 每个论点必须完整给出 content / analysis / evidence / view 四段，缺一不可；',
-    '- evidence 1–2 条：优先引用 [资料N] 原文，quote 必须从上面资料中逐字复制；其次引用 [F#] 公开事实；',
-    '- 资料中心有可用资料时，至少 2 个论点的论据必须包含 [资料N] 原文摘录；不得只用公开来源；',
+    '请针对本章输出 JSON，要求：',
+    `- arguments 必须恰好 ${chapter.sections.length} 个，逐节对应，顺序不得调整；`,
+    '- 每个论点用 narrative 归纳阐述：1–3 段、每段 ≤160 字，把资料讲清楚，不要写「内容：」「分析：」之类标签；',
+    '- evidence 1–3 条：优先引用 [资料N] 原文，quote 必须从上面资料中逐字复制；其次引用 [F#] 公开事实；',
+    '- 资料中心有可用资料时，至少一半论点的论据必须包含 [资料N] 原文摘录；不得只用公开来源；',
+    '- takeaway 按需给出判断与投资含义；评分页和建议页必须写，其余可为空；',
     '- 每个论点最多关联 1 张图片（image 填图号），图片必须与论点内容相关，不确定就留空；',
-    '- conclusion 1 条，明确「成立/不成立/待验证」及条件；',
+    '- 资料不足的小节必须明确写「资料不足，待补充验证」，并说明可用的公开宣传信息；',
     '- metrics 0–4 个，只填资料中出现的数值，没有就给空数组；',
     '- limitations 0–4 条，指出资料缺口或冲突。',
     '',
-    MODULE_SCHEMA,
+    CHAPTER_SCHEMA(chapter.sections.length),
   ].join('\n')
 
   const raw = await callDeepSeekJson<unknown>({
     system: SYSTEM_PROMPT,
     user: prompt,
     module: 'dd-deck',
-    maxTokens: 7000,
+    maxTokens: Math.min(8000, 2400 + chapter.sections.length * 800),
     timeoutMs: 300_000,
     temperature: 0.3,
   }).catch(() => null)
 
-  const parsed = coerceModuleContent(raw, module)
-  return parsed || fallbackModuleContent(module)
+  return coerceChapterContent(raw, chapter, module) || fallbackChapterContent(chapter, module)
 }
 
 function normalizeQuote(text: string): string {
@@ -265,7 +276,7 @@ function allowedRefs(module: DeepModuleContext): Set<string> {
   const refs = new Set<string>()
   for (const fact of module.facts) if (fact.ref) refs.add(fact.ref)
   for (const source of module.sources) if (source.ref) refs.add(source.ref)
-  module.documents.forEach((_, index) => refs.add(`资料${index + 1}`))
+  module.documents.forEach((doc, index) => refs.add(docRef(doc, index)))
   return refs
 }
 
@@ -278,7 +289,7 @@ function findQuoteSource(
   if (needle.length < 6) return null
   for (let index = 0; index < module.documents.length; index += 1) {
     if (normalizeQuote(module.documents[index].text).includes(needle)) {
-      return { ref: `资料${index + 1}`, isDocument: true }
+      return { ref: docRef(module.documents[index], index), isDocument: true }
     }
   }
   for (const source of module.sources) {
@@ -297,10 +308,10 @@ function coerceEvidence(
   if (!Array.isArray(raw)) return []
   const evidence: DeepArgumentEvidence[] = []
   for (const item of raw) {
-    if (evidence.length >= 2) break
+    if (evidence.length >= 3) break
     if (!item || typeof item !== 'object') continue
     const record = item as Record<string, unknown>
-    let text = asString(record.text, 110)
+    let text = asString(record.text, 120)
     let quote = asString(record.quote, 150)
     let ref = canonicalRef(asString(record.ref, 60))
 
@@ -326,37 +337,126 @@ function coerceEvidence(
   return evidence
 }
 
-function coerceModuleContent(raw: unknown, module: DeepModuleContext): DeepModuleContent | null {
+/** 从资料原文截取一段完整语句，保证 quote 是原文的精确子串 */
+function docQuote(text: string, max = 110): string {
+  const clean = (text || '').replace(/\s+/g, ' ').trim()
+  if (!clean) return ''
+  const cut = clean.slice(0, max)
+  const stop = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('；'), cut.lastIndexOf('，'))
+  return stop >= 40 ? cut.slice(0, stop + 1) : cut
+}
+
+function fallbackTeamScore(module: DeepModuleContext): number {
+  const docs = module.documents.filter(doc => doc.text).length
+  const facts = module.facts.length
+  const raw = 5 + module.coverage * 3 + Math.min(1, docs * 0.2) + Math.min(1, facts * 0.05)
+  return Math.round(Math.min(9, Math.max(4, raw)) * 10) / 10
+}
+
+/** 单节兜底：直接引用资料原文与公开事实，保证固定框架每节都有页面 */
+export function fallbackSectionArgument(section: DeepSectionSpec, module: DeepModuleContext): DeepArgument {
+  const docs = module.documents.filter(doc => doc.text)
+  const facts = module.facts
+  const evidence: DeepArgumentEvidence[] = []
+
+  if (facts[0]) {
+    evidence.push({
+      text: `公开信息：${truncate(facts[0].fact, 100)}${facts[0].value ? `（${facts[0].value}${facts[0].unit || ''}）` : ''}`,
+      ref: facts[0].ref,
+    })
+  }
+  const doc = docs[0]
+  if (doc) {
+    const quote = docQuote(doc.text, 100)
+    const docIndex = module.documents.indexOf(doc)
+    if (quote) evidence.push({ text: `${doc.fileName} 原文摘录`, ref: docRef(doc, docIndex), quote })
+  }
+  if (evidence.length === 0) {
+    evidence.push({ text: '现有资料未形成可引用证据，待补充验证。' })
+  }
+
+  const factLine = facts.slice(0, 3).map(fact => truncate(fact.fact, 80)).join('；')
+  const docLine = docs.slice(0, 2).map(item => `《${truncate(item.fileName, 30)}》`).join('、')
+  const gaps = module.gaps.filter(gap => gap.status === 'OPEN').slice(0, 3).map(gap => gap.label)
+  const coverage = Math.round(module.coverage * 100)
+  const hasData = Boolean(factLine || docLine)
+
+  const content = hasData
+    ? `${section.title}：${factLine || '公开信息有限'}${
+        docLine ? `；资料中心已提供 ${docLine}，可用于本小节核验` : ''
+      }。`
+    : `资料不足：资料中心与公开检索均未提供「${section.title}」的直接材料，待补充验证。`
+
+  const analysis = hasData
+    ? `本页按固定框架要求聚焦「${section.instruction}」。当前信息覆盖度 ${coverage}%，${
+        gaps.length > 0
+          ? `仍缺少 ${gaps.join('、')} 等材料，判断需在补齐后复核。`
+          : '公开资料可形成初步判断，但仍需原始凭证核验。'
+      }`
+    : `该小节缺少一手材料，无法形成定量判断；按框架要求以公开宣传信息为主，并明确标注资料不足，避免以行业常识替代公司事实。`
+
+  const view = section.emphasis === 'score'
+    ? `团队综合评分 ${fallbackTeamScore(module).toFixed(1)}/10：依据现有履历与资料完整度给出，资料补齐后可上调或下调。`
+    : section.emphasis === 'advice'
+      ? '投资建议：有条件推进；列明资料补齐、客户访谈与财务核验条件后再提交投委会。'
+      : section.emphasis === 'risk'
+        ? '上述风险应列入投前条件，交割前逐项验证并保留估值调整条款。'
+        : hasData
+          ? '该小节可支撑初步判断，但仍需在投前尽调中补充一手材料复核。'
+          : '该小节资料不足，暂不作为投资判断依据，建议列入资料补充清单。'
+
+  return {
+    title: section.title,
+    narrative: [truncate(content, 220), truncate(analysis, 220)].filter(Boolean),
+    evidence,
+    takeaway: truncate(view, 220),
+  }
+}
+
+function coerceChapterContent(
+  raw: unknown,
+  chapter: DeepChapterSpec,
+  module: DeepModuleContext
+): DeepModuleContent | null {
   if (!raw || typeof raw !== 'object') return null
   const data = raw as Record<string, unknown>
-
   const allowed = allowedRefs(module)
-  const args: DeepArgument[] = []
-  if (Array.isArray(data.arguments)) {
-    for (const item of data.arguments) {
-      if (args.length >= 5) break
-      if (!item || typeof item !== 'object') continue
-      const record = item as Record<string, unknown>
-      const title = asString(record.title, 60)
-      const content = asString(record.content, 300)
-      const analysis = asString(record.analysis, 360)
-      const view = asString(record.view, 240)
-      const evidence = coerceEvidence(record.evidence, module, allowed)
-      if (!title || !content || !analysis || !view || evidence.length === 0) continue
-      const image = asString(record.image, 20)
-      const imageId = /^图\d+$/.test(image) ? image : undefined
-      args.push({ title, content, analysis, evidence, view, ...(imageId ? { imageId } : {}) })
+  const rawArgs = Array.isArray(data.arguments) ? data.arguments : []
+
+  const args: DeepArgument[] = chapter.sections.map((section, index) => {
+    const fallback = fallbackSectionArgument(section, module)
+    const item = rawArgs[index]
+    if (!item || typeof item !== 'object') return fallback
+    const record = item as Record<string, unknown>
+    const narrativeRaw = Array.isArray(record.narrative) ? record.narrative : []
+    // 兼容模型偶发返回旧字段 content/analysis
+    const narrative = [
+      ...narrativeRaw
+        .filter((paragraph): paragraph is string => typeof paragraph === 'string')
+        .map(paragraph => truncate(paragraph, 200))
+        .filter(Boolean),
+      ...(narrativeRaw.length === 0 ? [asString(record.content, 220), asString(record.analysis, 220)] : []),
+    ].slice(0, 3).filter(Boolean)
+    const takeaway = asString(record.takeaway, 260) || asString(record.view, 220)
+    const evidence = coerceEvidence(record.evidence, module, allowed)
+    if (narrative.length === 0 || evidence.length === 0) return fallback
+    // 固定框架的强制项：评分页必须有 10 分制分数，建议页必须有明确投资结论
+    if (section.emphasis === 'score' && !/\d+(\.\d+)?\s*\/\s*10/.test(takeaway)) return fallback
+    if (section.emphasis === 'advice' && !/(不投|有条件投|建议投|可以投|暂不投)/.test(takeaway)) return fallback
+    const image = asString(record.image, 20)
+    const imageId = /^图\d+$/.test(image) ? image : undefined
+    return {
+      title: section.title,
+      narrative,
+      evidence,
+      ...(takeaway ? { takeaway } : {}),
+      ...(imageId ? { imageId } : {}),
     }
-  }
+  })
 
-  const conclusion = asString(data.conclusion, 400)
-  if (args.length < 2 || !conclusion) return null
-
-  // 论点不足 3 个时，用资料原文论点补齐，保证模块结构完整
-  for (const fallback of fallbackArguments(module)) {
-    if (args.length >= 3) break
-    if (!args.some(item => item.title === fallback.title)) args.push(fallback)
-  }
+  const headline = asString(data.headline, 120) || `${chapter.title}：基于现有资料的判断`
+  const summary = asString(data.summary, 240) || headline
+  const conclusion = asString(data.conclusion, 400) || summary
 
   const metrics: NonNullable<DeepModuleContent['metrics']> = []
   if (Array.isArray(data.metrics)) {
@@ -373,131 +473,36 @@ function coerceModuleContent(raw: unknown, module: DeepModuleContext): DeepModul
   }
 
   return {
-    moduleKey: module.moduleKey,
-    headline: asString(data.headline, 120) || `${module.moduleName}：基于现有资料的判断`,
-    coreAnswer: asString(data.coreAnswer, 240) || asString(data.headline, 120),
+    moduleKey: chapter.key,
+    headline,
+    summary,
+    coreAnswer: asString(data.coreAnswer, 240) || summary,
     arguments: args,
     conclusion,
     metrics,
     limitations: asStringArray(data.limitations, 4, 200),
-    dataLimited: module.facts.length === 0 && module.sources.length === 0 && module.documents.every(doc => !doc.text),
+    dataLimited: module.documents.every(doc => !doc.text) && module.facts.length === 0 && module.sources.length === 0,
   }
 }
 
-/** 从资料原文截取一段完整语句，保证 quote 是原文的精确子串 */
-function docQuote(text: string, max = 110): string {
-  const clean = (text || '').replace(/\s+/g, ' ').trim()
-  if (!clean) return ''
-  const cut = clean.slice(0, max)
-  const stop = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('；'), cut.lastIndexOf('，'))
-  return stop >= 40 ? cut.slice(0, stop + 1) : cut
-}
-
-/** 兜底论点：直接引用资料原文与公开事实，保证报告仍以资料为依据 */
-export function fallbackArguments(module: DeepModuleContext): DeepArgument[] {
-  const args: DeepArgument[] = []
+export function fallbackChapterContent(
+  chapter: DeepChapterSpec,
+  module: DeepModuleContext
+): DeepModuleContent {
+  const args = chapter.sections.map(section => fallbackSectionArgument(section, module))
   const facts = module.facts.slice(0, 4)
-  const docs = module.documents
-    .map((doc, index) => ({ doc, ref: `资料${index + 1}` }))
-    .filter(item => item.doc.text)
-  const openGaps = module.gaps.filter(gap => gap.status === 'OPEN')
-  const coverage = Math.round(module.coverage * 100)
-
-  if (module.humanConclusion || module.report?.summary) {
-    const evidence: DeepArgumentEvidence[] = []
-    if (facts[0]) {
-      evidence.push({
-        text: `公开信息：${truncate(facts[0].fact, 120)}${facts[0].value ? `（${facts[0].value}${facts[0].unit || ''}）` : ''}`,
-        ref: facts[0].ref,
-      })
-    }
-    if (docs[0]) {
-      const quote = docQuote(docs[0].doc.text, 100)
-      if (quote) {
-        evidence.push({ text: `${docs[0].doc.fileName} 原文摘录`, ref: docs[0].ref, quote })
-      }
-    }
-    if (evidence.length === 0) {
-      evidence.push({ text: '现有资料未形成可引用证据，以下判断待进一步验证。' })
-    }
-    args.push({
-      title: `${module.moduleName}：人工结论与综合判断`,
-      content: truncate(module.humanConclusion || module.report?.summary || '', 360),
-      analysis: `该判断来自项目维护人与既有报告，信息覆盖度 ${coverage}%。${
-        openGaps.length > 0
-          ? `仍有 ${openGaps.length} 项资料缺口（${openGaps.slice(0, 3).map(gap => gap.label).join('、')}），结论需在补齐材料后复核。`
-          : '现有资料未发现显著缺口，但仍需核验原始凭证。'
-      }`,
-      evidence,
-      view: openGaps.length > 0
-        ? '在缺口补齐前，本模块结论只能作为初步判断，不宜直接作为交易定价依据。'
-        : '该判断可作为投前判断的基础，交易前仍需完成底稿复核。',
-    })
-  }
-
-  for (const item of docs.slice(0, 3)) {
-    const quote = docQuote(item.doc.text, 120)
-    args.push({
-      title: `${truncate(item.doc.fileName, 24)}揭示的关键信息`,
-      content: truncate(item.doc.text, 280),
-      analysis: `该段内容直接来自资料中心上传的《${truncate(item.doc.fileName, 40)}》，原文约 ${item.doc.textLength} 字。它构成本模块的一手事实基础；${
-        item.doc.textLength > 280 ? '其余内容需结合原文完整阅读。' : '资料篇幅较短，信息完整度有限。'
-      }`,
-      evidence: [{ text: `《${truncate(item.doc.fileName, 40)}》原文摘录`, ref: item.ref, quote }].filter(evidence => evidence.quote),
-      view: '该信息可作为本模块的事实依据，但仍需与合同、台账或访谈记录交叉核验。',
-    })
-    if (args.length >= 3) break
-  }
-
-  if (args.length < 3 && facts.length > 0) {
-    const evidence: DeepArgumentEvidence[] = facts.slice(0, 3).map(fact => ({
-      text: truncate(fact.fact, 120),
-      ref: fact.ref,
-    }))
-    args.push({
-      title: '公开信息中的关键事实',
-      content: facts
-        .slice(0, 3)
-        .map(fact => `${truncate(fact.fact, 90)}${fact.value ? `（${fact.value}${fact.unit || ''}）` : ''}`)
-        .join('；'),
-      analysis: `上述事实来自公开检索，平均证据等级以 B/C 级为主，信息覆盖度 ${coverage}%。公开信息可用于形成初步判断，但不能替代一手资料核验。`,
-      evidence,
-      view: '公开事实支持初步判断；在关键数字未经审计或合同验证前，应保留估值调整条件。',
-    })
-  }
-
-  if (args.length < 3) {
-    args.push({
-      title: `${module.moduleName}的关键假设仍待验证`,
-      content: openGaps.length > 0
-        ? `尚未补齐的资料包括：${openGaps.slice(0, 5).map(gap => gap.label).join('、')}。`
-        : '资料中心与公开检索均未提供足够信息，本模块尚无法形成确定结论。',
-      analysis: `信息覆盖度仅 ${coverage}%，现有材料不足以支持对核心假设的定量判断，任何结论都存在较高不确定性。`,
-      evidence: [{ text: openGaps[0]?.label || '缺少可引用的原始资料。' }],
-      view: '建议将本模块列入投前条件，补齐资料后再形成最终判断。',
-    })
-  }
-
-  return args.slice(0, 5)
-}
-
-export function fallbackModuleContent(module: DeepModuleContext): DeepModuleContent {
-  const facts = module.facts.slice(0, 5)
-  const args = fallbackArguments(module)
-  const conclusion = module.humanConclusion
-    ? truncate(module.humanConclusion, 300)
-    : module.report?.summary
-      ? truncate(module.report.summary, 300)
-      : module.facts.length > 0
-        ? `基于 ${module.facts.length} 条公开事实，本模块可形成初步判断，但结论仍待一手资料验证。`
-        : `本模块公开信息与上传资料均不足，暂无法形成结论。`
-
+  const limited = module.documents.every(doc => !doc.text) && module.facts.length === 0
   return {
-    moduleKey: module.moduleKey,
-    headline: `${module.moduleName}：信息覆盖 ${Math.round(module.coverage * 100)}%`,
-    coreAnswer: module.humanConclusion ? truncate(module.humanConclusion, 240) : conclusion,
+    moduleKey: chapter.key,
+    headline: `${chapter.title}：信息覆盖 ${Math.round(module.coverage * 100)}%`,
+    summary: `${chapter.title}按固定框架 ${chapter.sections.length} 个小节展开，${limited ? '资料不足，待补充验证。' : '结论基于现有资料与公开信息。'}`,
+    coreAnswer: module.humanConclusion
+      ? truncate(module.humanConclusion, 240)
+      : `${chapter.title}：${limited ? '资料不足，暂无法形成确定判断。' : `基于 ${module.facts.length} 条公开事实与 ${module.documents.length} 份资料形成初步判断。`}`,
     arguments: args,
-    conclusion,
+    conclusion: limited
+      ? '资料不足，待补充验证后再形成结论。'
+      : `${chapter.title}可形成初步判断，仍需投前尽调复核。`,
     metrics: facts
       .filter(fact => fact.value)
       .slice(0, 4)
@@ -507,35 +512,35 @@ export function fallbackModuleContent(module: DeepModuleContext): DeepModuleCont
         hint: fact.period || fact.sourceRef || '公开信息',
       })),
     limitations: module.gaps.filter(gap => gap.status === 'OPEN').slice(0, 4).map(gap => gap.label),
-    dataLimited: module.facts.length === 0 && module.documents.every(doc => !doc.text),
+    dataLimited: limited,
   }
 }
 
-export async function generateExecutiveSummary(
+/** 固定 5 维推荐理由：行业 / 团队背景 / 产品和业务进展 / 竞争态势 / 融资 */
+export async function generateRecommendation(
   context: DeepContext,
-  modules: DeepModuleContent[]
-): Promise<DeepExecutive> {
-  const moduleLines = modules.map((content, index) => {
-    const module = context.modules[index]
-    const points = (content.arguments || []).slice(0, 3).map(item => item.title).join('；')
-    return `- ${module?.moduleName || content.moduleKey}：${truncate(content.conclusion, 200)}${points ? `（核心论点：${points}）` : ''}`
+  chapters: Array<{ chapter: DeepChapterSpec; content: DeepModuleContent }>
+): Promise<DeepRecommendation> {
+  const chapterLines = chapters.map(item => {
+    const points = (item.content.arguments || []).slice(0, 3).map(argument => argument.title).join('；')
+    return `- 第 ${item.chapter.no} 章 ${item.chapter.title}：${truncate(item.content.coreAnswer || item.content.conclusion, 180)}${
+      points ? `（小节：${points}）` : ''
+    }`
   })
 
   const prompt = [
     buildProjectBrief(context),
     '',
-    '九大模块结论：',
-    ...moduleLines,
+    '八章结论：',
+    ...chapterLines,
     '',
     `资料缺口：${context.limitations.slice(0, 8).join('；')}`,
     '',
-    '请输出执行摘要 JSON：',
-    `{
-  "headline": "一句话投资判断（≤40字）",
-  "paragraphs": ["2–3段，每段≤220字，说明判断依据、关键变量与边界"],
-  "bullets": ["4–6条核心理由，每条≤120字，尽量带 [F#]/[E#]/[资料N]"],
-  "conclusion": "总体结论与建议（≤160字）"
-}`,
+    '请输出报告第 1 页「推荐理由」JSON，必须覆盖以下 5 个维度且顺序固定：',
+    DEEP_RECOMMENDATION_DIMENSIONS.map((dimension, index) => `${index + 1}. ${dimension}`).join('\n'),
+    '每个维度 headline 一句话结论，points 2–3 条依据；结论必须可判断，不得写空泛评价。',
+    '',
+    RECOMMENDATION_SCHEMA,
   ].join('\n')
 
   const raw = await callDeepSeekJson<unknown>({
@@ -549,204 +554,65 @@ export async function generateExecutiveSummary(
 
   if (raw && typeof raw === 'object') {
     const data = raw as Record<string, unknown>
-    const headline = asString(data.headline, 120)
-    const paragraphs = asStringArray(data.paragraphs, 3, 600)
-    const bullets = asStringArray(data.bullets, 6, 300)
+    const headline = asString(data.headline, 140)
     const conclusion = asString(data.conclusion, 400)
-    if (headline && bullets.length >= 2 && conclusion) {
-      return { headline, paragraphs, bullets, conclusion, dataLimited: false }
+    const rawItems = Array.isArray(data.items) ? data.items : []
+    const items: DeepRecommendationItem[] = []
+    for (let index = 0; index < DEEP_RECOMMENDATION_DIMENSIONS.length; index += 1) {
+      const dimension = DEEP_RECOMMENDATION_DIMENSIONS[index]
+      const item = rawItems[index]
+      const record = item && typeof item === 'object' ? item as Record<string, unknown> : null
+      const itemHeadline = record ? asString(record.headline, 140) : ''
+      const points = record ? asStringArray(record.points, 3, 140) : []
+      if (!itemHeadline || points.length === 0) break
+      items.push({ dimension, headline: itemHeadline, points })
+    }
+    if (headline && conclusion && items.length === DEEP_RECOMMENDATION_DIMENSIONS.length) {
+      return { headline, items, conclusion }
     }
   }
-  return fallbackExecutiveSummary(context, modules)
+
+  return fallbackRecommendation(context, chapters)
 }
 
-export function fallbackExecutiveSummary(
+export function fallbackRecommendation(
   context: DeepContext,
-  modules: DeepModuleContent[]
-): DeepExecutive {
-  const stats = context.base.research
-  const limited = modules.filter(module => module.dataLimited).length
-  return {
-    headline: `${context.base.project.name}：基于 ${stats.sourceCount} 条来源与 ${stats.factCount} 条事实的初步判断`,
-    paragraphs: [
-      `本报告按九大模块汇总资料中心上传材料与全网公开信息，共形成 ${stats.factCount} 条公开事实、${stats.sourceCount} 条来源，平均信息覆盖度 ${Math.round(stats.coverage * 100)}%。`,
-      `从模块结论看，${modules.slice(0, 3).map(m => m.headline).join('；')}。整体判断仍需结合交易资料与客户访谈验证。`,
-    ],
-    bullets: modules.slice(0, 5).map(module => truncate(module.conclusion, 160)),
-    conclusion: limited > 0
-      ? `当前有 ${limited} 个模块资料不足，建议先补齐关键资料再提交投委会。`
-      : '现有资料可支撑初步投资判断，建议进入正式尽调与条款谈判阶段。',
-    dataLimited: true,
-  }
-}
+  chapters: Array<{ chapter: DeepChapterSpec; content: DeepModuleContent }>
+): DeepRecommendation {
+  const pick = (...keys: string[]) => chapters.filter(item => keys.includes(item.chapter.key))
 
-export async function generateOutlookAndRisks(
-  context: DeepContext,
-  modules: DeepModuleContent[]
-): Promise<DeepOutlook> {
-  const prompt = [
-    buildProjectBrief(context),
-    '',
-    '九大模块结论：',
-    ...modules.map((content, index) => `- ${context.modules[index]?.moduleName || content.moduleKey}：${truncate(content.conclusion, 200)}`),
-    '',
-    '请输出行业、时机、风险、估值与结论 JSON：',
-    `{
-  "industry": {"headline":"行业阶段与格局（≤40字）","paragraphs":["1–2段，每段≤220字"],"bullets":["4–6条：规模/增速、政策、产业链位置、竞争集中度、关键变量"]},
-  "timing": {"headline":"时机窗口（≤40字）","paragraphs":["1段≤200字"],"bullets":["3–5条：为什么是现在/为什么可能太早或太晚"]},
-  "risks": [{"title":"风险标题（≤20字）","detail":"机制（≤160字）","mitigation":"缓释或验证动作（≤120字）","refs":["F1"]}],
-  "valuation": {"headline":"估值判断（≤40字）","bullets":["3–5条估值/回报判断，每条≤140字"],"metrics":[{"label":"指标","value":"数值","hint":"口径"}]},
-  "conclusion": {"headline":"最终建议（≤40字）","conditions":["4条投放条件，每条≤100字"],"nextSteps":["4条交割前验证动作，每条≤100字"]}
-}`,
-    'risks 4–6 条；valuation.metrics 0–4 个，只填有依据的数值。',
-  ].join('\n')
-
-  const raw = await callDeepSeekJson<unknown>({
-    system: SYSTEM_PROMPT,
-    user: prompt,
-    module: 'dd-deck',
-    maxTokens: 3800,
-    timeoutMs: 200_000,
-    temperature: 0.3,
-  }).catch(() => null)
-
-  if (raw && typeof raw === 'object') {
-    const data = raw as Record<string, unknown>
-    const industry = coerceNarrative(data.industry)
-    const timing = coerceNarrative(data.timing)
-    const risks: DeepRisk[] = []
-    if (Array.isArray(data.risks)) {
-      for (const item of data.risks) {
-        if (risks.length >= 6) break
-        if (!item || typeof item !== 'object') continue
-        const risk = item as Record<string, unknown>
-        const title = asString(risk.title, 60)
-        const detail = asString(risk.detail, 400)
-        if (!title || !detail) continue
-        const mitigation = asString(risk.mitigation, 300) || '列入投前条件，交割前补充验证。'
-        const refs = asStringArray(risk.refs, 6, 40)
-        risks.push(refs.length > 0 ? { title, detail, mitigation, refs } : { title, detail, mitigation })
-      }
-    }
-    const valuationRaw = data.valuation && typeof data.valuation === 'object'
-      ? data.valuation as Record<string, unknown>
-      : null
-    let valuation: DeepOutlook['valuation'] | null = null
-    if (valuationRaw) {
-      const metrics: Array<{ label: string; value: string; hint?: string }> = []
-      if (Array.isArray(valuationRaw.metrics)) {
-        for (const item of valuationRaw.metrics) {
-          if (metrics.length >= 4) break
-          if (!item || typeof item !== 'object') continue
-          const metric = item as Record<string, unknown>
-          const label = asString(metric.label, 40)
-          const value = asString(metric.value, 40)
-          if (!label || !value) continue
-          const hint = asString(metric.hint, 60)
-          metrics.push(hint ? { label, value, hint } : { label, value })
-        }
-      }
-      valuation = {
-        headline: asString(valuationRaw.headline, 120),
-        bullets: asStringArray(valuationRaw.bullets, 5, 300),
-        metrics,
-      }
-    }
-    const conclusionRaw = data.conclusion && typeof data.conclusion === 'object'
-      ? data.conclusion as Record<string, unknown>
-      : null
-    const conclusion = conclusionRaw
-      ? {
-          headline: asString(conclusionRaw.headline, 120),
-          conditions: asStringArray(conclusionRaw.conditions, 4, 240),
-          nextSteps: asStringArray(conclusionRaw.nextSteps, 4, 240),
-        }
-      : null
-
-    if (industry && timing && risks.length >= 2 && valuation && conclusion) {
-      return {
-        industry,
-        timing,
-        risks,
-        valuation,
-        conclusion,
-        dataLimited: false,
-      }
+  const build = (dimension: string, keys: string[], fallbackText: string): DeepRecommendationItem => {
+    const selected = pick(...keys)
+    const points = selected
+      .flatMap(item => [
+        truncate(item.content.coreAnswer || item.content.conclusion, 80),
+        ...(item.content.arguments || []).slice(0, 2).map(argument => truncate(argument.takeaway || argument.narrative[0] || argument.title, 80)),
+      ])
+      .filter(Boolean)
+      .slice(0, 3)
+    return {
+      dimension,
+      headline: points[0] || fallbackText,
+      points: points.length > 0 ? points : [fallbackText],
     }
   }
 
-  return fallbackOutlook(context, modules)
-}
-
-function coerceNarrative(raw: unknown): DeepNarrative | null {
-  if (!raw || typeof raw !== 'object') return null
-  const data = raw as Record<string, unknown>
-  const headline = asString(data.headline, 120)
-  const paragraphs = asStringArray(data.paragraphs, 2, 600)
-  const bullets = asStringArray(data.bullets, 6, 300)
-  if (!headline || bullets.length < 2) return null
-  return { headline, paragraphs, bullets }
-}
-
-export function fallbackOutlook(context: DeepContext, modules: DeepModuleContent[]): DeepOutlook {
-  const project = context.base.project
-  const risks: DeepRisk[] = context.limitations.slice(0, 5).map((item, index) => ({
-    title: `资料与验证风险 ${index + 1}`,
-    detail: truncate(item, 200),
-    mitigation: '列入投前条件，交割前补充并复核。',
-  }))
+  const items: DeepRecommendationItem[] = [
+    build('行业', ['INDUSTRY'], `${context.base.project.industry || '行业'}判断需补充市场数据。`),
+    build('团队背景', ['TEAM'], '团队背景资料有限，待补充履历与学术成果。'),
+    build('产品和业务进展', ['PRODUCT', 'BUSINESS'], '产品与业务进展资料有限，待补充订单与客户信息。'),
+    build('竞争态势', ['COMPETITION'], '竞争格局需补充竞品与融资对比。'),
+    build('融资', ['FINANCING'], '融资方案与估值待补充材料。'),
+  ]
 
   return {
-    industry: {
-      headline: `${project.industry || '所在行业'}：公开信息有限，先看需求与竞争格局`,
-      paragraphs: [
-        `本报告未获得完整行业数据，行业判断以公开来源与项目资料中的描述为基础，需在正式尽调中补充市场规模、增速与政策文件。`,
-      ],
-      bullets: [
-        project.industry ? `所处行业：${project.industry}，需验证行业规模与增速口径。` : '行业归属与细分市场需进一步确认。',
-        '政策与监管：需核实准入、资质与合规要求。',
-        '产业链位置：需确认上游依赖与下游客户结构。',
-        '竞争格局：需补充主要竞品份额与替代方案。',
-      ],
-    },
-    timing: {
-      headline: '时机判断依赖订单与融资节奏',
-      paragraphs: ['当前资料不足以判断窗口期，建议以客户验证与订单交付节奏作为时机判断依据。'],
-      bullets: [
-        '若核心客户进入批量采购阶段，窗口期成立。',
-        '若竞品已形成规模交付，窗口期可能收窄。',
-        '融资节奏与现金消耗决定公司能否等到窗口期。',
-      ],
-    },
-    risks,
-    valuation: {
-      headline: project.investmentValuation
-        ? `当前估值 ${project.investmentValuation} 亿元，需结合收入与订单验证`
-        : '估值需结合收入、订单与可比融资验证',
-      bullets: [
-        '估值判断需以可验证收入、毛利率与订单储备为基础。',
-        '需补充可比公司融资估值与退出案例。',
-        '条款应设置业绩承诺、回购与反稀释保护。',
-      ],
-      metrics: project.investmentValuation
-        ? [{ label: '投资估值', value: `${project.investmentValuation} 亿元`, hint: '项目录入' }]
-        : [],
-    },
-    conclusion: {
-      headline: modules.some(module => module.dataLimited) ? '建议先补资料再决策' : '可进入正式尽调与条款谈判',
-      conditions: [
-        '完成核心客户访谈与订单台账核验。',
-        '完成财务审计或管理报表复核。',
-        '完成法务、知识产权与数据合规核查。',
-        '就估值与关键条款达成一致。',
-      ],
-      nextSteps: [
-        '补充近三年财务报表与收入拆分。',
-        '提供前十大客户合同与回款记录。',
-        '提供专利、资质与诉讼清单。',
-        '安排创始人及核心团队深度访谈。',
-      ],
-    },
-    dataLimited: true,
+    headline: `${context.base.project.name}：按固定八章框架形成初步推荐判断`,
+    items,
+    conclusion: items.some(item => item.headline.includes('资料'))
+      ? '部分维度资料不足，建议有条件推进：补齐关键资料后再提交投委会。'
+      : '现有资料可支撑有条件推进，交割前完成财务、法务与客户验证。',
   }
 }
+
+/** 章节小节总数（供测试与统计） */
+export const DEEP_WRITER_SECTION_COUNT = DEEP_SECTIONS.length

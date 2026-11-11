@@ -92,18 +92,17 @@ export interface DeepDocSpec {
 
 - `estimatePageCount(spec)`：返回 `pages.length` 并回写 `pageCount`。
 - `coerceDeepDocSpec(spec)`：删空块、截断超长段落（1200 字）、表格最多 8 行 × 6 列、图片仅保留 `/` 或 `https?://` 开头的 URL、重排页码与目录。
-- `assembleDeepDocSpec(input)`：输入项目信息、九模块内容、综述、图表数据、图片、资料局限，生成完整 `pages`。
-  - 固定顺序：封面 → 目录 → 「执行摘要」章节页 + 正文 2–3 页 → 「行业与时机」1–2 页 → 九大模块（每模块章节页 + 正文 2–4 页）→ 「风险、估值与结论」2–3 页 → 「资料局限与待验证」1 页 → 附录（证据索引、来源索引）。
-  - 目录页在全部正文装页完成后回填真实页码。
+- `assembleDeepDocSpec(input)`：输入项目信息、推荐理由、固定八章内容、图表数据、图片、资料局限，生成完整 `pages`。
+  - 固定顺序：封面 → 目录 → 「00 推荐理由」章节页 + 1 页五维推荐表 → 固定八章（每章章节页 + 概览页 + 每小节独立论点页）→ 「附A 资料利用与局限」→ 「附B 附录（证据索引、来源索引、资料索引）」。
+  - 八章与小节顺序唯一来源：`src/lib/dd-deep/framework.ts` 的 `DEEP_CHAPTERS`（8 章 41 小节），不得增删、改名或调序；页数可按内容增减。
+  - 目录页在全部正文装页完成后回填真实页码，共 11 项（00、01–08、A、B）。
 - 装页高度预算（内容区约 880px）：
   - heading 46 / paragraph `ceil(len/42)*26+10` / bullets `Σ(ceil(len/40)*24+8)` / qa `Σ(28+ceil(answer/40)*24+12)` / table `rows*30+56` / chart 330 / image 360 / callout 96。
   - 超过预算即新建 `content` 页；标题不单独留在页尾（heading 后至少跟一个块）。
-- 每模块正文结构固定：
-  1. `heading` 模块名 + `qa` 核心问题（3–5 题）
-  2. `heading` 资料与发现 + `paragraph`/`bullets`
-  3. `heading` 分析 + `bullets`（驱动、反证、竞争影响、待验证）
-  4. `heading` 结论 + `callout`
-  5. 可选 `table`（关键指标）、`chart`、`image`（技术拓扑/流程图）
+- 每章正文结构固定：
+  1. 章节页：编号、章名、1–2 句 summary、资料/证据/关键图统计
+  2. 概览页：`callout` 本章核心回答 + 小节导航 + 关键指标 + 图表 + 结论 + 资料局限 + 剩余图片
+  3. 每个固定小节独立一页 `argument`：以归纳阐述讲清资料中的事实、机制与影响，配 1–3 条资料论据；判断按需给出（评分页、建议页强制），可按需绑定资料图片
 
 ## 5. 深度上下文（新增 `src/lib/dd-deep/context.ts`）
 
@@ -173,21 +172,21 @@ Prompt 必须包含：项目概况、模块核心问题、模块人工结论、�
 
 任一 LLM 调用失败：
 
-- 模块兜底 `fallbackModuleContent(moduleContext)`：用人工结论/模块报告 summary 生成结论；用事实与文档标题生成 3 个问题与回答；分析由「机会 / 风险 / 缺口 / 验证路径」四段模板组成；引用只使用真实 `[F#]`。
+- 章节兜底 `fallbackChapterContent(chapter, moduleContext)`：用人工结论/模块报告 summary 生成结论；按固定小节逐节生成归纳阐述与资料论据；评分页给出 10 分制分数，建议页给出明确投资结论；引用只使用真实 `[F#]` / `[资料N]`。
 - 综述兜底：用统计数字、模块结论、缺口汇总拼装。
 - 兜底内容必须标记 `dataLimited: true`，在报告「资料局限」页列明。
 
 ## 7. 图片管线（新增 `src/lib/dd-deep/images.ts`）
 
-`collectDeepImages(context): Promise<{ images: DeepImage[]; notes: string[] }>`，上限 10 张：
+`collectDeepImages(context): Promise<{ images: DeepImage[]; notes: string[] }>`，全局上限 72 张：
 
-1. **资料中心截图**（优先级最高）：每模块最多 2 张，按模块顺序取 `screenshots`，URL 原样使用。
-2. **文档关键页提取**：仅 `PROJECT_ENTITY`、`PRODUCT_TECHNOLOGY`、`MARKET_CUSTOMERS`、`COMMERCIALIZATION` 四个模块；每模块最多 1 篇 PDF/PPTX、最多 2 页，全项目最多 6 页。
+1. **资料中心截图**（优先级最高）：每模块最多 8 张，按模块顺序取 `screenshots`，URL 原样使用。
+2. **文档关键页提取**：覆盖所有有资料的模块；每模块最多 3 篇 PDF/PPTX、最多 6 页，全项目最多 30 页。
    - 文档路径：`fileUrl` 匹配 `^/research-docs/([A-Za-z0-9._-]+)$` → `public/research-docs/<name>`；读取失败跳过。
    - 用 `buildPagedBpText` 得到 `[第N页]` 文本，按关键词 `架构|拓扑|流程|示意|技术路线|产品|平台|系统|部署|客户|订单` 命中数排序选页。
    - 调 `extractBpPageImages(buffer, fileName, pageNums, 'deep-'+projectId+'-'+moduleKey)`，URL 直接用返回的 `/api/uploads/interpretation-images/...`。
    - 单篇文件 > 30MB、提取耗时 > 20s 或失败则跳过并记 note。
-3. **公开来源 og:image**：最多 4 张，仅 A/B 级来源。
+3. **公开来源 og:image**：最多 8 张，仅 A/B 级来源。
    - `fetch(url, { redirect:'follow', signal: AbortSignal.timeout(5000) })`；仅 `http/https`。
    - 先 `dns.promises.lookup` 校验目标 IP 非私网/回环/链路本地（`127/8`、`10/8`、`172.16/12`、`192.168/16`、`169.254/16`、`::1`、`fc00::/7`、`fe80::/10`），DNS 解析失败跳过。
    - 响应 `content-type` 必须 `image/*`，`content-length` ≤ 2MB；超限跳过。
@@ -263,11 +262,11 @@ if (deck.type === 'DEEP') {
 
 ## 11. 成本与护栏
 
-- LLM：9 次模块 + 2 次综述 = 11 次/份；单模块输入资料 ≤8000 字；`maxTokens` 模块 3200、综述 2600。
-- 图片：≤10 张；文档提取 ≤6 页；网络图片 ≤4 张、单张 ≤2MB、5s 超时。
+- LLM：8 章 + 1 次推荐理由 = 9 次/份；单章输入资料 ≤8 份文档；章节 `maxTokens` 8000、推荐理由 2600。
+- 图片：全局 ≤72 张、每模块 ≤12 张；文档提取 ≤30 页；网络图片 ≤8 张、单张 ≤2MB、5s 超时。图片按章节实际小节数量分配（每节最多 1 张 + 概览页 2 张），不设固定 4 张上限。
 - 无来源数字不得进入结论；冲突事实保留并标注。
 - DEEP 生成可复用指纹；`force` 才重跑。
-- 单份报告预计 35–60 页，`slideCount` 记录真实页数。
+- 单份报告预计 55–85 页，`slideCount` 记录真实页数。
 
 ## 12. 测试与验证
 
@@ -286,7 +285,7 @@ if (deck.type === 'DEEP') {
 - `npm test`
 - `npm run build`
 - 浏览器手测：生成深度报告 → 打开 A4 预览 → 检查目录/章节/图表/图片 → 打印预览为 A4 → 保存 PDF。
-- `package.json` 版本 `2.7.4`。
+- `package.json` 版本 `2.8.0`。
 
 ## 13. 不在本轮范围
 

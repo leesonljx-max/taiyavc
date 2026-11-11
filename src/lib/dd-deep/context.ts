@@ -8,6 +8,7 @@
 import prisma from '@/lib/prisma'
 import { buildDeckContext, type DeckContext, type DeckFact, type DeckModuleContext } from '@/lib/dd-deck/context'
 import type { DeepBlock } from './spec'
+import { DEEP_CHAPTERS } from './framework'
 
 const MODULE_DOC_BUDGET = 14000
 const SINGLE_DOC_BUDGET = 6000
@@ -20,6 +21,8 @@ export interface DeepDocument {
   fileType?: string
   text: string
   textLength: number
+  /** 全报告唯一资料编号：资料1、资料2… */
+  ref?: string
   /** unclassified = 资料中心未归类资料池中按内容候选并入的资料 */
   origin?: 'module' | 'unclassified'
 }
@@ -141,6 +144,39 @@ function resolveAssetModule(asset: RawAsset, validKeys: Set<string>): string {
     .sort((a, b) => b.confidence - a.confidence)[0]
   if (best) return best.moduleKey
   return validKeys.has(DEFAULT_ASSET_MODULE) ? DEFAULT_ASSET_MODULE : [...validKeys][0] || DEFAULT_ASSET_MODULE
+}
+
+/**
+ * 按报告固定章节顺序给资料分配全报告唯一编号（资料1…资料N）。
+ * 同一份资料出现在多个模块时复用同一编号，避免跨章引用编号冲突。
+ */
+function assignDocumentRefs(modules: DeepModuleContext[]): void {
+  const moduleByKey = new Map(modules.map(module => [module.moduleKey, module]))
+  const orderedKeys: string[] = []
+  const pushKey = (key: string) => {
+    if (moduleByKey.has(key) && !orderedKeys.includes(key)) orderedKeys.push(key)
+  }
+  for (const chapter of DEEP_CHAPTERS) chapter.moduleKeys.forEach(pushKey)
+  modules.forEach(module => pushKey(module.moduleKey))
+
+  const assigned = new Map<string, string>()
+  let index = 0
+  for (const key of orderedKeys) {
+    const module = moduleByKey.get(key)
+    if (!module) continue
+    for (const doc of module.documents) {
+      const docKey = doc.id || doc.fileUrl || doc.fileName
+      const existing = assigned.get(docKey)
+      if (existing) {
+        doc.ref = existing
+        continue
+      }
+      index += 1
+      const ref = `资料${index}`
+      assigned.set(docKey, ref)
+      doc.ref = ref
+    }
+  }
 }
 
 export async function buildDeepContext(projectId: string): Promise<DeepContext> {
@@ -370,6 +406,8 @@ export async function buildDeepContext(projectId: string): Promise<DeepContext> 
   if (limitations.length === 0) {
     limitations.push('未发现显著资料缺口；结论仍以公开信息与已上传资料为限。')
   }
+
+  assignDocumentRefs(modules)
 
   return { base, modules, limitations: limitations.slice(0, 18) }
 }

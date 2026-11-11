@@ -4,7 +4,7 @@
  * 深度尽调报告 16:9 文档渲染
  *
  * 每页固定 1280×720px（16:9），打印时按 338.67mm × 190.5mm 输出。
- * 模块正文以「论点」为单位独立成页，按内容 / 分析 / 论据 / 观点四段式排版。
+ * 模块正文以「论点」为单位独立成页：归纳阐述 + 资料论据 + 按需判断。
  * 样式对齐参考报告：深海军蓝 + 金色，白色页面，图文混排。
  */
 
@@ -52,7 +52,7 @@ const DOC_STYLE = `
 .deep-cover-stat-value { font-size: 26px; font-weight: 700; color: ${GOLD}; line-height: 1; }
 .deep-cover-stat-label { font-size: 10px; color: #B9C4D0; letter-spacing: 1px; margin-top: 6px; }
 .deep-toc { padding: 42px 64px 38px; display: flex; flex-direction: column; }
-.deep-toc-grid { flex: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(7, auto); grid-auto-flow: column; column-gap: 54px; align-content: start; }
+.deep-toc-grid { flex: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(6, auto); grid-auto-flow: column; column-gap: 54px; align-content: start; }
 .deep-section { background: ${NAVY}; color: #FFFFFF; padding: 56px 72px; display: flex; flex-direction: column; justify-content: center; }
 .deep-content { padding: 34px 56px 38px; display: flex; flex-direction: column; }
 .deep-header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid ${HAIRLINE}; padding-bottom: 8px; margin-bottom: 12px; font-size: 11px; color: ${MUTED}; letter-spacing: 0.6px; }
@@ -97,10 +97,10 @@ const DOC_STYLE = `
 .deep-argument-index { flex-shrink: 0; background: ${NAVY}; color: ${GOLD}; font-size: 10px; font-weight: 700; letter-spacing: 0.8px; padding: 5px 9px; border-radius: 2px; margin-top: 3px; }
 .deep-argument-title { font-size: 21px; font-weight: 700; color: ${NAVY}; line-height: 1.35; }
 .deep-argument-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 1.52fr 0.88fr; gap: 22px; overflow: hidden; }
+.deep-argument-grid--single { grid-template-columns: 1fr; }
 .deep-argument-main { min-width: 0; overflow: hidden; }
 .deep-argument-side { min-width: 0; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
 .deep-section-label { display: flex; align-items: center; gap: 7px; font-size: 10px; font-weight: 700; color: ${GOLD}; letter-spacing: 1.4px; margin-bottom: 4px; }
-.deep-section-label i { display: inline-flex; width: 16px; height: 16px; border-radius: 50%; background: ${NAVY}; color: ${GOLD}; font-style: normal; font-size: 9px; align-items: center; justify-content: center; }
 .deep-section-text { font-size: 13px; line-height: 1.68; color: ${INK}; text-align: justify; margin-bottom: 9px; }
 .deep-evidence { border-left: 2px solid ${GOLD}; background: #FAF8F2; padding: 8px 11px; margin-bottom: 7px; }
 .deep-evidence-head { display: flex; align-items: center; gap: 7px; margin-bottom: 3px; }
@@ -122,7 +122,6 @@ const DOC_STYLE = `
 .deep-argument-image { border: 1px solid ${HAIRLINE}; padding: 6px; background: #FFFFFF; min-height: 0; }
 .deep-argument-image img { display: block; width: 100%; max-height: 236px; object-fit: contain; }
 .deep-argument-image-caption { font-size: 9px; color: ${MUTED}; margin-top: 4px; line-height: 1.45; }
-.deep-source-hint { border: 1px dashed #C7D0DA; padding: 10px 12px; font-size: 10.5px; color: ${MUTED}; line-height: 1.6; }
 .deep-section-stat { display: flex; gap: 14px; margin-top: 28px; }
 .deep-section-stat-card { border: 1px solid rgba(255,255,255,0.18); padding: 12px 18px; min-width: 112px; }
 .deep-section-stat-value { font-size: 22px; font-weight: 700; color: ${GOLD}; line-height: 1; }
@@ -142,10 +141,9 @@ function CoverPage({ spec }: { spec: DeepDocSpec }) {
   if (spec.financingRound) meta.push({ label: '融资轮次', value: spec.financingRound })
   if (spec.totalAmount) meta.push({ label: '融资规模', value: spec.totalAmount })
 
-  const modulePages = spec.pages.filter(page => {
+  const chapterPages = spec.pages.filter(page => {
     if (page.kind !== 'section') return false
-    const no = Number(page.sectionNo)
-    return Number.isFinite(no) && no >= 3 && no <= 11
+    return /^0[1-8]$/.test(page.sectionNo || '')
   }).length
 
   return (
@@ -184,15 +182,15 @@ function CoverPage({ spec }: { spec: DeepDocSpec }) {
             <div className="deep-cover-stat-label">报告页数</div>
           </div>
           <div className="deep-cover-stat">
-            <div className="deep-cover-stat-value">{modulePages || 9}</div>
-            <div className="deep-cover-stat-label">尽调模块</div>
+            <div className="deep-cover-stat-value">{chapterPages || 8}</div>
+            <div className="deep-cover-stat-label">报告章节</div>
           </div>
           <div className="deep-cover-stat">
             <div className="deep-cover-stat-value">{spec.stats.docCount}</div>
             <div className="deep-cover-stat-label">资料中心文件</div>
           </div>
           <div style={{ fontSize: 10, color: '#8FA3B5', lineHeight: 1.8, marginTop: 6 }}>
-            本报告由九大尽调模块驱动，逐论点引用资料中心原文与公开检索证据。
+            本报告按固定框架撰写：推荐理由 + 八章，逐论点引用资料中心原文与公开检索证据。
           </div>
         </div>
       </div>
@@ -414,26 +412,31 @@ function ChartView({ block }: { block: Extract<DeepBlock, { type: 'chart' }> }) 
 
 function ArgumentView({ block }: { block: Extract<DeepBlock, { type: 'argument' }> }) {
   const argument = block.argument
-  const density = argument.content.length + argument.analysis.length + argument.view.length
+  // 兼容 2.7.x 已生成的历史报告（旧字段 content/analysis/view）
+  const legacy = argument as typeof argument & { content?: string; analysis?: string; view?: string }
+  const narrative = argument.narrative?.length
+    ? argument.narrative
+    : [legacy.content, legacy.analysis].filter((text): text is string => Boolean(text))
+  const takeaway = argument.takeaway || legacy.view
+  const sideVisible = Boolean(takeaway || block.image)
+  const density = narrative.join('').length + (takeaway?.length || 0)
     + argument.evidence.reduce((sum, item) => sum + item.text.length + (item.quote?.length || 0), 0)
-  const denseClass = density > 560 ? ' deep-argument--dense' : ''
+  const denseClass = density > 600 ? ' deep-argument--dense' : ''
   const docQuotes = argument.evidence.filter(item => item.quote && item.ref?.startsWith('资料')).length
   const publicRefs = argument.evidence.filter(item => item.ref && /^[FE]\d+$/.test(item.ref)).length
   return (
     <div className={`deep-argument${denseClass}`}>
       <div className="deep-argument-head">
-        <span className="deep-argument-index">论点 {block.index} / {block.total}</span>
+        <span className="deep-argument-index">小节 {block.index} / {block.total}</span>
         <div className="deep-argument-title">{argument.title}</div>
       </div>
-      <div className="deep-argument-grid">
+      <div className={`deep-argument-grid${sideVisible ? '' : ' deep-argument-grid--single'}`}>
         <div className="deep-argument-main">
-          <div className="deep-section-label"><i>01</i>内容</div>
-          <div className="deep-section-text">{argument.content}</div>
+          {narrative.map((paragraph, index) => (
+            <div className="deep-section-text" key={`${paragraph.slice(0, 12)}-${index}`}>{paragraph}</div>
+          ))}
 
-          <div className="deep-section-label"><i>02</i>分析</div>
-          <div className="deep-section-text">{argument.analysis}</div>
-
-          <div className="deep-section-label"><i>03</i>论据</div>
+          <div className="deep-section-label">支撑论据</div>
           {argument.evidence.map((item, index) => (
             <div className="deep-evidence" key={`${item.text.slice(0, 10)}-${index}`}>
               <div className="deep-evidence-head">
@@ -444,31 +447,31 @@ function ArgumentView({ block }: { block: Extract<DeepBlock, { type: 'argument' 
             </div>
           ))}
           <div className="deep-citation-check">
-            引用校验：本论点 <b>{argument.evidence.length}</b> 条论据
+            引用校验：本页 <b>{argument.evidence.length}</b> 条论据
             {docQuotes > 0 ? <> · 资料中心原文 <b>{docQuotes}</b> 条（已逐字校验）</> : null}
             {publicRefs > 0 ? <> · 公开证据 <b>{publicRefs}</b> 条</> : null}
           </div>
         </div>
 
-        <div className="deep-argument-side">
-          <div className="deep-view">
-            <div className="deep-view-label">观点</div>
-            <div className="deep-view-text">{argument.view}</div>
-          </div>
-          {block.image ? (
-            <div className="deep-argument-image">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={block.image.url} alt={block.image.caption} referrerPolicy="no-referrer" loading="lazy" />
-              <div className="deep-argument-image-caption">
-                {block.image.caption}{block.image.source ? ` · 来源：${block.image.source}` : ''}
+        {sideVisible ? (
+          <div className="deep-argument-side">
+            {takeaway ? (
+              <div className="deep-view">
+                <div className="deep-view-label">判断</div>
+                <div className="deep-view-text">{takeaway}</div>
               </div>
-            </div>
-          ) : (
-            <div className="deep-source-hint">
-              本论点未关联资料图片；证据编号对应附录「资料中心资料索引」与「事实索引」。
-            </div>
-          )}
-        </div>
+            ) : null}
+            {block.image ? (
+              <div className="deep-argument-image">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={block.image.url} alt={block.image.caption} referrerPolicy="no-referrer" loading="lazy" />
+                <div className="deep-argument-image-caption">
+                  {block.image.caption}{block.image.source ? ` · 来源：${block.image.source}` : ''}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   )
